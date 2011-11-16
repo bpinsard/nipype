@@ -14,4 +14,4 @@ from nipype.interfaces.spm.model import (Level1Design, EstimateModel,
                                          PairedTTestDesign, MultipleRegressionDesign
                                          )
 
-from nipype.interfaces.spm.utils import Analyze2nii
+from nipype.interfaces.spm.utils import Analyze2nii, ApplyInverseDeformation
