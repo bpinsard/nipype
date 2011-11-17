@@ -1,5 +1,6 @@
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
+import os
 
 import nipype.interfaces.spm as spm          # spm
 import nipype.interfaces.fsl as fsl          # fsl
@@ -91,36 +92,45 @@ def create_resting_reg_preproc(name='restpreproc'):
     return workflow
     
 
-def create_corsica_noise_corr(name='corsica'):
+def create_corsica_noise_corr(name='corsica_noisecorr'):
     workflow = pe.Workflow(name=name)
 
     inputnode = pe.Node(util.IdentityInterface(fields=['in_files',
                                                        'noise_rois']),
                         name='inputspec')
-    ica=pe.Node(interface=lif.SICA(),name='ICA')
+    ica=pe.Node(interface=lif.SICA(),name='ica')
     corsica=pe.Node(interface=lif.CORSICA(), name='corsica')
 
-    outputnode = pe.Node(util.IdentityInterface(fields=['preprocessed_file',
+    outputnode = pe.Node(util.IdentityInterface(fields=['corrected_file',
                                                         'sica_file',
                                                         'components']),
                          name='outputspec')
 
-    spm_path = spm.Info().version()['path']
-    epi_tpl = os.path.join('templates/EPI.nii')
+    spm_path = '/coconut/applis/src/spm8' #spm.Info().version()['path']
+    epi_tpl = os.path.join(spm_path, 'templates/EPI.nii')
+
     normalize = pe.Node(
         spm.Normalize(template=epi_tpl,jobtype='estimate'),
+        name='normalize')
+
+    warp_noise_rois = pe.Node(
+        spm.ApplyInverseDeformation(),
         name='warp_noise_rois')
-    
     
     workflow.connect([
         (inputnode, ica, [('in_files', 'in_file')]),
-        (inputnode, corsica, [('in_file', 'in_file')]),
-        (ica, corsica, [('sica_file', 'sica_file'),
-                        ('mask_file', 'mask_file')]),
-        (corsica, outputnode, [('corrected_file', 'preprocessed_file')]),
-        (sica, outputnode, [('sica_file','sica_file')]),
+        (inputnode, corsica, [('in_files', 'in_file')]),
+        (inputnode, normalize, [('in_files','source')]),
+        (inputnode, warp_noise_rois, [('noise_rois','in_files'),
+                                      ('in_files','target')]),
+        (normalize, warp_noise_rois, [('normalization_parameters',
+                                       'deformation')]),
+        (warp_noise_rois, corsica, [('out_files','noise_rois')]),
+        (ica, corsica, [('sica_file', 'sica_file')]),
+        (corsica, outputnode, [('corrected_file', 'corrected_file')]),
+        (ica, outputnode, [('sica_file','sica_file')]),
         ])
-
+    return workflow
 
 def create_corsica_preproc(name='corsica'):
     """create a ICA/CorsICA preprocessing pipeline
@@ -130,7 +140,8 @@ def create_corsica_preproc(name='corsica'):
     workflow = pe.Workflow(name=name)
 
     inputnode = pe.Node(util.IdentityInterface(fields=['in_files',
-                                                      'noise_rois']),
+                                                      'noise_rois',
+                                                       'smooth_fwhm']),
                         name='inputspec')
     n_slicetiming = pe.Node(
         interface=spm.SliceTiming(),
@@ -139,12 +150,10 @@ def create_corsica_preproc(name='corsica'):
     n_realign = pe.Node(interface=spm.Realign(), name='realign')
     
     n_smooth = pe.Node(
-        interface=spm.Smooth(fwhm=[smooth_fwhm]*3),
+        interface=spm.Smooth(),
         name='smooth')
 
-    ica=pe.Node(interface=lif.SICA(),name='ICA')
-    corsica=pe.Node(interface=lif.CORSICA(), name='corsica')
-
+    corsica_noise_corr = create_corsica_noise_corr()
 
     outputnode = pe.Node(util.IdentityInterface(fields=['preprocessed_file',
                                                        'sica_file',
@@ -153,12 +162,14 @@ def create_corsica_preproc(name='corsica'):
     workflow.connect([
         (inputnode, n_slicetiming, [('in_files','in_files')]),
         (n_slicetiming, n_realign, [('timecorrected_files','in_files')]),
-        (n_realign, n_smooth, [('realigned_files','in_file')])
-        (n_smooth, ica, [('smoothed_files', 'in_file')]),
-        (inputnode, corsica, [('in_file', 'in_file')]),
-        (ica, corsica, [('sica_file', 'sica_file')]),
-        (corsica, outputnode, [('corrected_file', 'preprocessed_file')]),
-        (sica, outputnode, [('sica_file','sica_file')]),
+        (n_realign, n_smooth, [('realigned_files','in_files')]),
+        (inputnode, n_smooth, [('smooth_fwhm','fwhm')]),
+        (n_smooth, corsica_noise_corr, [('smoothed_files',
+                                         'inputspec.in_files')]),
+        (corsica_noise_corr, outputnode, [('outputspec.corrected_file',
+                                           'preprocessed_file')]),
+        (corsica_noise_corr, outputnode, [('outputspec.sica_file',
+                                           'sica_file')]),
         ])
 
     return workflow
