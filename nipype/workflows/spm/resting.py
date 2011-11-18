@@ -98,34 +98,21 @@ def create_corsica_noise_corr(name='corsica_noisecorr'):
     inputnode = pe.Node(util.IdentityInterface(fields=['in_files',
                                                        'noise_rois']),
                         name='inputspec')
-    ica=pe.Node(interface=lif.SICA(),name='ica')
-    corsica=pe.Node(interface=lif.CORSICA(), name='corsica')
+    ica=pe.MapNode(interface=lif.SICA(),name='ica',iterfield=['in_file'])
+    corsica=pe.MapNode(interface=lif.CORSICA(), name='corsica',
+                       iterfield=['in_file','noise_rois','sica_file'])
+
 
     outputnode = pe.Node(util.IdentityInterface(fields=['corrected_file',
                                                         'sica_file',
                                                         'components']),
                          name='outputspec')
 
-    spm_path = '/coconut/applis/src/spm8' #spm.Info().version()['path']
-    epi_tpl = os.path.join(spm_path, 'templates/EPI.nii')
-
-    normalize = pe.Node(
-        spm.Normalize(template=epi_tpl,jobtype='estimate'),
-        name='normalize')
-
-    warp_noise_rois = pe.Node(
-        spm.ApplyInverseDeformation(),
-        name='warp_noise_rois')
     
     workflow.connect([
         (inputnode, ica, [('in_files', 'in_file')]),
-        (inputnode, corsica, [('in_files', 'in_file')]),
-        (inputnode, normalize, [('in_files','source')]),
-        (inputnode, warp_noise_rois, [('noise_rois','in_files'),
-                                      ('in_files','target')]),
-        (normalize, warp_noise_rois, [('normalization_parameters',
-                                       'deformation')]),
-        (warp_noise_rois, corsica, [('out_files','noise_rois')]),
+        (inputnode, corsica, [('in_files', 'in_file'),
+                              ('noise_rois', 'noise_rois')]),
         (ica, corsica, [('sica_file', 'sica_file')]),
         (corsica, outputnode, [('corrected_file', 'corrected_file')]),
         (ica, outputnode, [('sica_file','sica_file')]),

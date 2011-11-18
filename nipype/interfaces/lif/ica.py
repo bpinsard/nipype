@@ -16,11 +16,13 @@ MatlabCommand.set_default_paths([
     code_path])
 
 class SICABase(BaseInterface):
-    def _parse_inputs(self, skip=()):
+    def _parse_inputs(self, skip=(), only=()):
         spm_dict = ""
         metadata=dict(field=lambda t : t is not None)
         for name, spec in self.inputs.traits(**metadata).items():
             if skip and name in skip:
+                continue
+            if only and name not in only:
                 continue
             value = getattr(self.inputs, name)
             if not isdefined(value):
@@ -41,8 +43,8 @@ class SICAInputSpec(BaseInterfaceInputSpec):
     sica_file = File('sica.mat', usedefault=True)
     sica_comp_files_fmt=traits.String('sica_comp%04d.img',desc='format of ICA components images filenames', usedefault=True)
     TR = traits.Float(3.,desc='the repetition time (TR) of the acquisition, in seconds',field='TR', usedefault=True)
-    filter_high = traits.Float(0,desc='(optional, default 0) cut-off frequency of a high-pass fIltering. A 0 Value Will Result In No Filtering.',Field='filter.high', usedefault=True)
-    filter_low = traits.Float(0,desc='(optional, default 0) cut-off frequency of a low-pass filtering. A 0 value will result in no filtering.',field='filter.low', usedefault=True)
+    filter_high = traits.Float(0,desc='(optional, default 0) cut-off frequency of a high-pass fIltering. A 0 Value Will Result In No Filtering.',field='high', usedefault=True)
+    filter_low = traits.Float(0,desc='(optional, default 0) cut-off frequency of a low-pass filtering. A 0 value will result in no filtering.',field='low', usedefault=True)
 
     slice_correction = traits.Bool(False,desc='a correction for slice mean intensity. Use this correction if some mean slice intensities are not stable across time ("spiked" artefacts involving 1 slice)',field='slice_correction', usedefault=True)
     suppress_volumes=traits.Int(0,desc='number of volumes to suppress at the begining of a run.',field='suppress_vol', usedefault=True)
@@ -63,13 +65,16 @@ class SICA(SICABase):
     output_spec=SICAOutputSpec
 
     def _run_interface(self, runtime):
-        opts=self._parse_inputs(skip=['in_file','sica_file','sica_comp_files_fmt'])
+        opts=self._parse_inputs(skip=['in_file','sica_file','sica_comp_files_fmt','filter_low','filter_high'])
+        filters=self._parse_inputs(only=['filter_high','filter_low'])
         d=dict(in_file=self.inputs.in_file,
                sica_file=self.inputs.sica_file,
                opts=opts,
+               filters=filters,
                sica_comp_files_fmt=self.inputs.sica_comp_files_fmt)
         script = Template("""
         opts=struct($opts);
+        opts.filter=struct($filters);
         in_file{1} = '$in_file';
         sica = st_script_sica(in_file, opts);
         save('$sica_file','sica');
@@ -112,9 +117,9 @@ class CORSICA(SICABase):
 
     def _run_interface(self, runtime):
         opts=self._parse_inputs(skip=['in_file','sica_file','mask_file'])
-        corrected_file = fname_presuffix(self.inputs.in_file, prefix='c')
+        corrected_file = fname_presuffix(self.inputs.in_file, prefix='c', newpath=os.getcwd())
         d=dict(sica_file=self.inputs.sica_file,
-               mask_file=self.inputs.mask_file,
+               mask_file=self.inputs.noise_rois,
                corrected_file=corrected_file,
                noise_components_mat=self.inputs.noise_components_mat,
                opts=opts)
@@ -148,7 +153,7 @@ class CORSICA(SICABase):
     def _list_outputs(self):
         outputs = self._outputs().get()
         outputs['noise_components_mat'] = os.path.abspath(self.inputs.noise_components_mat)
-        outputs['corrected_file'] = fname_presuffix(self.inputs.in_file, prefix='c')
+        outputs['corrected_file'] = fname_presuffix(self.inputs.in_file, prefix='c', newpath=os.getcwd())
         return outputs
     
     
