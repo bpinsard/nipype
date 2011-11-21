@@ -42,7 +42,7 @@ class SICAInputSpec(BaseInterfaceInputSpec):
     mask = File(exists=True)
     sica_file = File('sica.mat', usedefault=True)
     sica_comp_files_fmt=traits.String('sica_comp%04d.img',desc='format of ICA components images filenames', usedefault=True)
-    TR = traits.Float(3.,desc='the repetition time (TR) of the acquisition, in seconds',field='TR', usedefault=True)
+    TR = traits.Float(3.,desc='the repetition time (TR) of the acquisition, in seconds',field='TR')
     filter_high = traits.Float(0,desc='(optional, default 0) cut-off frequency of a high-pass fIltering. A 0 Value Will Result In No Filtering.',field='high', usedefault=True)
     filter_low = traits.Float(0,desc='(optional, default 0) cut-off frequency of a low-pass filtering. A 0 value will result in no filtering.',field='low', usedefault=True)
 
@@ -82,9 +82,9 @@ class SICA(SICABase):
         exit;
         """).substitute(d)
 
-        result = MatlabCommand(script=script, mfile=True)
-        result.run()
-        return result                    
+        mlab = MatlabCommand(script=script, mfile=True)
+        result = mlab.run()
+        return result.runtime
     
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -145,9 +145,9 @@ class CORSICA(SICABase):
         exit;
         """).substitute(d)
 
-        result = MatlabCommand(script=script, mfile=True)
-        result.run()
-        return result                    
+        mlab = MatlabCommand(script=script, mfile=True)
+        result = mlab.run()
+        return result.runtime
 
 
     def _list_outputs(self):
