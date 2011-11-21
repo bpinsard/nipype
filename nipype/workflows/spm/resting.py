@@ -90,6 +90,50 @@ def create_resting_reg_preproc(name='restpreproc'):
         ])
 
     return workflow
+
+
+def create_compcorr(name='compcorr'):
+    from nipype.workflows.fsl.resting import extract_noise_components
+    from nipype.algorithms.misc import TSNR
+
+    wkfl = pe.Workflow(name=name)
+    inputnode = pe.Node(util.IdentityInterface(fields=['in_file',
+                                                       'num_components']),
+                           name='inputspec')
+    outputnode = pe.Node(util.IdentityInterface(fields=['corrected_file']),
+                         name='outputspec')
+                            
+    tsnr = pe.MapNode(TSNR(regress_poly=2), name='tsnr', iterfield=['in_file'])
+    getthresh = pe.MapNode(interface=fsl.ImageStats(op_string='-p 98'),
+                        name='getthreshold', iterfield=['in_file'])
+    threshold_stddev = pe.MapNode(fsl.Threshold(), name='threshold',
+                               iterfield=['in_file','thresh'])
+    compcor = pe.MapNode(util.Function(input_names=['realigned_file',
+                                                 'noise_mask_file',
+                                                 'num_components'],
+                                     output_names=['noise_components'],
+                                     function=extract_noise_components),
+                         name='compcorr',
+                         iterfield=['realigned_file','noise_mask_file'])
+    remove_noise = pe.MapNode(fsl.FilterRegressor(filter_all=True),
+                              name='remove_noise',
+                              iterfield=['in_file','design_file'])
+
+
+    wkfl.connect([
+        (inputnode,tsnr,[('in_file','in_file')]),
+        (inputnode, compcor, [('in_file','realigned_file'),
+                              ('num_components','num_components')]),
+        (tsnr, threshold_stddev,[('stddev_file', 'in_file')]),
+        (tsnr, getthresh, [('stddev_file', 'in_file')]),
+        (tsnr, remove_noise, [('detrended_file','in_file')]),
+        (getthresh, threshold_stddev,[('out_stat', 'thresh')]),
+        (threshold_stddev, compcor, [('out_file',  'noise_mask_file')]),
+        (compcor,remove_noise, [('noise_components', 'design_file')]),
+        (remove_noise, outputnode, [('out_file','corrected_file')]),
+        ])
+
+    return wkfl
     
 
 def create_corsica_noise_corr(name='corsica_noisecorr'):
