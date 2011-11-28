@@ -140,9 +140,10 @@ def create_corsica_noise_corr(name='corsica_noisecorr'):
     workflow = pe.Workflow(name=name)
 
     inputnode = pe.Node(util.IdentityInterface(fields=['in_files',
+                                                       'mask',
                                                        'noise_rois']),
                         name='inputspec')
-    ica=pe.MapNode(interface=lif.SICA(),name='ica',iterfield=['in_file'])
+    ica=pe.MapNode(interface=lif.SICA(),name='ica',iterfield=['in_file','mask'])
     corsica=pe.MapNode(interface=lif.CORSICA(), name='corsica',
                        iterfield=['in_file','noise_rois','sica_file'])
 
@@ -154,7 +155,8 @@ def create_corsica_noise_corr(name='corsica_noisecorr'):
 
     
     workflow.connect([
-        (inputnode, ica, [('in_files', 'in_file')]),
+        (inputnode, ica, [('in_files', 'in_file'),
+                          ('mask', 'mask')]),
         (inputnode, corsica, [('in_files', 'in_file'),
                               ('noise_rois', 'noise_rois')]),
         (ica, corsica, [('sica_file', 'sica_file')]),
