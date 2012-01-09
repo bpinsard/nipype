@@ -99,12 +99,12 @@ class CORSICAInputSpec(BaseInterfaceInputSpec):
     n_cluster = traits.Int(-1,desc='default floor(nbvox/10), where nbvox is the number of voxels in the region)', field='nb_clust')
     n_kmeans = traits.Int(3,desc='(default 3) the number of repetition for kmeans clustering.', field='nb_kmeans')
     score_type = traits.Enum('freq','inertia', desc='(default \'freq\') type of computed score. \'freq\' for the frequency of selection of the regressor and \'inertia\' for the relative part of inertia explained by the clusters "selecting" the regressor', field='type_score')
-    score_thresh = traits.Float(-1,desc='(default -1) the threshold of the scores to select the components. value between 0 and 1. =-1 for automatic threshold by Otsu algorithm.', field='scoreThres')
+    score_thresh = traits.Float(0.25,desc='(default -1) the threshold of the scores to select the components. value between 0 and 1. =-1 for automatic threshold by Otsu algorithm.', field='scoreThres')
 
     noise_components_mat=File('noise_components.mat', usedefault=True)
 
-    baseline = traits.Int(desc='value of artificial baseline (default 1000)',field='baseline')
-    add_residuals  = traits.Bool(desc='whether to add or not the residuals to the recontructed data', field='addres')
+    baseline = traits.Int(0,desc='value of artificial baseline (default 1000)',field='baseline', usedefault=True)
+    add_residuals  = traits.Bool(True, desc='whether to add or not the residuals to the recontructed data', field='addres', usedefault = True)
 
 
 class CORSICAOutputSpec(TraitedSpec):
@@ -118,10 +118,11 @@ class CORSICA(SICABase):
     def _run_interface(self, runtime):
         opts=self._parse_inputs(skip=['in_file','sica_file','mask_file'])
         corrected_file = fname_presuffix(self.inputs.in_file, prefix='c', newpath=os.getcwd())
+        noise_components_file = os.path.abspath(self.inputs.noise_components_mat)
         d=dict(sica_file=self.inputs.sica_file,
                mask_file=self.inputs.noise_rois,
                corrected_file=corrected_file,
-               noise_components_mat=self.inputs.noise_components_mat,
+               noise_components_mat=noise_components_file,
                opts=opts)
         script = Template("""
         opts=struct($opts);
