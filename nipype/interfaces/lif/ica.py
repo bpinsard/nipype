@@ -67,11 +67,12 @@ class SICA(SICABase):
     def _run_interface(self, runtime):
         opts=self._parse_inputs(skip=['in_file','sica_file','sica_comp_files_fmt','filter_low','filter_high'])
         filters=self._parse_inputs(only=['filter_high','filter_low'])
+        comp_file_fmt=os.path.join(os.getcwd(),self.inputs.sica_comp_files_fmt)
         d=dict(in_file=self.inputs.in_file,
                sica_file=self.inputs.sica_file,
                opts=opts,
                filters=filters,
-               sica_comp_files_fmt=self.inputs.sica_comp_files_fmt)
+               sica_comp_files_fmt=comp_file_fmt)
         script = Template("""
         opts=struct($opts);
         opts.filter=struct($filters);
@@ -89,7 +90,7 @@ class SICA(SICABase):
     def _list_outputs(self):
         outputs = self._outputs().get()
         outputs['sica_file'] = os.path.abspath(self.inputs.sica_file)
-        outputs['components'] = [os.path.abspath('sica_comp%04d.img'%i) for i in range(1,self.inputs.param_nb_comp)]
+        outputs['components'] = [os.path.join(os.getcwd(),'sica_comp%04d.img'%i) for i in range(1,self.inputs.param_nb_comp)]
         return outputs
 
 class CORSICAInputSpec(BaseInterfaceInputSpec):
@@ -118,7 +119,7 @@ class CORSICA(SICABase):
     def _run_interface(self, runtime):
         opts=self._parse_inputs(skip=['in_file','sica_file','mask_file'])
         corrected_file = fname_presuffix(self.inputs.in_file, prefix='c', newpath=os.getcwd())
-        noise_components_file = os.path.abspath(self.inputs.noise_components_mat)
+        noise_components_file = os.path.join(os.getcwd(),self.inputs.noise_components_mat)
         d=dict(sica_file=self.inputs.sica_file,
                mask_file=self.inputs.noise_rois,
                corrected_file=corrected_file,
