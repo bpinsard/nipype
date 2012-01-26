@@ -39,7 +39,7 @@ class SICABase(BaseInterface):
 
 class SICAInputSpec(BaseInterfaceInputSpec):
     in_file = File(exists=True, mandatory=True)
-    mask = File(exists=True)
+    mask = File(exists=True, field='mask')
     sica_file = File('sica.mat', usedefault=True)
     sica_comp_files_fmt=traits.String('sica_comp%04d.img',desc='format of ICA components images filenames', usedefault=True)
     TR = traits.Float(3.,desc='the repetition time (TR) of the acquisition, in seconds',field='TR')
