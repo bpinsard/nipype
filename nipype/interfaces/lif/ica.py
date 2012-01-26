@@ -41,7 +41,7 @@ class SICAInputSpec(BaseInterfaceInputSpec):
     in_file = File(exists=True, mandatory=True)
     mask = File(exists=True, field='mask')
     sica_file = File('sica.mat', usedefault=True)
-    sica_comp_files_fmt=traits.String('sica_comp%04d.img',desc='format of ICA components images filenames', usedefault=True)
+    sica_comp_filename=File('sica_comp.nii',desc='ICA components image filename', usedefault=True)
     TR = traits.Float(3.,desc='the repetition time (TR) of the acquisition, in seconds',field='TR')
     filter_high = traits.Float(0,desc='(optional, default 0) cut-off frequency of a high-pass fIltering. A 0 Value Will Result In No Filtering.',field='high', usedefault=True)
     filter_low = traits.Float(0,desc='(optional, default 0) cut-off frequency of a low-pass filtering. A 0 value will result in no filtering.',field='low', usedefault=True)
@@ -67,19 +67,19 @@ class SICA(SICABase):
     def _run_interface(self, runtime):
         opts=self._parse_inputs(skip=['in_file','sica_file','sica_comp_files_fmt','filter_low','filter_high'])
         filters=self._parse_inputs(only=['filter_high','filter_low'])
-        comp_file_fmt=os.path.join(os.getcwd(),self.inputs.sica_comp_files_fmt)
+        comp_filename=os.path.join(os.getcwd(),self.inputs.sica_comp_filename)
         d=dict(in_file=self.inputs.in_file,
                sica_file=self.inputs.sica_file,
                opts=opts,
                filters=filters,
-               sica_comp_files_fmt=comp_file_fmt)
+               comp_filename_fmt=comp_filename)
         script = Template("""
         opts=struct($opts);
         opts.filter=struct($filters);
         in_file{1} = '$in_file';
         sica = st_script_sica(in_file, opts);
         save('$sica_file','sica');
-        write_sica_comps(sica,'$sica_comp_files_fmt');
+        write_sica_comps(sica,'$comp_filename');
         exit;
         """).substitute(d)
 
