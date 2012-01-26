@@ -7,7 +7,12 @@ import nipy.labs.correlation as corr
 import scipy.stats as sstats
 
 from nipype.interfaces.base import (TraitedSpec, BaseInterface, traits,
-                                    BaseInterfaceInputSpec, isdefined, File)
+                                    BaseInterfaceInputSpec, isdefined, File,
+                                    InputMultiPath, OutputMultiPath)
+from nipype.utils.filemanip import (fname_presuffix, filename_to_list,
+                                    list_to_filename, split_filename,
+                                    savepkl, loadpkl)
+
 
 class CorrelationDistributionInputSpec(BaseInterfaceInputSpec):
 
@@ -209,6 +214,10 @@ class MultiCorrelationDistributionInputSpec(BaseInterfaceInputSpec):
         1000, usedefault = True,
         desc = 'The number of bins of the distribution')
 
+    min_distance = traits.Float(
+        0, usedefault = True,
+        desc = """The min distance threshold to compute correlation distribution""")
+
     nsamples = traits.Int(
         1000, usedefault = True,
         desc = """The number of voxel to sample per mask.
@@ -228,9 +237,23 @@ class MultiCorrelationDistributionOutputSpec(TraitedSpec):
     intra_correlation_samples = File(
         exists=True,
         desc = "Correlation samples files, contains also distance between sampled voxels")
-    intra_correlation_distributions = traits.List(
-        File(exists=True),
+    intra_correlation_distributions = File(
+        exists=True,
         desc = "Correlation distributions outputs")
+
+    mean = traits.List(
+        traits.List(traits.Float()),
+        desc = '')
+
+    variance = traits.List(
+        traits.List(traits.Float()),
+        desc = '')
+    skewness = traits.List(
+        traits.List(traits.Float()),
+        desc = '')
+    kurtosis = traits.List(
+        traits.List(traits.Float()),
+        desc = '')
 
 
 class MultiCorrelationDistribution(BaseInterface):
@@ -258,7 +281,7 @@ class MultiCorrelationDistribution(BaseInterface):
             nsamples=self.inputs.nsamples)
         
         del datas,masks
-        bfname = os.path.splitext(os.path.basename(self.inputs.in_file))[0]
+        bfname = 'multi'
         #save distance/correlation data
         self._intra_corr_name=os.path.join(os.getcwd(),
                                            bfname + ('_corr_intra.npz'))
@@ -274,20 +297,20 @@ class MultiCorrelationDistribution(BaseInterface):
         self._kurtosis = []
         
         #compute distributions
-        intra_prob = np.empty((len(datas),len(maskniis), nbins),np.float)
+        intra_prob = np.empty((len(intra_corr),len(maskniis), nbins),np.float)
         for di,dcorr in enumerate(intra_corr):
-            self._mean['intra'].append([])
-            self._variance['intra'].append([])
-            self._skewness['intra'].append([])
-            self._kurtosis['intra'].append([])
+            self._mean.append([])
+            self._variance.append([])
+            self._skewness.append([])
+            self._kurtosis.append([])
             for ti,dists in enumerate(intra_dists):
                 sample = dcorr[ti,dists>min_dist]
                 h,e=np.histogram(sample, nbins, [-1,1], density=True)
                 intra_prob[di,ti] = h
-                self._mean['intra'][-1].append(np.mean(sample))
-                self._variance['intra'][-1].append(np.var(sample))
-                self._skewness['intra'][-1].append(sstats.skew(sample))
-                self._kurtosis['intra'][-1].append(sstats.kurtosis(sample))
+                self._mean[di].append(np.mean(sample))
+                self._variance[di].append(np.var(sample))
+                self._skewness[di].append(sstats.skew(sample))
+                self._kurtosis[di].append(sstats.kurtosis(sample))
         self._intra_prob_name = os.path.join(os.getcwd(), 
                                              bfname + '_intra_dist.npy')
         np.save(self._intra_prob_name, intra_prob)
@@ -304,4 +327,168 @@ class MultiCorrelationDistribution(BaseInterface):
         outputs['variance'] = self._variance
         outputs['skewness'] = self._skewness
         outputs['kurtosis'] = self._kurtosis
+        return outputs
+
+
+class CorrelationDistributionMapsInput(BaseInterfaceInputSpec):
+
+    in_files = InputMultiPath(
+        traits.Either(traits.List(File(exists=True)), File(exists=True)),
+        desc = 'The session files on which to compute correlations')
+    
+    mask = File(exists = True,
+                desc = 'The brain mask used to compute correlation to seed voxels.')
+
+    seed_masks = InputMultiPath(
+        traits.Either(traits.List(File(exists=True)), File(exists=True)),
+        desc = 'Mask files used to sample seeds to which whole-brain correlation is computed.')
+
+    nsamples = traits.Int(
+        -1, usedefault = True,
+        desc = """The number of voxel to sample per seed_mask.
+                  If -1 all voxels in seed masks will be used""")
+
+    mask_threshold = traits.Float(
+        0, usedefault = True,
+        desc = 'Threshold for the seed masks')
+
+    nbins = traits.Int(
+        1000, usedefault = True,
+        desc = 'The number of bins to compute the global distribution.')
+    
+    sampling_method = traits.Enum(
+      'mask', 'rois', usedefault=True,
+      desc = """Either:
+mask : sampling nsamples from a mask, 
+rois : sampling a ratio (rois_sampling_ratio) of the voxels of regions of interest""")
+    rois_sampling_ratio = traits.Float(
+      0.1, usedefault=True, 
+      desc = 'which ratio of the rois voxels to samples')
+
+class CorrelationDistributionMapsOutput(TraitedSpec):
+    correlation_mean_maps = OutputMultiPath(
+        traits.List(File(exists=True)),
+        desc = 'correlation mean maps from run files provided')
+    correlation_median_maps = OutputMultiPath(
+        traits.List(File(exists=True)),
+        desc = 'correlation median maps from run files provided')
+    correlation_variance_maps = OutputMultiPath(
+        traits.List(File(exists=True)),
+        desc = 'correlation variance maps from run files provided')
+    correlation_skew_maps = OutputMultiPath(
+        traits.List(File(exists=True)),
+        desc = 'correlation skewness maps from run files provided')
+    correlation_kurtosis_maps = OutputMultiPath(
+        traits.List(File(exists=True)),
+        desc = 'correlation kurtosis maps from run files provided')
+    
+    seed_maps = OutputMultiPath(
+        traits.List(File(exists=True)),
+        desc = 'seed maps used to sample datas')
+
+    global_correlation_distribution = OutputMultiPath(
+        traits.List(File(exists=True)),
+        desc = 'global correlation density function for all voxels indexed per seed mask ')
+
+class CorrelationDistributionMaps(BaseInterface):
+
+    input_spec = CorrelationDistributionMapsInput
+    output_spec = CorrelationDistributionMapsOutput
+
+    def _run_interface(self,runtime):
+        niis = [nb.load(f) for f in self.inputs.in_files]
+        seed_niis = [nb.load(f) for f in self.inputs.seed_masks]
+        maskthr = self.inputs.mask_threshold
+        if self.inputs.sampling_method == 'rois':
+          seed_masks = [m.get_data() for m in seed_niis]
+        else:
+          seed_masks = [m.get_data()>maskthr for m in seed_niis]
+        masknii = nb.load(self.inputs.mask)
+        mask = masknii.get_data()>0
+        nseeds = self.inputs.nsamples
+
+        nseed_masks = len(seed_masks)
+        statsshape = mask.shape+(nseed_masks,)
+        seed_maps = np.zeros(statsshape, np.int16)
+        means = np.zeros(statsshape, np.float32)
+        medians = np.zeros(statsshape, np.float32)
+        variances = np.zeros(statsshape, np.float32)
+        skews = np.zeros(statsshape, np.float32)
+        kurtosiss = np.zeros(statsshape, np.float32)
+        
+
+        gstats = [None]*nseed_masks
+        for nii in niis:
+            data = nii.get_data()
+            for si,seed_mask in enumerate(seed_masks):
+                cmaps, seed_maps[...,si] = corr.sample_correlation_maps(
+                  data,mask,seed_mask,nseeds,
+                  sampling_method = self.inputs.sampling_method,
+                  rois_sampling_ratio = self.inputs.rois_sampling_ratio)
+                means[mask,si] = cmaps.mean(1)
+                medians[mask,si] = np.median(cmaps,1)
+                variances[mask,si] = cmaps.var(1)
+                skews[mask,si] = sstats.skew(cmaps,1)
+                kurtosiss[mask,si] = sstats.kurtosis(cmaps,1)
+                distrib,_ = np.histogram(cmaps.flatten(),
+                                         self.inputs.nbins,
+                                         [-1,1], density=True)
+
+                print np.count_nonzero(np.isnan(cmaps)), 'NaN found'
+                gstats[si] = dict(
+                    distrib = distrib,
+                    mean=cmaps.mean(),
+                    median=np.median(cmaps),
+                    variance=cmaps.var(),
+                    skew=sstats.skew(cmaps.flatten()),
+                    kurtosis=sstats.kurtosis(cmaps.flatten()))
+                
+            fname = nii.get_filename()
+            nb.save(nb.Nifti1Image(seed_maps,masknii.get_affine()),
+                    fname_presuffix(fname, suffix = '_seeds.nii',
+                                    newpath=os.getcwd(),use_ext=False))
+            nb.save(nb.Nifti1Image(means,masknii.get_affine()),
+                    fname_presuffix(fname, suffix = '_meancorr.nii',
+                                    newpath=os.getcwd(),use_ext=False))
+            nb.save(nb.Nifti1Image(medians,masknii.get_affine()),
+                    fname_presuffix(fname, suffix = '_mediancorr.nii',
+                                    newpath=os.getcwd(),use_ext=False))
+            nb.save(nb.Nifti1Image(variances,masknii.get_affine()),
+                    fname_presuffix(fname, suffix = '_varcorr.nii',
+                                    newpath=os.getcwd(),use_ext=False))
+            nb.save(nb.Nifti1Image(skews,masknii.get_affine()),
+                    fname_presuffix(fname, suffix = '_skewcorr.nii',
+                                    newpath=os.getcwd(),use_ext=False))
+            nb.save(nb.Nifti1Image(kurtosiss,masknii.get_affine()),
+                    fname_presuffix(fname, suffix = '_kurtosiscorr.nii',
+                                    newpath=os.getcwd(),use_ext=False))
+            fname = fname_presuffix(fname, suffix='_global_corrdist.pklz',
+                                    newpath=os.getcwd(),use_ext=False)
+            savepkl(fname,gstats)
+        return runtime
+    
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        outputs['seed_maps'] = [fname_presuffix(
+                f, use_ext=False, newpath=os.getcwd(),
+                suffix = '_seeds.nii') for f in self.inputs.in_files]
+        outputs['correlation_mean_maps'] = [fname_presuffix(
+                f, use_ext=False, newpath=os.getcwd(),
+                suffix = '_meancorr.nii') for f in self.inputs.in_files]
+        outputs['correlation_median_maps'] = [fname_presuffix(
+                f, use_ext=False, newpath=os.getcwd(),
+                suffix = '_mediancorr.nii') for f in self.inputs.in_files]
+        outputs['correlation_variance_maps'] = [fname_presuffix(
+                f, use_ext=False, newpath=os.getcwd(),
+                suffix = '_varcorr.nii') for f in self.inputs.in_files]
+        outputs['correlation_skew_maps'] = [fname_presuffix(
+                f, use_ext=False, newpath=os.getcwd(),
+                suffix = '_skewcorr.nii') for f in self.inputs.in_files]
+        outputs['correlation_kurtosis_maps'] = [fname_presuffix(
+                f, use_ext=False, newpath=os.getcwd(),
+                suffix = '_kurtosiscorr.nii') for f in self.inputs.in_files]
+        outputs['global_correlation_distribution'] = [fname_presuffix(
+                f, use_ext=False, newpath=os.getcwd(),
+                suffix ='_global_corrdist.pklz') for f in self.inputs.in_files]
+        
         return outputs
