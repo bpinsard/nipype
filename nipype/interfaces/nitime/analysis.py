@@ -1,3 +1,4 @@
+
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """
@@ -18,9 +19,13 @@ package_check('matplotlib')
 
 from nipype.interfaces.base import (TraitedSpec, File, Undefined, traits,
                                     BaseInterface, isdefined,
-                                    BaseInterfaceInputSpec)
+                                    BaseInterfaceInputSpec,
+                                    InputMultiPath, OutputMultiPath)
 
 from nipype.utils.filemanip import fname_presuffix
+from nibabel import load
+import cPickle, gzip, os
+
 
 have_nitime = True
 try:
@@ -32,6 +37,24 @@ else:
     import nitime.analysis as nta
     from nitime.timeseries import TimeSeries
     import nitime.viz as viz
+
+
+have_nipy = True
+try:
+    package_check('nipy')
+except Exception, e:
+    have_nipy = False
+    warnings.warn('nipy not installed')
+else:
+    from nipy.algorithms.statistics import bootstrap
+
+
+def pca(data):
+    from nipy.algorithms.utils import pca
+    return np.squeeze(pca.pca(data,axis=-1,ncomp=1)['basis_projections'])
+
+def mean(data):
+    return np.mean(data,0)
 
 
 class CoherenceAnalyzerInputSpec(BaseInterfaceInputSpec):
@@ -248,11 +271,165 @@ class CoherenceAnalyzer(BaseInterface):
             fig_dt.savefig(fname_presuffix(self.inputs.output_figure_file,
                                     suffix='_delay'))
 
-class GetTimeSeriesInputSpec():
-    pass
-class GetTimeSeriesOutputSpec():
-    pass
-class GetTimeSeries():
-    # getting time series data from nifti files and ROIs
-    pass
+class GetTimeSeriesInputSpec(BaseInterfaceInputSpec):
+    in_file = File(exists=True,
+                   desc="Run file from which to extract timeseries")
+    rois_files = InputMultiPath(
+        traits.Either(traits.List(File(exists=True)), File(exists=True)),
+        desc = "ROIs integer files describing regions of interest from which to extract timeseries.")
+    mask = File(desc = "A mask file to restrain the ROIs.")
+    mask_threshold = traits.Float(
+        0, usedefault=True,
+        desc = "The default threshold to binarize mask image to create mask. Can be useful to create mask from probability image.")
+    rois_labels_files = InputMultiPath(
+        traits.Either(traits.List(File(exists=True)), File(exists=True)),
+        desc = "text files with ROIs labels")
+    
+    aggregating_function = traits.Function(
+        mean,
+        usedefault=True,
+        desc = """Function to apply to voxel timeseries to get ROIs timeseries.
+(default: np.mean) 
+ex: np.median, a custom pca component selection function.""")
+    
+    bootstrap_estimation = traits.Bool(
+        False, usedefault = True,
+        desc = "Perform a bootstrap estimate of the timeseries with the aggregating function")
+    bootstrap_nsamples = traits.Int(
+        100, usedefault = True,
+        desc = """Number of samples to perform bootstrap estimates.
+If greater than the number of possible combinations, the exact resampling will be performed.""")
+    
+    sampling_interval = traits.Float(2,desc="TR of the data in sec")
+    
+    
+class GetTimeSeriesOutputSpec(TraitedSpec):
 
+    timeseries = File(desc = """The timeseries file as a compressed umpy (.npz) file with fields : TODO""")
+    
+class GetTimeSeries(BaseInterface):
+    # getting time series data from nifti files and ROIs
+    input_spec = GetTimeSeriesInputSpec
+    output_spec = GetTimeSeriesOutputSpec
+    
+    def _run_interface(self, runtime):
+        #load data and rois files
+        run_nii = load(self.inputs.in_file)
+        run_data = run_nii.get_data()
+        rois_nii = [load(rois_file) for rois_file in self.inputs.rois_files]
+        if self.inputs.mask:
+            mask_nii = load(self.inputs.mask)
+            mask_data = mask_nii.get_data() > self.inputs.mask_threshold
+            rois_data = [nii.get_data()*mask_data for nii in rois_nii]
+            del mask_nii, mask_data
+        else:
+            rois_data = [nii.get_data() for nii in rois_nii]
+        
+        if self.inputs.rois_labels_files:
+            rois_labels = [[l.strip('\n') for l in open(labels_file).readlines()] for labels_file in self.inputs.rois_labels_files]
+        else:
+            rois_labels = [[]]*len(rois_data)
+
+
+        timeseries = dict()
+        pvalues = dict()
+        labels_list = []
+
+        #extract timeseries
+        for rois,labels in zip(rois_data,rois_labels):
+            rois_idx = np.unique(rois)
+            rois_idx = rois_idx[rois_idx>0]
+            if labels == []:
+                labels = rois_idx
+            for roi,label in zip(rois_idx,labels):
+                if timeseries.has_key(label):
+                    raise ValueError("Duplicate ROIs label "+label)
+                roi_mask = (rois == roi)
+                ts = run_data[roi_mask]
+                pval = 1
+                if self.inputs.aggregating_function:
+                    if self.inputs.bootstrap_estimation:
+                        std,lb,ub,samples = bootstrap.generic_bootstrap(
+                            ts,self.inputs.aggregating_function,
+                            self.inputs.bootstrap_nsamples)
+                        ts = samples.mean(axis=0)
+                        del samples
+                        pval = std
+                    else:
+                        ts = self.inputs.aggregating_function(ts)
+
+                timeseries[label] = ts
+                pvalues[label] = pval
+                labels_list.append(label)
+        out_data = dict(timeseries = timeseries,
+                        pvalues = pvalues,
+                        labels = labels_list)
+        fname = self._list_outputs()['timeseries']
+        cPickle.dump(out_data,
+                     gzip.open(fname,'wb'),
+                     protocol=cPickle.HIGHEST_PROTOCOL)
+        
+        del run_nii, run_data, rois_nii, rois_data
+        return runtime
+
+        
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+
+        outputs['timeseries'] = fname_presuffix(self.inputs.in_file,
+                                                suffix='_ts',
+                                                newpath = os.getcwd(),
+                                                use_ext=False) + '.pklz'
+        return outputs
+
+
+class CorrelationAnalysisInputSpec(BaseInterfaceInputSpec):
+    timeseries = File(
+        exists = True,
+        desc = 'Timeseries file produced by GetTimeSeries interface.')
+    
+    bootstrap_estimation = traits.Bool(
+        False, usedefault = True,
+        desc = "Perform a bootstrap estimate of the correlation")
+    bootstrap_nsamples = traits.Int(
+        100, usedefault = True,
+        desc = """Number of samples to perform bootstrap estimates.
+If greater than the number of possible combinations, the exact resampling will be performed.""")
+
+
+class CorrelationAnalysisOutputSpec(TraitedSpec):
+    correlations = File(desc = 'File containing the correlation values extracted from the timeseries and theirs confidences measures.')
+
+class CorrelationAnalysis(BaseInterface):
+    input_spec = CorrelationAnalysisInputSpec
+    output_spec = CorrelationAnalysisOutputSpec
+    
+    def _run_interface(self,runtime):
+        tsfile = cPickle.load(gzip.open(self.inputs.timeseries, "rb"))
+        ts = np.array([tsfile['timeseries'][roi] for roi in tsfile['labels']])
+        if self.inputs.bootstrap_estimation:
+            std,lb,ub,samples = bootstrap.generic_bootstrap(
+                ts, np.corrcoef,
+                self.inputs.bootstrap_nsamples)
+            pval = std
+            corr = samples.mean(0)
+        else:
+            corr = np.corrcoef(ts)
+            pval = []
+        
+        fname = self._list_outputs()['correlations']
+        out_data = dict(labels = tsfile['labels'],
+                        corr = corr,
+                        pval = pval)
+        cPickle.dump(out_data,
+                     gzip.open(fname,'wb'),
+                     protocol=cPickle.HIGHEST_PROTOCOL)
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+
+        outputs['correlations'] = fname_presuffix(self.inputs.timeseries,
+                                                      suffix='_corr',
+                                                      newpath = os.getcwd())
+        return outputs

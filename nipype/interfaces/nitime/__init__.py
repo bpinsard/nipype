@@ -3,4 +3,6 @@
 
 from nipype.interfaces.nitime.analysis import (CoherenceAnalyzerInputSpec,
                                                CoherenceAnalyzerOutputSpec,
-                                               CoherenceAnalyzer)
+                                               CoherenceAnalyzer,
+                                               GetTimeSeries,
+                                               CorrelationAnalysis)
