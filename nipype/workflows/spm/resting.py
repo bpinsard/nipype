@@ -98,13 +98,14 @@ def create_compcorr(name='compcorr'):
 
     wkfl = pe.Workflow(name=name)
     inputnode = pe.Node(util.IdentityInterface(fields=['in_file',
+                                                       'mask',
                                                        'num_components']),
                            name='inputspec')
     outputnode = pe.Node(util.IdentityInterface(fields=['corrected_file']),
                          name='outputspec')
                             
     tsnr = pe.MapNode(TSNR(regress_poly=2), name='tsnr', iterfield=['in_file'])
-    getthresh = pe.MapNode(interface=fsl.ImageStats(op_string='-p 98'),
+    getthresh = pe.MapNode(interface=fsl.ImageStats(op_string='-k %s -p 98'),
                         name='getthreshold', iterfield=['in_file'])
     threshold_stddev = pe.MapNode(fsl.Threshold(), name='threshold',
                                iterfield=['in_file','thresh'])
@@ -119,17 +120,18 @@ def create_compcorr(name='compcorr'):
                               name='remove_noise',
                               iterfield=['in_file','design_file'])
 
-
     wkfl.connect([
         (inputnode,tsnr,[('in_file','in_file')]),
         (inputnode, compcor, [('in_file','realigned_file'),
                               ('num_components','num_components')]),
         (tsnr, threshold_stddev,[('stddev_file', 'in_file')]),
         (tsnr, getthresh, [('stddev_file', 'in_file')]),
+        (inputnode, getthresh, [('mask','mask_file')]),
         (tsnr, remove_noise, [('detrended_file','in_file')]),
         (getthresh, threshold_stddev,[('out_stat', 'thresh')]),
         (threshold_stddev, compcor, [('out_file',  'noise_mask_file')]),
         (compcor,remove_noise, [('noise_components', 'design_file')]),
+        (inputnode, remove_noise, [('mask','mask')]),
         (remove_noise, outputnode, [('out_file','corrected_file')]),
         ])
 

@@ -72,7 +72,7 @@ class SICA(SICABase):
                sica_file=self.inputs.sica_file,
                opts=opts,
                filters=filters,
-               comp_filename_fmt=comp_filename)
+               comp_filename=comp_filename)
         script = Template("""
         opts=struct($opts);
         opts.filter=struct($filters);
@@ -90,7 +90,7 @@ class SICA(SICABase):
     def _list_outputs(self):
         outputs = self._outputs().get()
         outputs['sica_file'] = os.path.abspath(self.inputs.sica_file)
-        outputs['components'] = [os.path.join(os.getcwd(),'sica_comp%04d.img'%i) for i in range(1,self.inputs.param_nb_comp)]
+        outputs['components'] = os.path.join(os.getcwd(),'sica_comp.nii'%i)
         return outputs
 
 class CORSICAInputSpec(BaseInterfaceInputSpec):
