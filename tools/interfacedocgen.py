@@ -347,16 +347,19 @@ class InterfaceHelpWriter(object):
                 try:
                     setattr(classinst.inputs,i, None)
                 except TraitError, excp:
-                    fieldstr += " : (%s)\n\t"%excp.info
+                    def_val = ''
+                    if getattr(v, 'usedefault'):
+                        def_val = ', nipype default value: %s' % str(getattr(v, 'default_value')()[1])
+                    fieldstr += " : (%s%s)\n\t" % (excp.info, def_val)
 
                 try:
                     fieldstr += '\t' + getattr(v, 'desc')
                 except:
                     fieldstr += '\tUnknown'
                 if getattr(v,'xor'):
-                    fieldstr += '\n\t\texclusive: %s'%','.join(getattr(v,'xor'))
+                    fieldstr += '\n\t\texclusive: %s'%', '.join(getattr(v,'xor'))
                 if getattr(v,'requires'):
-                    fieldstr += '\n\t\trequires: %s'%','.join(getattr(v,'requires'))
+                    fieldstr += '\n\t\trequires: %s'%', '.join(getattr(v,'requires'))
                 if getattr(v, 'mandatory'):
                     if not mandhelpstr:
                         mandhelpstr = ['[Mandatory]']
@@ -365,6 +368,7 @@ class InterfaceHelpWriter(object):
                     if not opthelpstr:
                         opthelpstr = ['[Optional]']
                     opthelpstr += [fieldstr]
+
 
             if mandhelpstr:
                 helpstr += '\n\t'.join(mandhelpstr)
