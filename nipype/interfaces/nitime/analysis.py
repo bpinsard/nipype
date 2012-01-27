@@ -22,9 +22,9 @@ from nipype.interfaces.base import (TraitedSpec, File, Undefined, traits,
                                     BaseInterfaceInputSpec,
                                     InputMultiPath, OutputMultiPath)
 
-from nipype.utils.filemanip import fname_presuffix
+from nipype.utils.filemanip import fname_presuffix, savepkl, loadpkl
 from nibabel import load
-import cPickle, gzip, os
+import os
 
 
 have_nitime = True
@@ -365,9 +365,7 @@ class GetTimeSeries(BaseInterface):
                         pvalues = pvalues,
                         labels = labels_list)
         fname = self._list_outputs()['timeseries']
-        cPickle.dump(out_data,
-                     gzip.open(fname,'wb'),
-                     protocol=cPickle.HIGHEST_PROTOCOL)
+        savepkl(fname,out_data)
         
         del run_nii, run_data, rois_nii, rois_data
         return runtime
@@ -405,7 +403,7 @@ class CorrelationAnalysis(BaseInterface):
     output_spec = CorrelationAnalysisOutputSpec
     
     def _run_interface(self,runtime):
-        tsfile = cPickle.load(gzip.open(self.inputs.timeseries, "rb"))
+        tsfile = loadpkl(self.inputs.timeseries)
         ts = np.array([tsfile['timeseries'][roi] for roi in tsfile['labels']])
         if self.inputs.bootstrap_estimation:
             std,lb,ub,samples = bootstrap.generic_bootstrap(
@@ -421,9 +419,7 @@ class CorrelationAnalysis(BaseInterface):
         out_data = dict(labels = tsfile['labels'],
                         corr = corr,
                         pval = pval)
-        cPickle.dump(out_data,
-                     gzip.open(fname,'wb'),
-                     protocol=cPickle.HIGHEST_PROTOCOL)
+        savepkl(fname, out_data)
         return runtime
 
     def _list_outputs(self):
