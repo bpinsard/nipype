@@ -381,6 +381,10 @@ class CorrelationDistributionMapsOutput(TraitedSpec):
     correlation_kurtosis_maps = OutputMultiPath(
         traits.List(File(exists=True)),
         desc = 'correlation kurtosis maps from run files provided')
+
+    correlation_kl_maps = OutputMultiPath(
+        traits.List(File(exists=True)),
+        desc = 'correlation kullback leibler divergence from mean-var normal fistribution maps')
     
     seed_maps = OutputMultiPath(
         traits.List(File(exists=True)),
@@ -415,6 +419,8 @@ class CorrelationDistributionMaps(BaseInterface):
         variances = np.zeros(statsshape, np.float32)
         skews = np.zeros(statsshape, np.float32)
         kurtosiss = np.zeros(statsshape, np.float32)
+        klmaps = np.zeros(statsshape, np.float32)
+
         
 
         gstats = [None]*nseed_masks
@@ -434,6 +440,9 @@ class CorrelationDistributionMaps(BaseInterface):
                                          self.inputs.nbins,
                                          [-1,1], density=True)
 
+                from nipy.algorithms.statistics.kl import norm_kl_divergence
+                klmaps[mask,si] = norm_kl_divergence(
+                    cmaps,mn=means[mask,si],vr=variances[mask,si])
                 print np.count_nonzero(np.isnan(cmaps)), 'NaN found'
                 gstats[si] = dict(
                     distrib = distrib,
@@ -462,6 +471,10 @@ class CorrelationDistributionMaps(BaseInterface):
             nb.save(nb.Nifti1Image(kurtosiss,masknii.get_affine()),
                     fname_presuffix(fname, suffix = '_kurtosiscorr.nii',
                                     newpath=os.getcwd(),use_ext=False))
+            nb.save(nb.Nifti1Image(klmaps,masknii.get_affine()),
+                    fname_presuffix(fname, suffix = '_klcorr.nii',
+                                    newpath=os.getcwd(),use_ext=False))
+
             fname = fname_presuffix(fname, suffix='_global_corrdist.pklz',
                                     newpath=os.getcwd(),use_ext=False)
             savepkl(fname,gstats)
@@ -487,6 +500,9 @@ class CorrelationDistributionMaps(BaseInterface):
         outputs['correlation_kurtosis_maps'] = [fname_presuffix(
                 f, use_ext=False, newpath=os.getcwd(),
                 suffix = '_kurtosiscorr.nii') for f in self.inputs.in_files]
+        outputs['correlation_kl_maps'] = [fname_presuffix(
+                f, use_ext=False, newpath=os.getcwd(),
+                suffix = '_klcorr.nii') for f in self.inputs.in_files]
         outputs['global_correlation_distribution'] = [fname_presuffix(
                 f, use_ext=False, newpath=os.getcwd(),
                 suffix ='_global_corrdist.pklz') for f in self.inputs.in_files]
