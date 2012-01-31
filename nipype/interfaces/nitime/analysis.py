@@ -348,16 +348,19 @@ class GetTimeSeries(BaseInterface):
                 roi_mask = (rois == roi)
                 ts = run_data[roi_mask]
                 pval = 1
-                if self.inputs.aggregating_function:
-                    if self.inputs.bootstrap_estimation:
-                        std,lb,ub,samples = bootstrap.generic_bootstrap(
-                            ts,self.inputs.aggregating_function,
-                            self.inputs.bootstrap_nsamples)
-                        ts = samples.mean(axis=0)
-                        del samples
-                        pval = std
-                    else:
-                        ts = self.inputs.aggregating_function(ts)
+                if ts.shape[0] > 1:
+                    if self.inputs.aggregating_function:
+                        if self.inputs.bootstrap_estimation:
+                            std,lb,ub,samples = bootstrap.generic_bootstrap(
+                                ts,self.inputs.aggregating_function,
+                                self.inputs.bootstrap_nsamples)
+                            ts = samples.mean(axis=0)
+                            del samples
+                            pval = std
+                        else:
+                            ts = self.inputs.aggregating_function(ts)
+                elif ts.shape[0]==0:
+                    ts = np.zeros(data.shape[-1])
 
                 timeseries[label] = ts
                 pvalues[label] = pval
