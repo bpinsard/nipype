@@ -425,16 +425,19 @@ class CorrelationAnalysis(BaseInterface):
             corr = samples.mean(0)
             samples_part = np.array([corr_to_partialcorr(s) for s in samples])
             partialcorr = samples_part.mean(0)
+            partialpval = samples_part.std(0)
         else:
             corr = np.corrcoef(ts)
             partialcorr = corr_to_partialcorr(corr)
             pval = []
+            partialpval = []
         
         fname = self._list_outputs()['correlations']
         out_data = dict(labels = tsfile['labels'],
                         corr = corr,
                         partialcorr = partialcorr,
-                        pval = pval)
+                        pval = pval,
+                        partialpval = partialpval)
         savepkl(fname, out_data)
         return runtime
 
