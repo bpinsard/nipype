@@ -4,6 +4,7 @@ import warnings
 import nibabel as nb
 import numpy as np
 import nipy.labs.correlation as corr
+import nipy.algorithms.utils.preprocess as preproc
 import scipy.stats as sstats
 
 from nipype.interfaces.base import (TraitedSpec, BaseInterface, traits,
@@ -507,4 +508,103 @@ class CorrelationDistributionMaps(BaseInterface):
                 f, use_ext=False, newpath=os.getcwd(),
                 suffix ='_global_corrdist.pklz') for f in self.inputs.in_files]
         
+        return outputs
+
+
+
+class MotionMapsInputSpec(BaseInterfaceInputSpec):
+
+    mask = File(
+        exists=True,
+        desc='Mask file to select voxel to regress out.')
+    motion = File(
+        exists=True,
+        desc='Motion parameters files')
+    motion_source = traits.Enum(
+        'spm','fsl','afni',
+        desc = 'software used to estimate motion',
+        usedefault = True)
+
+    motion_transform = traits.Enum(
+        'raw', 'bw_derivatives', 'fw_derivatives',
+        desc = 'Which transform to apply to motion')
+
+    slicing_axis = traits.Int(
+        2, usedefault = True, desc = 'Axis for outplane motion measure')
+
+
+class MotionMapsOutputSpec(TraitedSpec):
+    
+    drms_mean_map = File(
+        exists = True,
+        desc='mean delta-root-mean-square of the translation in each voxel')
+
+    drms_max_map = File(
+        exists = True,
+        desc='max delta-root-mean-square of the translation in each voxel')
+
+    outplane_mean_map = File(
+        exists = True,
+        desc='mean outplane translation in each voxel')
+
+    outplane_max_map = File(
+        exists = True,
+        desc='max outplane translation in each voxel')
+
+
+
+class MotionMaps(BaseInterface):
+    input_spec = MotionMapsInputSpec
+    output_spec = MotionMapsOutputSpec
+    
+
+    def _run_interface(self,runtime):
+        motion = np.loadtxt(self.inputs.motion)
+        motion = preproc.motion_parameter_standardize(motion,self.inputs.motion_source)
+        masknii = nb.load(self.inputs.mask)
+        mask = masknii.get_data()>0
+        affine = masknii.get_affine()
+        voxels_motion = preproc.compute_voxels_motion(motion,mask,affine)
+
+        outputs = self._list_outputs()
+        out = np.zeros(mask.shape, np.float) + np.nan
+ 
+        regsh = voxels_motion.shape
+        if self.inputs.motion_transform == 'bw_derivatives':
+            voxels_motion = np.concatenate(
+                (np.zeros((regsh[0],1,regsh[2])),
+                 np.diff(voxels_motion, axis=1)), axis=1)
+        elif self.inputs.motion_transform == 'fw_derivatives':
+            voxels_motion = np.concatenate(
+                (np.diff(voxels_motion, axis=1),
+                 np.zeros((regsh[0],1,regsh[2]))), axis=1)
+
+        drms = np.sqrt(np.square(voxels_motion[...,:3]).sum(axis=2))
+        out[mask] = drms.mean(1)
+        nb.save(nb.Nifti1Image(out,affine), outputs['drms_mean_map'])
+        out[mask] = drms.max(1)
+        nb.save(nb.Nifti1Image(out,affine), outputs['drms_max_map'])
+        
+        outplane = np.dot(
+            np.linalg.inv(affine),
+            voxels_motion.transpose((0,2,1)))[self.inputs.slicing_axis]
+        out[mask] = outplane.mean(1)
+        nb.save(nb.Nifti1Image(out,affine), outputs['outplane_mean_map'])
+        out[mask] = outplane.max(1)
+        nb.save(nb.Nifti1Image(out,affine), outputs['outplane_max_map'])
+        
+        return runtime
+            
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        ol = [('drms_mean_map', '_drms_mean'),
+              ('drms_max_map', '_drms_max'),
+              ('outplane_mean_map', '_outplane_mean'),
+              ('outplane_max_map', '_outplane_max'),]
+        for k,p in ol:
+            outputs[k] = fname_presuffix(
+                self.inputs.motion, use_ext=False,
+                newpath=os.getcwd(),suffix = p+'.nii')
+
         return outputs

@@ -125,7 +125,6 @@ class RegressOutMotion(BaseInterface):
         outputs["out_file"] = os.path.abspath(
             self.inputs.prefix + os.path.basename(self.inputs.in_file))
         return outputs
-    
 
 
 class RegressOutMaskSignalInputSpec(BaseInterfaceInputSpec):
