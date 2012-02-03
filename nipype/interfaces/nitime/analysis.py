@@ -335,17 +335,15 @@ class GetTimeSeries(BaseInterface):
         pvalues = dict()
         labels_list = []
 
+        print 'extract timeseries'
         #extract timeseries
         for rois,labels in zip(rois_data,rois_labels):
-            rois_idx = np.unique(rois)
-            rois_idx = rois_idx[rois_idx>0]
             if labels == []:
-                labels = rois_idx
-            for roi,label in zip(rois_idx,labels):
+                labels = range(1,rois.max()+1)
+            for roi,label in enumerate(labels):
                 if timeseries.has_key(label):
                     raise ValueError("Duplicate ROIs label "+label)
-                roi_mask = (rois == roi)
-                ts = run_data[roi_mask]
+                ts = run_data[ rois == roi+1 ]
                 pval = 1
                 if ts.shape[0] > 1:
                     if self.inputs.aggregating_function:
@@ -361,7 +359,7 @@ class GetTimeSeries(BaseInterface):
                 elif ts.shape[0] > 0:
                     ts = np.squeeze(ts)
                 else:
-                    ts = np.zeros(data.shape[-1])
+                    ts = np.zeros(run_data.shape[-1])+numpy.finfo(numpy.float).eps
     
 
                 timeseries[label] = ts
@@ -405,9 +403,12 @@ class CorrelationAnalysisOutputSpec(TraitedSpec):
     correlations = File(desc = 'File containing the correlation values extracted from the timeseries and theirs confidences measures.')
 
 def corr_to_partialcorr(corr):
-    u = np.linalg.inv(corr);
-    diag = np.diag(1/sqrt(np.diag(u)))
-    return 2*np.eye(corr.shape[0]) - diag.dot(u).dot(diag)
+    u = np.linalg.inv(corr)
+    d = np.diag(u)
+    if np.sum(d<0) > 0:
+        raise ValueError('Ill conditionned matrix (negative inverse diagonal)')
+    d = np.diag(1/np.sqrt(d))
+    return 2*np.eye(corr.shape[0]) - d.dot(u).dot(d)
 
 
 class CorrelationAnalysis(BaseInterface):
@@ -423,6 +424,7 @@ class CorrelationAnalysis(BaseInterface):
                 self.inputs.bootstrap_nsamples)
             pval = std
             corr = samples.mean(0)
+            print np.count_nonzero(np.isnan(samples)) ,'nan in correlations'
             samples_part = np.array([corr_to_partialcorr(s) for s in samples])
             partialcorr = samples_part.mean(0)
             partialpval = samples_part.std(0)
