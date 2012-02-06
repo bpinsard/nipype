@@ -102,7 +102,7 @@ class CORSICAInputSpec(BaseInterfaceInputSpec):
     score_type = traits.Enum('freq','inertia', desc='(default \'freq\') type of computed score. \'freq\' for the frequency of selection of the regressor and \'inertia\' for the relative part of inertia explained by the clusters "selecting" the regressor', field='type_score')
     score_thresh = traits.Float(0.25,desc='(default -1) the threshold of the scores to select the components. value between 0 and 1. =-1 for automatic threshold by Otsu algorithm.', field='scoreThres')
 
-    noise_components_mat=File('noise_components.mat', usedefault=True)
+    noise_components_mat=File('_noise_components.mat', usedefault=True)
 
     baseline = traits.Int(0,desc='value of artificial baseline (default 1000)',field='baseline', usedefault=True)
     add_residuals  = traits.Bool(True, desc='whether to add or not the residuals to the recontructed data', field='addres', usedefault = True)
@@ -130,6 +130,7 @@ class CORSICA(SICABase):
         mask = '$mask_file';
         compSel_corsica = st_script_spatial_sel_comp(sica, mask,opts);
         ncomps=compSel_corsica.numcomp;
+        disp(ncomps);
         save('$noise_components_mat', 'ncomps');
         data=st_suppress_comp(sica,compSel_corsica);
         
@@ -153,7 +154,7 @@ class CORSICA(SICABase):
 
     def _list_outputs(self):
         outputs = self._outputs().get()
-        outputs['noise_components_mat'] = os.path.join(os.getcwd(),self.inputs.noise_components_mat)
+        outputs['noise_components_mat'] = fname_presuffix(self.inputs.in_file, suffix=self.inputs.noise_components_mat, newpath=os.getcwd(), use_ext=False)
         outputs['corrected_file'] = fname_presuffix(self.inputs.in_file, prefix='c', newpath=os.getcwd())
         return outputs
     
