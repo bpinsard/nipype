@@ -50,8 +50,10 @@ else:
 
 
 def pca(data):
-    from nipy.algorithms.utils import pca
-    return np.squeeze(pca.pca(data,axis=0,ncomp=1)['basis_projections'])
+#    from nipy.algorithms.utils import pca
+#    return np.squeeze(pca.pca(data,axis=0,ncomp=1)['basis_projections'])
+    evl,evc=np.linalg.eig(data.dot(data.T))
+    return evc.T.dot(data)[0]
 
 def mean(data):
     return np.mean(data,0)
@@ -286,8 +288,6 @@ class GetTimeSeriesInputSpec(BaseInterfaceInputSpec):
         desc = "text files with ROIs labels")
     
     aggregating_function = traits.Function(
-        mean,
-        usedefault=True,
         desc = """Function to apply to voxel timeseries to get ROIs timeseries.
 (default: np.mean) 
 ex: np.median, a custom pca component selection function.""")
@@ -359,10 +359,10 @@ class GetTimeSeries(BaseInterface):
                 elif ts.shape[0] > 0:
                     ts = np.squeeze(ts)
                 else:
-                    ts = np.zeros(run_data.shape[-1])+numpy.finfo(numpy.float).eps
+                    ts = np.zeros(run_data.shape[-1])
     
 
-                timeseries[label] = ts
+                timeseries[label] = ts.copy()
                 pvalues[label] = pval
                 labels_list.append(label)
         out_data = dict(timeseries = timeseries,
@@ -425,12 +425,19 @@ class CorrelationAnalysis(BaseInterface):
             pval = std
             corr = samples.mean(0)
             print np.count_nonzero(np.isnan(samples)) ,'nan in correlations'
-            samples_part = np.array([corr_to_partialcorr(s) for s in samples])
-            partialcorr = samples_part.mean(0)
-            partialpval = samples_part.std(0)
+            try:
+                samples_part = np.array([corr_to_partialcorr(s) for s in samples])
+                partialcorr = samples_part.mean(0)
+                partialpval = samples_part.std(0)
+            except ValueError:                
+                partialcorr = None
+                partialpval = None
         else:
             corr = np.corrcoef(ts)
-            partialcorr = corr_to_partialcorr(corr)
+            try:
+                partialcorr = corr_to_partialcorr(corr)
+            except ValueError:
+                partialcorr = None
             pval = []
             partialpval = []
         
@@ -449,4 +456,49 @@ class CorrelationAnalysis(BaseInterface):
         outputs['correlations'] = fname_presuffix(self.inputs.timeseries,
                                                       suffix='_corr',
                                                       newpath = os.getcwd())
+        return outputs
+
+class HomogeneityAnalysisInputSpec(BaseInterfaceInputSpec):
+    timeseries = File(
+        exists = True,
+        desc = 'Timeseries file produced by GetTimeSeries interface.')
+    
+
+
+class HomogeneityAnalysisOutputSpec(TraitedSpec):
+    homogeneity = File(
+        exists = True,
+        desc = 'Homogeneity measures in each region of interest')
+
+class HomogeneityAnalysis(BaseInterface):
+    input_spec = HomogeneityAnalysisInputSpec
+    output_spec = HomogeneityAnalysisOutputSpec
+    
+    def _run_interface(self,runtime):
+        tsfile = loadpkl(self.inputs.timeseries)
+        kcc = dict()
+        for roi in tsfile['labels']:
+            print ts.shape
+            if ts.shape[0] > 1:
+                ts = tsfile['timeseries'][roi]
+                #normalize
+                ts -= ts.mean(1)[:,np.newaxis]
+                ts /= ts.std(1)[:,np.newaxis]
+                
+                y = ts-ts.mean(0)[np.newaxis,:]
+                n,t = ts.shape
+                k = (n**2*t*(t**2-1))/(12*(n-1))
+                kcc[roi]=1-y.sum()/k
+            else:
+                kcc[roi]=1
+
+        savepkl(self._list_outputs()['Kendall_W'], kcc=kcc)
+        return runtime
+
+    
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['Kendall_W'] = fname_presuffix(self.inputs.timeseries,
+                                                suffix='_kendall',
+                                                newpath = os.getcwd())
         return outputs
