@@ -118,12 +118,11 @@ class CORSICA(SICABase):
 
     def _run_interface(self, runtime):
         opts=self._parse_inputs(skip=['in_file','sica_file','mask_file'])
-        corrected_file = fname_presuffix(self.inputs.in_file, prefix='c', newpath=os.getcwd())
-        noise_components_file = os.path.join(os.getcwd(),self.inputs.noise_components_mat)
+        outputs = self._list_outputs()
         d=dict(sica_file=self.inputs.sica_file,
                mask_file=self.inputs.noise_rois,
-               corrected_file=corrected_file,
-               noise_components_mat=noise_components_file,
+               corrected_file=outputs['corrected_file'],
+               noise_components_mat=outputs['noise_components_mat'],
                opts=opts)
         script = Template("""
         opts=struct($opts);
@@ -154,7 +153,7 @@ class CORSICA(SICABase):
 
     def _list_outputs(self):
         outputs = self._outputs().get()
-        outputs['noise_components_mat'] = os.path.abspath(self.inputs.noise_components_mat)
+        outputs['noise_components_mat'] = os.path.join(os.getcwd(),self.inputs.noise_components_mat)
         outputs['corrected_file'] = fname_presuffix(self.inputs.in_file, prefix='c', newpath=os.getcwd())
         return outputs
     
