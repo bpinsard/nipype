@@ -343,10 +343,12 @@ class GetTimeSeries(BaseInterface):
             for roi,label in enumerate(labels):
                 if timeseries.has_key(label):
                     raise ValueError("Duplicate ROIs label "+label)
-                ts = run_data[ rois == roi+1 ]
+                ts = np.array(run_data[ rois == roi+1 ])
                 pval = 1
-                if ts.shape[0] > 1:
-                    if self.inputs.aggregating_function:
+                if ts.ndim < 2:
+                    ts = np.array(ts[np.newaxis,:])
+                if self.inputs.aggregating_function:
+                    if ts.shape[0] > 1:
                         if self.inputs.bootstrap_estimation:
                             std,lb,ub,samples = bootstrap.generic_bootstrap(
                                 ts,self.inputs.aggregating_function,
@@ -356,13 +358,12 @@ class GetTimeSeries(BaseInterface):
                             pval = std
                         else:
                             ts = self.inputs.aggregating_function(ts)
-                elif ts.shape[0] > 0:
-                    ts = np.squeeze(ts)
-                else:
-                    ts = np.zeros(run_data.shape[-1])
-    
+                    elif ts.shape[0] > 0:
+                        ts = np.squeeze(ts)
+                    else:
+                        ts = np.zeros(run_data.shape[-1])
 
-                timeseries[label] = ts.copy()
+                timeseries[label] = ts
                 pvalues[label] = pval
                 labels_list.append(label)
         out_data = dict(timeseries = timeseries,
@@ -405,7 +406,8 @@ class CorrelationAnalysisOutputSpec(TraitedSpec):
 def corr_to_partialcorr(corr):
     u = np.linalg.inv(corr)
     d = np.diag(u)
-    if np.sum(d<0) > 0:
+    if np.any(d<0):
+        print 'merdfe'
         raise ValueError('Ill conditionned matrix (negative inverse diagonal)')
     d = np.diag(1/np.sqrt(d))
     return 2*np.eye(corr.shape[0]) - d.dot(u).dot(d)
@@ -466,9 +468,13 @@ class HomogeneityAnalysisInputSpec(BaseInterfaceInputSpec):
 
 
 class HomogeneityAnalysisOutputSpec(TraitedSpec):
-    homogeneity = File(
+    kendall_W = File(
         exists = True,
         desc = 'Homogeneity measures in each region of interest')
+    corr = File(
+        exists = True,
+        desc = 'Correlation stats in each region of interest')
+
 
 class HomogeneityAnalysis(BaseInterface):
     input_spec = HomogeneityAnalysisInputSpec
@@ -477,28 +483,44 @@ class HomogeneityAnalysis(BaseInterface):
     def _run_interface(self,runtime):
         tsfile = loadpkl(self.inputs.timeseries)
         kcc = dict()
+        mean_corr = dict()
+        min_corr = dict()
         for roi in tsfile['labels']:
-            print ts.shape
+            ts = tsfile['timeseries'][roi]
             if ts.shape[0] > 1:
-                ts = tsfile['timeseries'][roi]
                 #normalize
                 ts -= ts.mean(1)[:,np.newaxis]
                 ts /= ts.std(1)[:,np.newaxis]
+
+                #compute rank data
+                from bottleneck import rankdata
+                y=rankdata(ts,axis=1)
                 
-                y = ts-ts.mean(0)[np.newaxis,:]
+                y = (y-y.mean(0)[np.newaxis,:])**2
                 n,t = ts.shape
-                k = (n**2*t*(t**2-1))/(12*(n-1))
+                k = (t*(t**2-1)*n**2)/(12*(n-1))
                 kcc[roi]=1-y.sum()/k
+                
+                corr=np.corrcoef(ts)[np.tri(ts.shape[0],k=-1,dtype=bool)]
+                mean_corr[roi]=corr.mean()
+                min_corr[roi]=corr.min()
             else:
                 kcc[roi]=1
+                mean_corr[roi]=1
 
-        savepkl(self._list_outputs()['Kendall_W'], kcc=kcc)
+        savepkl(self._list_outputs()['kendall_W'], dict(kcc=kcc))
+        savepkl(self._list_outputs()['corr'], dict(mean_corr = mean_corr,
+                                                   min_corr = min_corr))
         return runtime
 
     
     def _list_outputs(self):
         outputs = self.output_spec().get()
-        outputs['Kendall_W'] = fname_presuffix(self.inputs.timeseries,
+        outputs['kendall_W'] = fname_presuffix(self.inputs.timeseries,
                                                 suffix='_kendall',
                                                 newpath = os.getcwd())
+        outputs['corr'] = fname_presuffix(self.inputs.timeseries,
+                                          suffix='_corr',
+                                          newpath = os.getcwd())
+
         return outputs
