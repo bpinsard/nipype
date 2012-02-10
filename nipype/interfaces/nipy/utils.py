@@ -207,9 +207,11 @@ class MultiCorrelationDistributionInputSpec(BaseInterfaceInputSpec):
         traits.Either(traits.List(File(exists=True)), File(exists=True)),
         desc = 'The session files on which to compute correlations')
 
-    masks = traits.List(
+    sampling_masks = traits.List(
         File(exists=True),
         desc = 'Mask files used to sample intra-mask and inter-mask correlations and compute respective distributions.')
+
+    mask = File(desc='optional mask to restrict the sampling masks')
 
     nbins = traits.Int(
         1000, usedefault = True,
@@ -266,8 +268,12 @@ class MultiCorrelationDistribution(BaseInterface):
 
         niis = [nb.load(f) for f in self.inputs.in_files]
         datas = [nii.get_data() for nii in niis]
-        maskniis = [nb.load(m) for m in self.inputs.masks]
-        masks = np.array([m.get_data() for m in maskniis])
+        maskniis = [nb.load(m) for m in self.inputs.sampling_masks]
+        if self.inputs.mask:
+            mask = nb.load(self.inputs.mask).get_data()>0
+            masks = np.array([m.get_data()*mask for m in maskniis])
+        else:
+            masks = np.array([m.get_data() for m in maskniis])
         masks = masks.transpose((1,2,3,0)) > self.inputs.mask_threshold
         
         # average data over a neighborhood to simulate the use of ROIs
