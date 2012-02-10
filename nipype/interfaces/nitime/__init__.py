@@ -6,4 +6,5 @@ from nipype.interfaces.nitime.analysis import (CoherenceAnalyzerInputSpec,
                                                CoherenceAnalyzer,
                                                GetTimeSeries,
                                                CorrelationAnalysis,
-                                               HomogeneityAnalysis)
+                                               HomogeneityAnalysis,
+                                               IntegrationAnalysis)

@@ -105,7 +105,7 @@ class CoherenceAnalyzerOutputSpec(TraitedSpec):
     coherence_array = traits.Array(desc=('The pairwise coherence values',
                                          'between the ROIs'))
 
-    timedelay_array = traits.Array(desc=('The pairwise time delays between the',
+    timedelay_array = traits.Array(desc=('The pairwise time delays between the,'
                                          'ROIs (in seconds)'))
 
     coherence_csv = File(desc = ('A csv file containing the pairwise ',
@@ -304,8 +304,15 @@ If greater than the number of possible combinations, the exact resampling will b
     
     
 class GetTimeSeriesOutputSpec(TraitedSpec):
-
     timeseries = File(desc = """The timeseries file as a compressed umpy (.npz) file with fields : TODO""")
+    
+    """
+    timeseries_file = File(desc = "The timeseries file as a compressed numpy (.npz) file with fields : TODO")
+    
+    timeseries = InputMultiPath(traits.Either(traits.Any(),
+    traits.List(traits.Any())),
+    desc="Timeseries object or list of timeseries")
+"""
     
 class GetTimeSeries(BaseInterface):
     # getting time series data from nifti files and ROIs
@@ -335,7 +342,6 @@ class GetTimeSeries(BaseInterface):
         pvalues = dict()
         labels_list = []
 
-        print 'extract timeseries'
         #extract timeseries
         for rois,labels in zip(rois_data,rois_labels):
             if labels == []:
@@ -407,7 +413,6 @@ def corr_to_partialcorr(corr):
     u = np.linalg.inv(corr)
     d = np.diag(u)
     if np.any(d<0):
-        print 'merdfe'
         raise ValueError('Ill conditionned matrix (negative inverse diagonal)')
     d = np.diag(1/np.sqrt(d))
     return 2*np.eye(corr.shape[0]) - d.dot(u).dot(d)
@@ -524,3 +529,52 @@ class HomogeneityAnalysis(BaseInterface):
                                           newpath = os.getcwd())
 
         return outputs
+
+class IntegrationAnalysisInputSpec(BaseInterfaceInputSpec):
+    _xor_inputs = ['correlations','correlation_file']
+    correlations = traits.Any(desc='correlation matrix')
+    correlations_file = File(
+        exists=True,
+        desc='Output file of correlation analysis interface.')
+
+    networks = traits.Dict(desc='Network dictionnary containing region id.')
+
+class IntegrationAnalysisOutputSpec(TraitedSpec):
+    integration = traits.Float(desc='total integration measure')
+    inter_network_integration = traits.Dict(
+        desc = 'integration measure inter networks')
+    intra_network_integration = traits.Dict(
+        desc = 'integration measure intra networks')
+
+class IntegrationAnalysis(BaseInterface):
+    input_spec  = IntegrationAnalysisInputSpec
+    output_spec = IntegrationAnalysisOutputSpec
+
+    def _run_interface(self,runtime):
+        if self.inputs.correlations:
+            correlations = self.inputs.correlations
+        else:
+            correlations = loadpkl(self.inputs.correlations_file)
+        
+        nets = dict()
+        if correlations.has_key('nets'):
+            nets = correlations['keys']
+        if isinstance(self.inputs.networks,dict):
+            nets = self.inputs.networks
+
+        integ_anlzr = nta.IntegrationAnalyzer(correlations['corr'],
+                                              networks=nets)
+        self.total, self.inter, self.intra = integ_anlzr.integration
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['integration'] = self.total
+        outputs['inter_network_integration'] = self.inter
+        outputs['intra_network_integration'] = self.intra
+        return outputs
+
+class GraphAnalysis(BaseInterface):
+    #TODO
+    pass
+    
