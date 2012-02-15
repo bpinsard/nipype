@@ -23,7 +23,7 @@ from nipype.interfaces.base import (TraitedSpec, File, Undefined, traits,
                                     InputMultiPath, OutputMultiPath)
 
 from nipype.utils.filemanip import fname_presuffix, savepkl, loadpkl
-from nibabel import load
+import nibabel as nb
 import os
 
 
@@ -35,6 +35,7 @@ except Exception, e:
     warnings.warn('nitime not installed')
 else:
     import nitime.analysis as nta
+    from nitime.algorithms.correlation import seed_corrcoef
     from nitime.timeseries import TimeSeries
     import nitime.viz as viz
 
@@ -321,11 +322,11 @@ class GetTimeSeries(BaseInterface):
     
     def _run_interface(self, runtime):
         #load data and rois files
-        run_nii = load(self.inputs.in_file)
+        run_nii = nb.load(self.inputs.in_file)
         run_data = run_nii.get_data()
-        rois_nii = [load(rois_file) for rois_file in self.inputs.rois_files]
+        rois_nii = [nb.load(rois_file) for rois_file in self.inputs.rois_files]
         if self.inputs.mask:
-            mask_nii = load(self.inputs.mask)
+            mask_nii = nb.load(self.inputs.mask)
             mask_data = mask_nii.get_data() > self.inputs.mask_threshold
             rois_data = [nii.get_data()*mask_data for nii in rois_nii]
             del mask_nii, mask_data
@@ -578,3 +579,107 @@ class GraphAnalysis(BaseInterface):
     #TODO
     pass
     
+
+class SeedCorrelationAnalysisInputSpec(BaseInterfaceInputSpec):
+    in_files = InputMultiPath(
+        traits.Either(traits.List(File(exists=True)), File(exists=True)),
+        desc = "Input files from which to extract seed correlation maps.")
+    mask = File(desc = 'Mask to select voxels to compute correlation maps. It not specified, a implicit masking will be performed with NaN or zeros timeseries.')
+    seeds_coordinates = traits.List(
+        traits.Tuple(traits.Int,traits.Int,traits.Int),
+        desc = 'Voxel coordinates of the seeds.')
+    seeds_radius = traits.Float(
+        1,usedefault=True,
+        desc='radius used to compute voxels average for seeds coordinates')
+    seeds_maps = InputMultiPath(
+        traits.Either(traits.List(File(exists=True)), File(exists=True)),
+        desc = "Seeds to compute correlation maps.")
+    seeds_maps_type = traits.Enum(
+        'regions','voxels',
+        desc = 'Either to extract seed signal from regions with different values in the maps, or to extract seed signal from individual nonzero voxels in maps.')
+    # TODO: add time axis bootstrap estimation of correlation maps
+    
+class SeedCorrelationAnalysisOutputSpec(TraitedSpec):
+    seed_correlation_maps = OutputMultiPath(
+        traits.List(File(exists=True)),
+        desc='Seed correlation maps.')
+
+class SeedCorrelationAnalysis(BaseInterface):
+    input_spec = SeedCorrelationAnalysisInputSpec
+    output_spec = SeedCorrelationAnalysisOutputSpec
+    
+    
+    def _run_interface(self,runtime):
+        run_niis = [nb.load(f) for f in self.inputs.in_files]
+        if np.diff([nii.get_shape() for nii in run_niis],axis=0).sum()>0:
+            raise ValueError('Input files must have same shape')
+        data = np.array([nii.get_data() for nii in run_niis])
+        # load mask or create implicit mask
+        if self.inputs.mask:
+            mask_nii = nb.load(self.inputs.mask)
+            if mask_nii.get_shape() != run_niis[0].get_shape()[:-1]:
+                raise ValueError('Mask file must have same shape as input files')
+            mask = mask_nii.get_data() > 0
+        else:
+            mask = np.ones(run_niis[0].shape,dtype=bool)
+        #implicit masking : remove  nans and zeros time series
+        mask *= np.prod([(np.isnan(d).sum(axis=-1)==0)* \
+                             (d.var(-1)>0) for d in data],
+                        axis=0)
+        mask = mask > 0
+
+        seeds_ts = [[]]*len(run_niis)
+        coords = list(self.inputs.seeds_coordinates)
+        radius = self.inputs.seeds_radius
+        tile = (np.mgrid[-radius:radius+1,
+                          -radius:radius+1,
+                          -radius:radius+1]**2).sum(0) <= radius**2
+        for seed in self.inputs.seeds_coordinates:
+            print seed,radius,data.shape,tile.shape
+            for di,d in enumerate(data):
+                ts = d[seed[0]-radius:seed[0]+radius+1,
+                       seed[1]-radius:seed[1]+radius+1,
+                       seed[2]-radius:seed[2]+radius+1][tile].mean(0)
+                seeds_ts[di].append(ts)
+
+        #load seeds maps
+        if self.inputs.seeds_maps:
+            seed_niis = [nb.load(f) for f in self.inputs.seeds_maps]
+            
+            for smapidx,seed_nii in enumerate(seed_niis):
+                smap = seed_nii.get_data()*mask
+                seeds_ts.append([])
+                if self.inputs.seeds_maps_type == 'voxels':
+                    for di,d in enumerate(data):
+                        for ts in d[smap>0]:
+                            seeds_ts[di].append(ts)
+                        coords.append([tuple(c) for c in  np.array(np.where(smap)).T])
+                else:
+                    rois = np.unique(smap)[1:]
+                    for r in rois:
+                        m = smap==r
+                        coords.append(tuple([int(c.mean()) for c in np.where(m)]))
+                        for di,d in enumerate(data):
+                            seeds_ts[di].append(d[m].mean(0))
+        
+        #apply mask to data
+        data = data[:,mask,:]
+        self.map_fnames = []        
+        seed_map=np.empty(mask.shape+(len(coords),), np.float32)+np.nan
+        for di,d in enumerate(data):
+            for tsi,ts in enumerate(seeds_ts[di]):
+                seed_map[mask,tsi] = seed_corrcoef(ts,d)
+            fname = fname_presuffix(
+                self.inputs.in_files[di],
+                suffix = 'seed_maps.nii',
+                use_ext = False, newpath = os.getcwd())
+            nii = nb.Nifti1Image(seed_map,mask_nii.get_affine())
+            nb.save(nii,fname)
+            self.map_fnames.append(fname)
+        return runtime
+
+    
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['seed_correlation_maps'] = self.map_fnames
+        return outputs
