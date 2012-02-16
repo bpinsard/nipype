@@ -621,7 +621,7 @@ class SeedCorrelationAnalysis(BaseInterface):
                 raise ValueError('Mask file must have same shape as input files')
             mask = mask_nii.get_data() > 0
         else:
-            mask = np.ones(run_niis[0].shape,dtype=bool)
+            mask = np.ones(run_niis[0].shape[:3],dtype=bool)
         #implicit masking : remove  nans and zeros time series
         mask *= np.prod([(np.isnan(d).sum(axis=-1)==0)* \
                              (d.var(-1)>0) for d in data],
@@ -629,7 +629,9 @@ class SeedCorrelationAnalysis(BaseInterface):
         mask = mask > 0
 
         seeds_ts = [[]]*len(run_niis)
-        coords = list(self.inputs.seeds_coordinates)
+        coords = []
+        if isinstance(self.inputs.seeds_coordinates,list):
+            corrds +=list(self.inputs.seeds_coordinates)
         radius = self.inputs.seeds_radius
         tile = (np.mgrid[-radius:radius+1,
                           -radius:radius+1,
