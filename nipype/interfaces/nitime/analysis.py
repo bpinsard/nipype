@@ -636,18 +636,18 @@ class SeedCorrelationAnalysis(BaseInterface):
         tile = (np.mgrid[-radius:radius+1,
                           -radius:radius+1,
                           -radius:radius+1]**2).sum(0) <= radius**2
-        for seed in self.inputs.seeds_coordinates:
-            print seed,radius,data.shape,tile.shape
-            for di,d in enumerate(data):
-                ts = d[seed[0]-radius:seed[0]+radius+1,
-                       seed[1]-radius:seed[1]+radius+1,
-                       seed[2]-radius:seed[2]+radius+1][tile].mean(0)
-                seeds_ts[di].append(ts)
+        if self.inputs.seeds_coordinates:
+            for seed in self.inputs.seeds_coordinates:
+                print seed,radius,data.shape,tile.shape
+                for di,d in enumerate(data):
+                    ts = d[seed[0]-radius:seed[0]+radius+1,
+                           seed[1]-radius:seed[1]+radius+1,
+                           seed[2]-radius:seed[2]+radius+1][tile].mean(0)
+                    seeds_ts[di].append(ts)
 
         #load seeds maps
         if self.inputs.seeds_maps:
             seed_niis = [nb.load(f) for f in self.inputs.seeds_maps]
-            
             for smapidx,seed_nii in enumerate(seed_niis):
                 smap = seed_nii.get_data()*mask
                 seeds_ts.append([])
@@ -657,7 +657,7 @@ class SeedCorrelationAnalysis(BaseInterface):
                             seeds_ts[di].append(ts)
                         coords.append([tuple(c) for c in  np.array(np.where(smap)).T])
                 else:
-                    rois = np.unique(smap)[1:]
+                    rois = np.unique(smap[(np.isnan(smap) | (smap==0))==False])
                     for r in rois:
                         m = smap==r
                         coords.append(tuple([int(c.mean()) for c in np.where(m)]))
