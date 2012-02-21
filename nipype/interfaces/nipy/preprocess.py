@@ -17,6 +17,9 @@ else:
 from nipype.interfaces.base import (TraitedSpec, BaseInterface, traits,
                                     BaseInterfaceInputSpec, isdefined, File,
                                     InputMultiPath)
+from nipype.utils.filemanip import (fname_presuffix, filename_to_list,
+                                    list_to_filename, split_filename,
+                                    savepkl, loadpkl)
 
 
 class ComputeMaskInputSpec(BaseInterfaceInputSpec):
@@ -94,6 +97,8 @@ class RegressOutMotionInputSpec(BaseInterfaceInputSpec):
 class RegressOutMotionOutputSpec(TraitedSpec):
     out_file = File(exists=True,
                     desc = 'File with regressed out motion parameters')
+    beta_maps = File(exists=True,
+                     desc = 'File containing betas maps for each regressor.')
     
 class RegressOutMotion(BaseInterface):
     input_spec = RegressOutMotionInputSpec
@@ -105,7 +110,7 @@ class RegressOutMotion(BaseInterface):
         motion = np.loadtxt(self.inputs.motion)
         motion = preproc.motion_parameter_standardize(motion,self.inputs.motion_source)
         mask = nb.load(self.inputs.mask).get_data()>0
-        cdata,_ = preproc.regress_out_motion_parameters(
+        cdata, _, betamaps = preproc.regress_out_motion_parameters(
             nii,motion,mask,
             regressors_type = self.inputs.regressors_type,
             regressors_transform = self.inputs.regressors_transform,
@@ -114,16 +119,24 @@ class RegressOutMotion(BaseInterface):
             )
         outnii = nb.Nifti1Image(cdata,nii.get_affine())
         outnii.set_data_dtype(np.float32)
-        out_fname = self._list_outputs()['out_file']
+        nb.save(outnii, self._list_outputs()['out_file'])
         
-        nb.save(outnii, out_fname)
+        betanii = nb.Nifti1Image(betamaps,nii.get_affine())
+        nb.save(betanii, self._list_outputs()['beta_maps'])
         del nii, motion, cdata, outnii
         return runtime
         
     def _list_outputs(self):
         outputs = self._outputs().get()
-        outputs["out_file"] = os.path.abspath(
-            self.inputs.prefix + os.path.basename(self.inputs.in_file))
+        outputs["out_file"] = fname_presuffix(
+            self.inputs.in_file,
+            prefix = self.inputs.prefix,
+            newpath = os.getcwd())
+        outputs["beta_maps"] = fname_presuffix(
+            self.inputs.in_file,
+            suffix = '_betas',
+            newpath = os.getcwd())
+
         return outputs
 
 
@@ -204,5 +217,92 @@ class RegressOutMaskSignal(BaseInterface):
         outputs = self._outputs().get()
         outputs["out_file"] = os.path.abspath(
             self.inputs.prefix + os.path.basename(self.inputs.in_file))
+        return outputs
+    
+
+
+class ScrubbingInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc='The 4D run to be processed')
+    mask = File(
+        exists=True,
+        desc='The brain mask used to compute the framewise derivatives')
+
+    motion = File(
+        exists=True,
+        desc='Motion parameters files')
+    motion_source = traits.Enum(
+        'spm','fsl','afni',
+        desc = 'software used to estimate motion',
+        usedefault = True)
+    head_radius = traits.Float(
+        50,usedefault=True,
+        desc='The head radius in mm to be used for framewise displacement computation.')
+    fd_threshold = traits.Float(
+        -1, usedefault=True,
+        desc="Threshold applied to framewise displacement. Default is half voxel size.")
+
+    drms_threshold = traits.Float(
+        -1, usedefault = True,
+        desc = """The threshold applied to derivative root mean square.
+defaults is an automatic threshold based on otsu.""")
+    
+    extend_scrubbing = traits.Bool(
+        True, usedefault = True,
+        desc = 'Extend scrubbing mask to 1 back and 2 forward as in Power et al.')
+
+    
+class ScrubbingOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc = 'Scrubbed data')
+    motion = File(
+        exists=True,
+        desc='Motion file with volume scrubbed out parameters removed')
+    volume_count = traits.Int(desc='The number of remaining volumes.')
+    scrubbed_out_volumes=traits.List(traits.Int(),
+                                     desc = 'Index of scrubbed volumes.')
+    
+class Scrubbing(BaseInterface):
+    """ Implement Power et al. scrubbing method,
+    suppress volumes with criterion on framewise displacement (FD) and
+    bw derivative RMS over voxels
+    
+    Automatic threshold is half voxel size for FD and 
+    is determined by Otsu's algorithm for DRMS
+    """
+    input_spec = ScrubbingInputSpec
+    output_spec = ScrubbingOutputSpec
+
+    def _run_interface(self, runtime):
+        nii = nb.load(self.inputs.in_file)
+        mask = nb.load(self.inputs.mask).get_data()>0
+        motion = np.loadtxt(self.inputs.motion)
+        motion = preproc.motion_parameter_standardize(
+            motion, self.inputs.motion_source)
+        self.scrubbed, self.scrub_mask, _,_ = preproc.scrub_data(
+            nii, motion, mask, 
+            head_radius = self.inputs.head_radius,
+            fd_threshold = self.inputs.fd_threshold,
+            drms_threshold = self.inputs.drms_threshold,
+            extend_mask = self.inputs.extend_scrubbing)
+        
+        out_nii = nb.Nifti1Image(self.scrubbed, nii.get_affine())
+        nb.save(out_nii, self._list_outputs()['out_file'])
+        np.savetxt(self._list_outputs()['motion'], motion[self.scrub_mask])
+        return runtime
+    
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        outputs["out_file"] = fname_presuffix(
+                self.inputs.in_file, newpath=os.getcwd(),
+                prefix = 't')
+        outputs["motion"] = fname_presuffix(
+                self.inputs.motion, newpath=os.getcwd(),
+                prefix = 't')
+
+        outputs['volume_count'] = self.scrubbed.shape[-1]
+        outputs['scrubbed_out_volumes'] = np.where(self.scrub_mask==0)[0].tolist()
         return outputs
     
