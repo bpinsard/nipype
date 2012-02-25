@@ -363,6 +363,10 @@ class CorrelationDistributionMapsInput(BaseInterfaceInputSpec):
         1000, usedefault = True,
         desc = 'The number of bins to compute the global distribution.')
     
+    min_distance = traits.Float(
+        0, usedefault = True,
+        desc = """The min distance threshold to compute correlation distribution""")
+
     sampling_method = traits.Enum(
       'mask', 'rois', usedefault=True,
       desc = """Either:
@@ -376,12 +380,15 @@ class CorrelationDistributionMapsOutput(TraitedSpec):
     correlation_mean_maps = OutputMultiPath(
         traits.List(File(exists=True)),
         desc = 'correlation mean maps from run files provided')
-    correlation_median_maps = OutputMultiPath(
-        traits.List(File(exists=True)),
-        desc = 'correlation median maps from run files provided')
+#    correlation_median_maps = OutputMultiPath(
+#        traits.List(File(exists=True)),
+#        desc = 'correlation median maps from run files provided')
     correlation_variance_maps = OutputMultiPath(
         traits.List(File(exists=True)),
         desc = 'correlation variance maps from run files provided')
+    correlation_std_maps = OutputMultiPath(
+        traits.List(File(exists=True)),
+        desc = 'correlation standard deviation maps from run files provided')
     correlation_skew_maps = OutputMultiPath(
         traits.List(File(exists=True)),
         desc = 'correlation skewness maps from run files provided')
@@ -389,18 +396,23 @@ class CorrelationDistributionMapsOutput(TraitedSpec):
         traits.List(File(exists=True)),
         desc = 'correlation kurtosis maps from run files provided')
 
-    correlation_kl_maps = OutputMultiPath(
-        traits.List(File(exists=True)),
-        desc = 'correlation kullback leibler divergence from mean-var normal fistribution maps')
+#    correlation_kl_maps = OutputMultiPath(
+#        traits.List(File(exists=True)),
+#        desc = 'correlation kullback leibler divergence from mean-var normal fistribution maps')
     
-    seed_maps = OutputMultiPath(
-        traits.List(File(exists=True)),
+    seed_maps = File(
+        exists=True,
         desc = 'seed maps used to sample datas')
+
+    all_cmaps = OutputMultiPath(
+        traits.List(File(exists=True)),
+        desc = 'all correlation sample in mask per file per seed map')
 
     global_correlation_distribution = OutputMultiPath(
         traits.List(File(exists=True)),
         desc = 'global correlation density function for all voxels indexed per seed mask ')
 
+import gc 
 class CorrelationDistributionMaps(BaseInterface):
 
     input_spec = CorrelationDistributionMapsInput
@@ -410,67 +422,116 @@ class CorrelationDistributionMaps(BaseInterface):
         niis = [nb.load(f) for f in self.inputs.in_files]
         seed_niis = [nb.load(f) for f in self.inputs.seed_masks]
         maskthr = self.inputs.mask_threshold
-        if self.inputs.sampling_method == 'rois':
-          seed_masks = [m.get_data() for m in seed_niis]
-        else:
-          seed_masks = [m.get_data()>maskthr for m in seed_niis]
+
         masknii = nb.load(self.inputs.mask)
         mask = masknii.get_data()>0
+
+        if self.inputs.sampling_method == 'rois':
+          seed_masks = [m.get_data()[mask] for m in seed_niis]
+        else:
+          seed_masks = [m.get_data()[mask]>maskthr for m in seed_niis]
         nseeds = self.inputs.nsamples
 
         nseed_masks = len(seed_masks)
         statsshape = mask.shape+(nseed_masks,)
-        seed_maps = np.zeros(statsshape, np.int16)
         means = np.zeros(statsshape, np.float32)
-        medians = np.zeros(statsshape, np.float32)
+#        medians = np.zeros(statsshape, np.float32)
         variances = np.zeros(statsshape, np.float32)
+        stds = np.zeros(statsshape, np.float32)
         skews = np.zeros(statsshape, np.float32)
         kurtosiss = np.zeros(statsshape, np.float32)
-        klmaps = np.zeros(statsshape, np.float32)
+#        klmaps = np.zeros(statsshape, np.float32)
+
+
+        # sample the same seeds for all data
+        seed_indices = []
+        seed_maps = np.zeros(statsshape, np.int16) #16bits is min for most ni software
+        for si,seed_mask in enumerate(seed_masks):
+            seed_indices.append(corr.sample_voxels(
+                    seed_mask, nseeds,
+                    sampling_method = self.inputs.sampling_method,
+                    rois_sampling_ratio = self.inputs.rois_sampling_ratio))
+            seed_maps[...,si][[c[seed_indices[-1]] for c in np.where(mask)]] = True
+        #save seed maps
+        nb.save(nb.Nifti1Image(seed_maps,masknii.get_affine()),
+                os.path.join(os.getcwd(),'seed_maps.nii'))
+
+        # compute coordinates for distance
+        voxel_size = np.sqrt(np.square(masknii.get_affine()[:3,:3]).sum(0))
+        coords = np.array(np.where(mask)+(np.ones(np.count_nonzero(mask)),))
+        coords = masknii.get_affine().dot(coords)[:3].T
+        
+        # compute all distances from seeds to all voxels
+        all_dists = []
+        for smi, seeds in enumerate(seed_indices):
+            dists = np.empty((coords.shape[0],seeds.shape[0]),np.float16)
+            for si, seed in enumerate(seeds):
+                dists[:,si] = np.sqrt(((coords-coords[seed])**2).sum(1))
+            all_dists.append(dists)
+
+            dists_f = fname_presuffix(
+                self.inputs.seed_masks[smi], suffix='_dists.npz',
+                newpath=os.getcwd(),use_ext=False)
+            np.savez_compressed(dists_f, dists=dists)
+
+        del coords
 
         
-
-        gstats = [None]*nseed_masks
+        gstats =[[]]*len(seed_indices)
+        # compute seed-based correlation maps
         for nii in niis:
-            data = nii.get_data()
-            for si,seed_mask in enumerate(seed_masks):
-                cmaps, seed_maps[...,si] = corr.sample_correlation_maps(
-                  data,mask,seed_mask,nseeds,
-                  sampling_method = self.inputs.sampling_method,
-                  rois_sampling_ratio = self.inputs.rois_sampling_ratio)
-                means[mask,si] = cmaps.mean(1)
-                medians[mask,si] = np.median(cmaps,1)
-                variances[mask,si] = cmaps.var(1)
-                skews[mask,si] = sstats.skew(cmaps,1)
-                kurtosiss[mask,si] = sstats.kurtosis(cmaps,1)
-                distrib,_ = np.histogram(cmaps.flatten(),
-                                         self.inputs.nbins,
-                                         [-1,1], density=True)
-
-                from nipy.algorithms.statistics.kl import norm_kl_divergence
-                klmaps[mask,si] = norm_kl_divergence(
-                    cmaps,mn=means[mask,si],vr=variances[mask,si])
-                print np.count_nonzero(np.isnan(cmaps)), 'NaN found'
-                gstats[si] = dict(
-                    distrib = distrib,
-                    mean=cmaps.mean(),
-                    median=np.median(cmaps),
-                    variance=cmaps.var(),
-                    skew=sstats.skew(cmaps.flatten()),
-                    kurtosis=sstats.kurtosis(cmaps.flatten()))
-                
+            data = nii.get_data()[mask].astype(np.float32)
             fname = nii.get_filename()
-            nb.save(nb.Nifti1Image(seed_maps,masknii.get_affine()),
-                    fname_presuffix(fname, suffix = '_seeds.nii',
-                                    newpath=os.getcwd(),use_ext=False))
+            for si, seeds in enumerate(seed_indices):
+                cmaps = corr.seeds_correlation(seeds,data)
+                if self.inputs.min_distance > 0:
+                    cmaps = np.ma.array(
+                        cmaps, mask = all_dists[si] < self.inputs.min_distance)
+                mean = np.array(cmaps.mean(1))
+                var = np.array(cmaps.var(1))
+                std = var**0.5
+                #create maps
+                means[mask,si] = mean
+                variances[mask,si] = var
+                stds[mask,si] = std
+#                medians[mask,si] = np.array(np.ma.median(cmaps,1))
+                ms = cmaps-mean[...,np.newaxis]
+                skews[mask,si] = np.array((ms**3).mean(-1))/std**3
+                kurtosiss[mask,si]=np.array((ms**4).mean(-1))/std**4
+#                from nipy.algorithms.statistics.kl import norm_kl_divergence
+#                klmaps[mask,si] = norm_kl_divergence(cmaps, mn=mean, vr=var)
+
+                #global stats 
+                gstats[si] = dict(
+                    mean = float(mean.mean()),
+                    var = float(cmaps.var()))
+                gstats[si]['std'] = gstats[si]['var']**0.5
+                ms = cmaps-gstats[si]['mean']
+                gstats[si]['skew'] = float((ms**3).mean()/gstats[si]['std']**3)
+                gstats[si]['kurtosis']=float((ms**4).mean()/gstats[si]['std']**4)
+                #histogram
+                gstats[si]['histogram']= np.histogram(cmaps.flatten(),
+                                                      self.inputs.nbins,
+                                                      [-1,1], density=True)[0]
+                
+                all_f = fname_presuffix(
+                    fname, suffix='_seeds%d_all_cmaps.npz'%si,
+                    newpath=os.getcwd(),use_ext=False)
+                np.savez_compressed(all_f, cmaps=cmaps.__array__())
+                del cmaps, ms, mean, var, std
+                gc.collect()
+            #writing maps
             nb.save(nb.Nifti1Image(means,masknii.get_affine()),
                     fname_presuffix(fname, suffix = '_meancorr.nii',
                                     newpath=os.getcwd(),use_ext=False))
-            nb.save(nb.Nifti1Image(medians,masknii.get_affine()),
-                    fname_presuffix(fname, suffix = '_mediancorr.nii',
-                                    newpath=os.getcwd(),use_ext=False))
+#            nb.save(nb.Nifti1Image(medians,masknii.get_affine()),
+#                    fname_presuffix(fname, suffix = '_mediancorr.nii',
+#                                    newpath=os.getcwd(),use_ext=False))
             nb.save(nb.Nifti1Image(variances,masknii.get_affine()),
                     fname_presuffix(fname, suffix = '_varcorr.nii',
+                                    newpath=os.getcwd(),use_ext=False))
+            nb.save(nb.Nifti1Image(stds,masknii.get_affine()),
+                    fname_presuffix(fname, suffix = '_stdcorr.nii',
                                     newpath=os.getcwd(),use_ext=False))
             nb.save(nb.Nifti1Image(skews,masknii.get_affine()),
                     fname_presuffix(fname, suffix = '_skewcorr.nii',
@@ -478,42 +539,53 @@ class CorrelationDistributionMaps(BaseInterface):
             nb.save(nb.Nifti1Image(kurtosiss,masknii.get_affine()),
                     fname_presuffix(fname, suffix = '_kurtosiscorr.nii',
                                     newpath=os.getcwd(),use_ext=False))
-            nb.save(nb.Nifti1Image(klmaps,masknii.get_affine()),
-                    fname_presuffix(fname, suffix = '_klcorr.nii',
-                                    newpath=os.getcwd(),use_ext=False))
-
-            fname = fname_presuffix(fname, suffix='_global_corrdist.pklz',
+#            nb.save(nb.Nifti1Image(klmaps,masknii.get_affine()),
+#                    fname_presuffix(fname, suffix = '_klcorr.nii',
+#                                    newpath=os.getcwd(),use_ext=False))
+            
+            #writing global stats
+            stats_f = fname_presuffix(fname, suffix='_global_corrdist.pklz',
                                     newpath=os.getcwd(),use_ext=False)
-            savepkl(fname,gstats)
+            savepkl(stats_f,gstats)
+        del dists
+        gc.collect()
         return runtime
     
     def _list_outputs(self):
         outputs = self._outputs().get()
-        outputs['seed_maps'] = [fname_presuffix(
-                f, use_ext=False, newpath=os.getcwd(),
-                suffix = '_seeds.nii') for f in self.inputs.in_files]
+        outputs['seed_maps'] = os.path.join(os.getcwd(),'seed_maps.nii')
+        
+        outputs['all_cmaps']=[
+                fname_presuffix(fname, suffix='_seeds%d_all_cmaps.npz'%si,
+                                newpath=os.getcwd(),use_ext=False) \
+                    for fname in self.inputs.in_files \
+                    for si in range(len(self.inputs.seed_masks)) ]
+                                
         outputs['correlation_mean_maps'] = [fname_presuffix(
                 f, use_ext=False, newpath=os.getcwd(),
                 suffix = '_meancorr.nii') for f in self.inputs.in_files]
-        outputs['correlation_median_maps'] = [fname_presuffix(
-                f, use_ext=False, newpath=os.getcwd(),
-                suffix = '_mediancorr.nii') for f in self.inputs.in_files]
+ #       outputs['correlation_median_maps'] = [fname_presuffix(
+ #               f, use_ext=False, newpath=os.getcwd(),
+ #               suffix = '_mediancorr.nii') for f in self.inputs.in_files]
         outputs['correlation_variance_maps'] = [fname_presuffix(
                 f, use_ext=False, newpath=os.getcwd(),
                 suffix = '_varcorr.nii') for f in self.inputs.in_files]
+        outputs['correlation_std_maps'] = [fname_presuffix(
+                f, use_ext=False, newpath=os.getcwd(),
+                suffix = '_stdcorr.nii') for f in self.inputs.in_files]
         outputs['correlation_skew_maps'] = [fname_presuffix(
                 f, use_ext=False, newpath=os.getcwd(),
                 suffix = '_skewcorr.nii') for f in self.inputs.in_files]
         outputs['correlation_kurtosis_maps'] = [fname_presuffix(
                 f, use_ext=False, newpath=os.getcwd(),
                 suffix = '_kurtosiscorr.nii') for f in self.inputs.in_files]
-        outputs['correlation_kl_maps'] = [fname_presuffix(
-                f, use_ext=False, newpath=os.getcwd(),
-                suffix = '_klcorr.nii') for f in self.inputs.in_files]
+#        outputs['correlation_kl_maps'] = [fname_presuffix(
+#                f, use_ext=False, newpath=os.getcwd(),
+#                suffix = '_klcorr.nii') for f in self.inputs.in_files]
+
         outputs['global_correlation_distribution'] = [fname_presuffix(
                 f, use_ext=False, newpath=os.getcwd(),
                 suffix ='_global_corrdist.pklz') for f in self.inputs.in_files]
-        
         return outputs
 
 
@@ -614,3 +686,20 @@ class MotionMaps(BaseInterface):
                 newpath=os.getcwd(),suffix = p+'.nii')
 
         return outputs
+
+
+class MotionEstimatesInputSpec(BaseInterfaceInputSpec):
+    pass
+class MotionEstimatesOutputSpec(TraitedSpec):
+    pass
+class MotionEstimate(BaseInterface):
+    
+    def _run_interface(self,runtime):
+        motion = np.loadtxt(self.inputs.motion)
+        motion = preproc.motion_parameter_standardize(motion,self.inputs.motion_source)
+        masknii = nb.load(self.inputs.mask)
+        mask = masknii.get_data()>0
+        affine = masknii.get_affine()
+        voxels_motion = preproc.compute_voxels_motion(motion,mask,affine)
+        
+        return runtime

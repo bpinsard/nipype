@@ -139,6 +139,8 @@ class RegressOutMotion(BaseInterface):
 
         return outputs
 
+def mean_ts(tss):
+    return tss.mean(axis=0)
 
 class RegressOutMaskSignalInputSpec(BaseInterfaceInputSpec):
     in_file = File(
@@ -155,7 +157,7 @@ class RegressOutMaskSignalInputSpec(BaseInterfaceInputSpec):
         0, usedefault=True,
         desc = 'Value to threshold mask images. Default is >0.')
     signal_estimate_function = traits.Function(
-        (lambda x: np.mean(x,0)),
+        mean_ts,
         usedefault = True,
         desc = """Function to estimate the signal from voxel timeseries.
 Default is mean along the voxel dimension.""")
@@ -164,6 +166,9 @@ Default is mean along the voxel dimension.""")
 class RegressOutMaskSignalOutputSpec(TraitedSpec):
     out_file = File(exists=True,
                     desc = 'File with regressed out global signal')
+
+    beta_maps = File(exists=True,
+                     desc = 'Maps of beta values from regression.')
 
 class RegressOutMaskSignal(BaseInterface):
     input_spec  = RegressOutMaskSignalInputSpec
@@ -197,9 +202,10 @@ class RegressOutMaskSignal(BaseInterface):
 
         reg_pinv = np.linalg.pinv(np.concatenate((signals,np.ones((nt,1))),
                                                  axis=1))
-        for ts in data:
-            beta = reg_pinv.dot(ts)
-            ts -= signals.dot(beta[:-1])
+        betas = np.empty((data.shape[0],signals.shape[1]))
+        for ti,ts in enumerate(data):
+            betas[ti] = reg_pinv.dot(ts)[:-1]
+            ts -= signals.dot(betas[ti])
         
         cdata = np.zeros(nii.shape)
         cdata[mask] = data
@@ -209,14 +215,29 @@ class RegressOutMaskSignal(BaseInterface):
         out_fname = self._list_outputs()['out_file']
 
         nb.save(outnii, out_fname)
-        del nii, data, cdata, outnii
+
+        betamaps = np.empty(mask.shape+(betas.shape[1],),np.float32)
+        betamaps.fill(np.nan)
+        betamaps[mask] = betas
+        betanii = nb.Nifti1Image(betamaps,nii.get_affine())
+        nb.save(betanii, self._list_outputs()['beta_maps'])
+
+        del nii, data, cdata, outnii, betas, betamaps, betanii
         
         return runtime
 
     def _list_outputs(self):
         outputs = self._outputs().get()
-        outputs["out_file"] = os.path.abspath(
-            self.inputs.prefix + os.path.basename(self.inputs.in_file))
+        outputs["out_file"] = fname_presuffix(
+            self.inputs.in_file,
+            prefix = self.inputs.prefix,
+            newpath = os.getcwd())
+        outputs["beta_maps"] = fname_presuffix(
+            self.inputs.in_file,
+            prefix = self.inputs.prefix,
+            suffix = '_betas',
+            newpath = os.getcwd())
+
         return outputs
     
 
