@@ -93,7 +93,7 @@ def create_resting_reg_preproc(name='restpreproc'):
 
 
 def create_compcorr(name='compcorr'):
-    from nipype.workflows.fsl.resting import extract_noise_components
+    from nipype.workflows.rsfmri.fsl.resting import extract_noise_components
     from nipype.algorithms.misc import TSNR
 
     wkfl = pe.Workflow(name=name)
