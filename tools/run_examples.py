@@ -14,7 +14,7 @@ def run_examples(example, pipelines, plugin):
         if os.path.exists(wf.base_dir):
             rmtree(wf.base_dir)
         wf.config = {'execution' :{'hash_method': 'timestamp', 'stop_on_first_rerun': 'true'}}
-        wf.run(plugin=plugin)
+        wf.run(plugin=plugin, plugin_args={'n_procs': 4})
         #run twice to check if nothing is rerunning
         wf.run(plugin=plugin)
 
@@ -25,7 +25,7 @@ if __name__ == '__main__':
                 'spm_tutorial2':['level1','l2pipeline'],
                 'spm_dartel_tutorial':['level1','l2pipeline'],
                 'fsl_feeds_tutorial':['l1pipeline']}
-    plugins = ['Linear', 'MultiProc', 'IPythonXI']
+    plugins = ['Linear', 'MultiProc', 'IPython']
     for plugin in plugins:
         for example, pipelines in examples.items():
             run_examples(example, pipelines, plugin)
