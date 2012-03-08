@@ -211,7 +211,7 @@ class RegressOutMotionInputSpec(BaseInterfaceInputSpec):
 class RegressOutMotionOutputSpec(TraitedSpec):
     out_file = File(exists=True,
                     desc = 'File with regressed out motion parameters')
-    beta_maps = File(exists=True,
+    beta_maps = File(#exists=True,
                      desc = 'File containing betas maps for each regressor.')
     
 class RegressOutMotion(BaseInterface):
@@ -357,13 +357,16 @@ class RegressOutMaskSignal(BaseInterface):
 class ScrubbingInputSpec(BaseInterfaceInputSpec):
     in_file = File(
         exists=True,
+        mandatory=True,
         desc='The 4D run to be processed')
     mask = File(
         exists=True,
+        mandatory=True,
         desc='The brain mask used to compute the framewise derivatives')
 
     motion = File(
         exists=True,
+        mandatory=True,
         desc='Motion parameters files')
     motion_source = traits.Enum(
         'spm','fsl','afni',
