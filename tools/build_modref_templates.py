@@ -19,7 +19,7 @@ if __name__ == '__main__':
     # Packages that should not be included in generated API docs.
     docwriter.package_skip_patterns += ['\.external$',
                                         '\.utils$',
-                                        '\.interfaces$',
+                                        '\.interfaces\.',
                                         '\.workflows$',
                                         '\.pipeline\.plugins$',
                                         '\.testing$',
@@ -28,8 +28,10 @@ if __name__ == '__main__':
                                         ]
     # Modules that should not be included in generated API docs.
     docwriter.module_skip_patterns += ['\.version$',
-                                       '\.interfaces\.afni$',
+                                       'info',
+                                       '\.interfaces\.(?!(base|matlab))',
                                        '\.pipeline\.utils$',
+                                       '\.interfaces\.slicer\.generate_classes$',
                                        '\.interfaces\.pymvpa$',
                                        ]
     docwriter.write_api_docs(outdir)

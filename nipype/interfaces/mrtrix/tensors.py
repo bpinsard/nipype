@@ -1,9 +1,24 @@
+# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
+# vi: set ft=python sts=4 ts=4 sw=4 et:
+"""
+    Change directory to provide relative paths for doctests
+    >>> import os
+    >>> filepath = os.path.dirname( os.path.realpath( __file__ ) )
+    >>> datadir = os.path.realpath(os.path.join(filepath, '../../testing/data'))
+    >>> os.chdir(datadir)
+
+"""
+
 from nipype.interfaces.base import (CommandLineInputSpec, CommandLine, BaseInterface, BaseInterfaceInputSpec,
                                     traits, File, TraitedSpec, Directory, InputMultiPath, OutputMultiPath, isdefined)
 from nipype.utils.filemanip import split_filename
 import os, os.path as op
 import numpy as np
 import nibabel as nb
+import logging
+
+logging.basicConfig()
+iflogger = logging.getLogger('interface')
 
 class DWI2SphericalHarmonicsImageInputSpec(CommandLineInputSpec):
     in_file = File(exists=True, argstr='%s', mandatory=True, position=-2, desc='Diffusion-weighted images')
@@ -50,7 +65,7 @@ class DWI2SphericalHarmonicsImage(CommandLine):
 
     >>> import nipype.interfaces.mrtrix as mrt
     >>> dwi2SH = mrt.DWI2SphericalHarmonicsImage()
-    >>> dwi2SH.inputs.in_file = 'dwi.nii'
+    >>> dwi2SH.inputs.in_file = 'diffusion.nii'
     >>> dwi2SH.inputs.encoding_file = 'encoding.txt'
     >>> dwi2SH.run()                                    # doctest: +SKIP
     """
@@ -126,9 +141,9 @@ class ConstrainedSphericalDeconvolution(CommandLine):
     >>> csdeconv = mrt.ConstrainedSphericalDeconvolution()
     >>> csdeconv.inputs.in_file = 'dwi.mif'
     >>> csdeconv.inputs.encoding_file = 'encoding.txt'
-    >>> csdeconv.inputs.offset = 0
     >>> csdeconv.run()                                          # doctest: +SKIP
     """
+
     _cmd = 'csdeconv'
     input_spec=ConstrainedSphericalDeconvolutionInputSpec
     output_spec=ConstrainedSphericalDeconvolutionOutputSpec
@@ -202,15 +217,15 @@ def concat_files(bvec_file, bval_file, invert_x, invert_y, invert_z):
         bvecs = np.transpose(bvecs)
     if invert_x:
         bvecs[0,:] = -bvecs[0,:]
-        print 'Inverting b-vectors in the x direction'
+        iflogger.info('Inverting b-vectors in the x direction')
     if invert_y:
         bvecs[1,:] = -bvecs[1,:]
-        print 'Inverting b-vectors in the y direction'
+        iflogger.info('Inverting b-vectors in the y direction')
     if invert_z:
         bvecs[2,:] = -bvecs[2,:]
-        print 'Inverting b-vectors in the z direction'
-    print np.shape(bvecs)
-    print np.shape(bvals)
+        iflogger.info('Inverting b-vectors in the z direction')
+    iflogger.info(np.shape(bvecs))
+    iflogger.info(np.shape(bvals))
     encoding = np.transpose(np.vstack((bvecs,bvals)))
     _, bvec , _ = split_filename(bvec_file)
     _, bval , _ = split_filename(bval_file)
