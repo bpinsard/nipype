@@ -4,9 +4,10 @@ import warnings
 import nibabel as nb
 import numpy as np
 
-from nipype.utils.misc import package_check
-from nipype.utils.filemanip import split_filename
-
+from ...utils.misc import package_check
+from ...utils.filemanip import (fname_presuffix, filename_to_list,
+                                list_to_filename, split_filename,
+                                savepkl, loadpkl)
 
 try:
     package_check('nipy')
@@ -18,25 +19,21 @@ else:
     from nipy.algorithms.registration import FmriRealign4d as FR4d
     from nipy import save_image
 
-from nipype.utils.filemanip import (fname_presuffix, filename_to_list,
-                                    list_to_filename, split_filename,
-                                    savepkl, loadpkl)
 
-from nipype.interfaces.base import (TraitedSpec, BaseInterface, traits,
-                                    BaseInterfaceInputSpec, isdefined, File,
-                                    InputMultiPath, OutputMultiPath)
+from ..base import (TraitedSpec, BaseInterface, traits,
+                    BaseInterfaceInputSpec, isdefined, File,
+                    InputMultiPath, OutputMultiPath)
 
 
 class ComputeMaskInputSpec(BaseInterfaceInputSpec):
     mean_volume = File(exists=True, mandatory=True,
     desc="mean EPI image, used to compute the threshold for the mask")
     reference_volume = File(exists=True,
-    desc="reference volume used to compute the mask. If none is give, the \
-        mean volume is used.")
+                       desc=("reference volume used to compute the mask. "
+                             "If none is give, the mean volume is used."))
     m = traits.Float(desc="lower fraction of the histogram to be discarded")
     M = traits.Float(desc="upper fraction of the histogram to be discarded")
-    cc = traits.Bool(desc="if True, only the largest connect component\
-                           is kept")
+    cc = traits.Bool(desc="Keep only the largest connected component")
 
 
 class ComputeMaskOutputSpec(TraitedSpec):
@@ -50,7 +47,8 @@ class ComputeMask(BaseInterface):
     def _run_interface(self, runtime):
 
         args = {}
-        for key in [k for k, _ in self.inputs.items() if k not in BaseInterfaceInputSpec().trait_names()]:
+        for key in [k for k, _ in self.inputs.items()
+                    if k not in BaseInterfaceInputSpec().trait_names()]:
             value = getattr(self.inputs, key)
             if isdefined(value):
                 if key in ['mean_volume', 'reference_volume']:
@@ -59,8 +57,8 @@ class ComputeMask(BaseInterface):
                 args[key] = value
 
         brain_mask = compute_mask(**args)
-
-        self._brain_mask_path = os.path.abspath("brain_mask.nii")
+        _, name, ext = split_filename(self.inputs.mean_volume)
+        self._brain_mask_path = os.path.abspath("%s_mask.%s" % (name, ext))
         nb.save(nb.Nifti1Image(brain_mask.astype(np.uint8),
                 nii.get_affine()), self._brain_mask_path)
 
@@ -85,8 +83,10 @@ class FmriRealign4dInputSpec(BaseInterfaceInputSpec):
     interleaved = traits.Bool(desc="True if interleaved",
                   mandatory=True)
     tr_slices = traits.Float(desc="TR slices")
-    start = traits.Float(0.0, usedefault=True, desc="start")
-    time_interp = traits.Bool(True, usedefault=True, desc="time interpolation")
+    start = traits.Float(0.0, usedefault=True,
+                         desc="time offset into TR to align slices to")
+    time_interp = traits.Bool(True, usedefault=True,
+                    desc="Assume smooth changes across time e.g., fmri series")
 
 
 class FmriRealign4dOutputSpec(TraitedSpec):
@@ -96,7 +96,7 @@ class FmriRealign4dOutputSpec(TraitedSpec):
 
 
 class FmriRealign4d(BaseInterface):
-    """Simultaneous motion and slice timing correction algorithm 
+    """Simultaneous motion and slice timing correction algorithm
 
     This interface wraps nipy's FmriRealign4d algorithm [1]_.
 
