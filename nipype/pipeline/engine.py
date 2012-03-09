@@ -415,8 +415,8 @@ connected.
 
         graph2use: 'orig', 'hierarchical' (default), 'flat', 'exec'
             orig - creates a top level graph without expanding internal
-                   workflow nodes
-            flat - expands workflow nodes recursively
+            workflow nodes;
+            flat - expands workflow nodes recursively;
             exec - expands workflows to depict iterables
 
         format: 'png', 'svg'
@@ -515,7 +515,7 @@ connected.
             if isinstance(node, MapNode):
                 node.use_plugin = (plugin, plugin_args)
         self._configure_exec_nodes(execgraph)
-        if not str2bool(self.config['execution']['create_report']):
+        if str2bool(self.config['execution']['create_report']):
             self._write_report_info(self.base_dir, self.name, execgraph)
         runner.run(execgraph, updatehash=updatehash, config=self.config)
         return execgraph
@@ -532,8 +532,8 @@ connected.
         fp = open(os.path.join(report_dir, 'index.html'), 'wt')
         fp.writelines('<html>')
         with open(os.path.join(os.path.dirname(__file__),
-                               'report_template.html')) as fp:
-            script = Template(fp.read())
+                               'report_template.html')) as fpt:
+            script = Template(fpt.read())
         nodes = nx.topological_sort(graph)
         report_files = []
         for i, node in enumerate(nodes):
@@ -543,9 +543,8 @@ connected.
             report_files.append('report_files[%d] = "%s/_report/report.rst";' %
                                 (i, os.path.realpath(node.output_dir())))
         report_files = '\n'.join(report_files)
-        script.substitute(num_nodes=len(nodes),
-                          report_files=report_files)
-        fp.writelines(script)
+        fp.writelines(script.substitute(num_nodes=len(nodes),
+                                        report_files=report_files))
         fp.writelines('<body><div id="page_container">\n')
         fp.writelines('<div id="toc">\n')
         fp.writelines(('<pre>Works only with mozilla/firefox browsers</pre>'
@@ -929,7 +928,7 @@ class Node(WorkflowBase):
 
     """
 
-    def __init__(self, interface, iterables=None, overwrite=False,
+    def __init__(self, interface, iterables=None, overwrite=None,
                  needed_outputs=None, run_without_submitting=False, **kwargs):
         """
         Parameters
@@ -949,7 +948,7 @@ class Node(WorkflowBase):
         overwrite : Boolean
             Whether to overwrite contents of output directory if it already
             exists. If directory exists and hash matches it
-            assumes that process has been executed (default : False)
+            assumes that process has been executed
 
         needed_outputs : list of output_names
             Force the node to keep only specific outputs. By default all outputs are
@@ -1045,7 +1044,7 @@ class Node(WorkflowBase):
             self._save_hashfile(hashfile, hashed_inputs)
         return os.path.exists(hashfile), hashvalue, hashfile, hashed_inputs
 
-    def run(self, updatehash=False, force_execute=False):
+    def run(self, updatehash=False):
         """Execute the node in its directory.
 
         Parameters
@@ -1053,9 +1052,6 @@ class Node(WorkflowBase):
 
         updatehash: boolean
             Update the hash stored in the output directory
-
-        force_execute: boolean
-            Force rerunning the node
         """
         # check to see if output directory and hash exist
         self.config = merge_dict(deepcopy(config._sections), self.config)
@@ -1063,8 +1059,11 @@ class Node(WorkflowBase):
         outdir = self.output_dir()
         logger.info("Executing node %s in dir: %s" % (self._id, outdir))
         hash_exists, hashvalue, hashfile, hashed_inputs = self.hash_exists(updatehash=updatehash)
-        if force_execute or (not updatehash and (self.overwrite or
-                                                 not hash_exists)):
+
+        if (not updatehash and (((self.overwrite == None
+                                  and self._interface.always_run)
+                                 or self.overwrite) or
+                                not hash_exists)):
             logger.debug("Node hash: %s" % hashvalue)
 
             #by rerunning we mean only nodes that did finish to run previously
@@ -1073,12 +1072,13 @@ class Node(WorkflowBase):
             and len(glob(os.path.join(outdir, '_0x*.json'))) != 0 \
             and len(glob(os.path.join(outdir, '_0x*_unfinished.json'))) == 0:
                 logger.debug("Rerunning node")
-                logger.debug(("force_execute = %s, updatehash = %s, "
-                              "self.overwrite = %s, os.path.exists(%s) = %s, "
+                logger.debug(("updatehash = %s, "
+                              "self.overwrite = %s, self._interface.always_run = %s, "
+                              "os.path.exists(%s) = %s, "
                               "hash_method = %s") %
-                             (str(force_execute),
-                              str(updatehash),
+                             (str(updatehash),
                               str(self.overwrite),
+                              str(self._interface.always_run),
                               hashfile,
                               str(os.path.exists(hashfile)),
                               self.config['execution']['hash_method'].lower()))
@@ -1096,7 +1096,8 @@ class Node(WorkflowBase):
                             else:
                                 logdebug_dict_differences(prev_inputs,
                                                           hashed_inputs)
-                if str2bool(self.config['execution']['stop_on_first_rerun']):
+                if (str2bool(self.config['execution']['stop_on_first_rerun']) and
+                    not (self.overwrite == None and self._interface.always_run)):
                     raise Exception(("Cannot rerun when 'stop_on_first_rerun' "
                                      "is set to True"))
             hashfile_unfinished = os.path.join(outdir,

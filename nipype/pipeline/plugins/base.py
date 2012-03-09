@@ -22,6 +22,7 @@ from ..utils import (nx, dfs_preorder)
 from ..engine import (MapNode, str2bool)
 
 from nipype.utils.filemanip import savepkl, loadpkl
+from nipype.interfaces.utility import Function
 import traceback
 
 
@@ -267,7 +268,10 @@ class DistributedPluginBase(PluginBase):
                         try:
                             hash_exists, _, _, _ = self.procs[jobid].hash_exists()
                             logger.debug('Hash exists %s' % str(hash_exists))
-                            if hash_exists:
+                            if (hash_exists and
+                            (self.procs[jobid].overwrite == False or
+                             (self.procs[jobid].overwrite == None and
+                              not self.procs[jobid]._interface.always_run))):
                                 continue_with_submission = False
                                 self._task_finished_cb(jobid)
                                 self._remove_node_dirs()
@@ -455,6 +459,16 @@ import sys
 from socket import gethostname
 from traceback import format_exception
 from nipype.utils.filemanip import loadpkl, savepkl
+"""
+
+        does_plot = (isinstance(node, Function) and
+                     "matplotlib" in node.inputs.function_str)
+
+        if does_plot:
+            cmdstr += "import matplotlib\n"
+            cmdstr += "matplotlib.use('Agg')\n"
+
+        cmdstr += """
 traceback=None
 cwd = os.getcwd()
 print cwd
