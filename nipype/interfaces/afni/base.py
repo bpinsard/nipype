@@ -7,7 +7,7 @@ import os
 import warnings
 
 from ...utils.filemanip import fname_presuffix
-from ..base import (BaseInterface, CommandLine, traits, CommandLineInputSpec, isdefined, File)
+from ..base import (BaseInterface, CommandLine, traits, CommandLineInputSpec, isdefined, File, TraitedSpec)
 
 warn = warnings.warn
 warnings.filterwarnings('always', category=UserWarning)
@@ -265,7 +265,10 @@ class BrickSelector(BaseInterface):
     Simple interface to perform brick selection with bricks being a dynamic input.
     We could add a brick selection validation with file dimensions etc...
     """
-    
+
+    input_spec  = BrickSelectorInputSpec
+    output_spec = BrickSelectorOutputSpec
+
     def _run_interface(self,runtime): 
         return runtime
 

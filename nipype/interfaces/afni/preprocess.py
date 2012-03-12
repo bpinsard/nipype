@@ -439,10 +439,7 @@ class TStat(AFNICommand):
         """
 
         if name == 'out_file':
-            in_file = self.inputs.in_file
-            if isinstance(in_file, tuple):
-                in_file = in_file[0]
-            _, fname, ext = split_filename(in_file)
+            _, fname, ext = split_filename(afni_file_path(self.inputs.in_file))
             return os.path.join(os.getcwd(), ''.join((fname, '_3dT', ext)))
 
     def _list_outputs(self):
@@ -1584,8 +1581,5 @@ class Calc(AFNICommand):
         """Generate output file name
         """
         if name == 'out_file':
-            in_file = self.inputs.infile_a
-            if isinstance(in_file,tuple):
-                in_file = in_file[0]
-            _, fname, ext = split_filename(in_file)
+            _, fname, ext = split_filename(afni_file_path(self.inputs.infile_a))
             return os.path.join(os.getcwd(), ''.join((fname, '_3dc', ext)))
