@@ -8,8 +8,8 @@ docs.  In setup.py in particular, we exec this file, so it cannot import nipy
 # full release.  '.dev' as a _version_extra string means this is a development
 # version
 _version_major = 0
-_version_minor = 4
-_version_micro = 2
+_version_minor = 6
+_version_micro = 0
 _version_extra = '.dev'
 
 def get_nipype_gitversion():
@@ -52,7 +52,7 @@ __version__ = "%s.%s.%s%s" % (_version_major,
                               _version_micro,
                               _version_extra)
 
-CLASSIFIERS = ["Development Status :: 5 - Stable",
+CLASSIFIERS = ["Development Status :: 5 - Production/Stable",
                "Environment :: Console",
                "Intended Audience :: Science/Research",
                "License :: OSI Approved :: BSD License",
