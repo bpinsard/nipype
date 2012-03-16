@@ -282,6 +282,137 @@ class CorrelationDistributionMaps(BaseInterface):
                 suffix ='_global_corrdist.pklz') for f in self.inputs.in_files]
         return outputs
 
+class CorrelationDifferenceMapInputSpec(BaseInterfaceInputSpec):
+    mask = File(
+        exists = True,mandatory=True,
+        desc = 'brain mask file originally used to sample correlation')
+    distances = File(
+        exists = True, mandatory=True,
+        desc = 'distances files from seed sampling interface')
+    original_correlations = File(
+        exists = True, mandatory=True,
+        desc = 'original sampled correlations substracted from processed')
+    processed_correlations = File(
+        exists = True, mandatory=True,
+        desc = 'processed sampled correlations to be substracted by originals')
+
+    nbins = traits.Int(
+        1000, usedefault = True,
+        desc = 'The number of bins to compute the global distribution.')
+    
+    min_distance = traits.Float(
+        0, usedefault = True,
+        desc = """The min distance threshold to compute correlation difference distribution""")
+
+class CorrelationDifferenceMapOutputSpec(TraitedSpec):
+    correlation_difference_mean_maps = File(
+        exists=True,
+        desc = 'correlation mean maps from run files provided')
+    correlation_difference_variance_maps = File(
+        exists=True,
+        desc = 'correlation variance maps from run files provided')
+    correlation_difference_std_maps = File(
+        exists=True,
+        desc = 'correlation standard deviation maps from run files provided')
+    correlation_difference_skew_maps = File(
+        exists=True,
+        desc = 'correlation skewness maps from run files provided')
+    correlation_difference_kurtosis_maps = File(
+        exists=True,
+        desc = 'correlation kurtosis maps from run files provided')
+    global_correlation_difference_distribution = File(
+        exists=True,
+        desc = 'global correlation difference density function for all voxels in brain mask')
+    
+
+class CorrelationDifferenceMap(BaseInterface):
+    input_spec  = CorrelationDifferenceMapInputSpec
+    output_spec = CorrelationDifferenceMapOutputSpec
+
+    def _run_interface(self,runtime):
+        dists = np.load(self.inputs.distances,
+                        mmap_mode='r')['dists']
+        corrs1 = np.load(self.inputs.original_correlations,
+                         mmap_mode='r')['corrs']
+        corrs2 = np.load(self.inputs.processed_correlations,
+                         mmap_mode='r')['corrs']
+        masknii = nb.load(self.inputs.mask)
+        mask = masknii.get_data()>0
+        if self.inputs.min_distance > 0:
+            diffs = np.ma.array(corrs2-corrs1,
+                                mask = dists<self.inputs.min_distance)
+        else:
+            diffs = corrs2-corrs1
+        
+        mean = np.array(diffs.mean(1))
+        var = np.array(diffs.var(1))
+        std = var**0.5
+        ms = diffs-mean[...,np.newaxis]
+        #create maps
+        diffmean = np.zeros(mask.shape, np.float32)
+        diffvar = np.zeros(mask.shape, np.float32)
+        diffstd = np.zeros(mask.shape, np.float32)
+        diffskew = np.zeros(mask.shape, np.float32)
+        diffkurtosis = np.zeros(mask.shape, np.float32)
+
+        diffmean[mask] = mean
+        diffvar[mask] = var
+        diffstd[mask] = std
+        diffskew[mask] = np.array((ms**3).mean(-1))/std**3
+        diffkurtosis[mask] = np.array((ms**4).mean(-1))/std**4
+        outputs=self._list_outputs()
+        nb.save(nb.Nifti1Image(diffmean),
+                outputs['correlation_difference_mean_maps'])
+        nb.save(nb.Nifti1Image(diffvar),
+                outputs['correlation_difference_variance_maps'])
+        nb.save(nb.Nifti1Image(diffstd),
+                outputs['correlation_difference_std_maps'])
+        nb.save(nb.Nifti1Image(diffskew),
+                outputs['correlation_difference_skew_maps'])
+        nb.save(nb.Nifti1Image(diffkurtosis),
+                outputs['correlation_difference_kurtosis_maps'])
+        
+        gstats = dict(
+            mean = float(mean.mean()),
+            var = float(cmaps.var()))
+        gstats['std'] = gstats[si]['var']**0.5
+        del ms
+        ms = cmaps-gstats['mean']
+        gstats['skew'] = float((ms**3).mean()/gstats['std']**3)
+        gstats['kurtosis']=float((ms**4).mean()/gstats['std']**4)
+        gstats['histogram']= np.histogram(cmaps.ravel(),
+                                          self.inputs.nbins,
+                                          [-1,1], density=True)[0]
+
+        del dists, corrs1, corrs2, mask, ms
+        del diffmean, diffvar, diffstd, diffskew, diffkurtosis
+
+        savepkl(stats_f,gstats)
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        f = self.inputs.processed_correlations
+        outputs['correlation_difference_mean_maps'] = fname_presuffix(
+            f, use_ext=False, newpath=os.getcwd(),
+            suffix = '_diff_mean.nii')
+        outputs['correlation_difference_var_maps'] = fname_presuffix(
+            f, use_ext=False, newpath=os.getcwd(),
+            suffix = '_diff_var.nii')
+        outputs['correlation_difference_std_maps'] = fname_presuffix(
+            f, use_ext=False, newpath=os.getcwd(),
+            suffix = '_diff_std.nii')
+        outputs['correlation_difference_skew_maps'] = fname_presuffix(
+            f, use_ext=False, newpath=os.getcwd(),
+            suffix = '_diff_skew.nii')
+        outputs['correlation_difference_kurtosis_maps'] = fname_presuffix(
+            f, use_ext=False, newpath=os.getcwd(),
+            suffix = '_diff_kurtosis.nii')
+        outputs['global_correlation_difference_distribution'] =fname_presuffix(
+            f, use_ext=False, newpath=os.getcwd(),
+            suffix = '_diff_global.npz')
+        return outputs
+
 class MotionMapsInputSpec(BaseInterfaceInputSpec):
 
     mask = File(
