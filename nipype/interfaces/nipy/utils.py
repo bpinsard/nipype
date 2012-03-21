@@ -360,34 +360,34 @@ class CorrelationDifferenceMap(BaseInterface):
         diffstd[mask] = std
         diffskew[mask] = np.array((ms**3).mean(-1))/std**3
         diffkurtosis[mask] = np.array((ms**4).mean(-1))/std**4
-        outputs=self._list_outputs()
-        nb.save(nb.Nifti1Image(diffmean),
-                outputs['correlation_difference_mean_maps'])
-        nb.save(nb.Nifti1Image(diffvar),
-                outputs['correlation_difference_variance_maps'])
-        nb.save(nb.Nifti1Image(diffstd),
-                outputs['correlation_difference_std_maps'])
-        nb.save(nb.Nifti1Image(diffskew),
-                outputs['correlation_difference_skew_maps'])
-        nb.save(nb.Nifti1Image(diffkurtosis),
-                outputs['correlation_difference_kurtosis_maps'])
+        out=self._list_outputs()
+        nb.save(nb.Nifti1Image(diffmean, masknii.get_affine()),
+                out['correlation_difference_mean_maps'])
+        nb.save(nb.Nifti1Image(diffvar, masknii.get_affine()),
+                out['correlation_difference_variance_maps'])
+        nb.save(nb.Nifti1Image(diffstd, masknii.get_affine()),
+                out['correlation_difference_std_maps'])
+        nb.save(nb.Nifti1Image(diffskew, masknii.get_affine()),
+                out['correlation_difference_skew_maps'])
+        nb.save(nb.Nifti1Image(diffkurtosis, masknii.get_affine()),
+                out['correlation_difference_kurtosis_maps'])
         
         gstats = dict(
             mean = float(mean.mean()),
-            var = float(cmaps.var()))
-        gstats['std'] = gstats[si]['var']**0.5
+            var = float(diffs.var()))
+        gstats['std'] = gstats['var']**0.5
         del ms
-        ms = cmaps-gstats['mean']
+        ms = diffs-gstats['mean']
         gstats['skew'] = float((ms**3).mean()/gstats['std']**3)
         gstats['kurtosis']=float((ms**4).mean()/gstats['std']**4)
-        gstats['histogram']= np.histogram(cmaps.ravel(),
+        gstats['histogram']= np.histogram(diffs.ravel(),
                                           self.inputs.nbins,
                                           [-1,1], density=True)[0]
 
         del dists, corrs1, corrs2, mask, ms
         del diffmean, diffvar, diffstd, diffskew, diffkurtosis
 
-        savepkl(stats_f,gstats)
+        savepkl(out['global_correlation_difference_distribution'],gstats)
         return runtime
 
     def _list_outputs(self):
@@ -396,7 +396,7 @@ class CorrelationDifferenceMap(BaseInterface):
         outputs['correlation_difference_mean_maps'] = fname_presuffix(
             f, use_ext=False, newpath=os.getcwd(),
             suffix = '_diff_mean.nii')
-        outputs['correlation_difference_var_maps'] = fname_presuffix(
+        outputs['correlation_difference_variance_maps'] = fname_presuffix(
             f, use_ext=False, newpath=os.getcwd(),
             suffix = '_diff_var.nii')
         outputs['correlation_difference_std_maps'] = fname_presuffix(
