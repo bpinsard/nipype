@@ -1528,11 +1528,11 @@ class CalcInputSpec(AFNITraitedSpec):
         mandatory=True)
     out_file = File(desc='output file from 3dFourier', argstr='-prefix %s',
         position=-1, genfile=True)
-    start_idx = traits.Int(desc='start index for infile_a',
+    start_idx = traits.Int(desc='start index for in_file_a',
         requires=['stop_idx'])
-    stop_idx = traits.Int(desc='stop index for infile_a',
+    stop_idx = traits.Int(desc='stop index for in_file_a',
         requires=['start_idx'])
-    single_idx = traits.Int(desc='volume index for infile_a')
+    single_idx = traits.Int(desc='volume index for in_file_a')
     other = File(desc='other options', argstr='')
 
 
@@ -1552,8 +1552,8 @@ class Calc(AFNICommand):
     >>> from nipype.interfaces import afni as afni
     >>> from nipype.testing import  example_data
     >>> calc = afni.Calc()
-    >>> calc.inputs.infile_a = example_data('functional.nii')
-    >>> calc.inputs.Infile_b = example_data('functional2.nii.gz')
+    >>> calc.inputs.in_file_a = example_data('functional.nii')
+    >>> calc.inputs.in_file_b = example_data('functional2.nii.gz')
     >>> calc.inputs.expr='a*b'
     >>> calc.inputs.out_file =  'functional_calc.nii.gz'
     >>> res = calc.run() # doctest: +SKIP
@@ -1582,5 +1582,5 @@ class Calc(AFNICommand):
         """Generate output file name
         """
         if name == 'out_file':
-            _, fname, ext = split_filename(afni_file_path(self.inputs.infile_a))
+            _, fname, ext = split_filename(afni_file_path(self.inputs.in_file_a))
             return os.path.join(os.getcwd(), ''.join((fname, '_3dc', ext)))
