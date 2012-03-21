@@ -128,8 +128,9 @@ class AFNICommand(CommandLine):
         self._outputtype = self.inputs.outputtype
 
 
-    @classmethod
-    def set_default_outputtype(cls, outputtype):
+    # name change for standardisation with others interfaces 
+    @classmethod 
+    def set_default_output_type(cls, outputtype):
         """Set the default output type for AFNI classes.
 
         This method is used to set the default output type for all afni

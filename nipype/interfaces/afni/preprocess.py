@@ -1519,9 +1519,10 @@ ${rest}_ss.nii.gz
 
 
 class CalcInputSpec(AFNITraitedSpec):
-    infile_a = AFNIFile(desc='input file to 3dcalc',
+    # please do not change back to infile_*, standardisation is important !!
+    in_file_a = AFNIFile(desc='input file to 3dcalc',
         argstr='-a %s', position=0, mandatory=True)
-    infile_b = AFNIFile(desc='operand file to 3dcalc',
+    in_file_b = AFNIFile(desc='operand file to 3dcalc',
         argstr=' -b %s', position=1)
     expr = traits.Str(desc='expr', argstr='-expr %s', position=2,
         mandatory=True)
