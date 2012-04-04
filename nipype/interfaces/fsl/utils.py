@@ -986,51 +986,106 @@ class PowerSpectrum(FSLCommand):
             return self._gen_outfilename()
         return None
 
-class InvWarpInputSpec(FSLCommandInputSpec):
-    warp = File(exists=True,
-                desc='Name of file containing warp-coefficients/fields. This would typically be the output from the --cout switch of fnirt (but can also use fields, like the output from --fout).',
-                argstr='--warp=%s')
-    reference = File(exists=True,
-                     desc='Name of a file in target space. Note that the target space is now different from the target space that was used to create the --warp file. It would typically be the file that was specified with the --in argument when running fnirt.',
-                     argstr='--ref=%s')
+class EPIDeWarpInputSpec(FSLCommandInputSpec):
 
-    inverse_warp = File(exists=True,
-                     desc='Name of output file, containing warps that are the "reverse" of those in --warp. This will be a field-file (rather than a file of spline coefficients), and it will have any affine component included as part of the displacements.',
-                     argstr='--out=%s',
-                     gen_file=True)
+    mag_file = File(exists=True,
+                  desc='Magnitude file',
+                  argstr='--mag %s', position=0, mandatory=True)
+    dph_file = File(exists=True,
+                  desc='Phase file assumed to be scaled from 0 to 4095',
+                  argstr='--dph %s', mandatory=True)
+    exf_file = File(exists=True,
+                  desc='example func volume (or use epi)',
+                  argstr='--exf %s', mandatory=False)
+    epi_file = File(exists=True,
+                  desc='EPI volume to unwarp',
+                  argstr='--epi %s', mandatory=False)
+    tediff = traits.Float(2.46, usedefault=True,
+                          desc='difference in B0 field map TEs',
+                          argstr='--tediff %s')
+    esp = traits.Float(0.58, desc='EPI echo spacing',
+                  argstr='--esp %s', usedefault=True)
+    sigma = traits.Int(2, usedefault=True, argstr='--sigma %s',
+                       desc="2D spatial gaussing smoothing \
+                       stdev (default = 2mm)")
+    vsm = traits.String(genfile=True, desc='voxel shift map',
+                        argstr='--vsm %s')
+    exfdw = traits.String(desc='dewarped example func volume', genfile=True,
+                          argstr='--exfdw %s')
+    epidw = traits.String(desc='dewarped epi volume', genfile=False,
+                          argstr='--epidw %s')
+    tmpdir = traits.String(genfile=True, desc='tmpdir',
+                           argstr='--tmpdir %s')
+    nocleanup = traits.Bool(True, usedefault=True, desc='no cleanup',
+                            argstr='--nocleanup')
+    cleanup = traits.Bool(desc='cleanup',
+                          argstr='--cleanup')
 
-    absolute = traits.Bool(argstr='--abs',
-                           desc='If set it indicates that the warps in --warp should be interpreted as absolute, provided that it is not created by fnirt (which always uses relative warps). If set it also indicates that the output --out should be absolute.',
-                           xor='relative')
-    relative = traits.Bool(argstr='--rel',
-                           desc='If set it indicates that the warps in --warp should be interpreted as relative. I.e. the values in --warp are displacements from the coordinates in the --ref space. If set it also indicates that the output --out should be relative.',
-                           xor='absolute')
-    niter = traits.Int(argstr='--niter=%d',
-                       desc='Determines how many iterations of the gradient-descent search that should be run.')
-    regularise = traits.Float(argstr='--regularise=%f',
-                              desc='Regularisation strength (deafult=1.0).')
-    noconstraint = traits.Bool(argstr='--noconstraint',
-                               desc='Do not apply Jacobian constraint')
-    jacobian_min = traits.Float(argstr='--jmin=%f',
-                                desc='Minimum acceptable Jacobian value for constraint (default 0.01)')
-    jacobian_max = traits.Float(argstr='--jmax=%f',
-                                desc='Maximum acceptable Jacobian value for constraint (default 100.0)')
 
-class InvWarpOutputSpec(TraitedSpec):
-    inverse_warp = File(exists=True, desc='Name of output file, containing warps that are the "reverse" of those in --warp.')
+class EPIDeWarpOutputSpec(TraitedSpec):
+    unwarped_file = File(desc="unwarped epi file")
+    vsm_file = File(desc="voxel shift map")
+    exfdw = File(desc="dewarped functional volume example")
+    exf_mask = File(desc="Mask from example functional volume")
 
-class InvWarp(FSLCommand):
-    """Use FSL Invwarp to inverse a FNIRT warp 
+
+class EPIDeWarp(FSLCommand):
+    """Wraps fieldmap unwarping script from Freesurfer's epidewarp.fsl_
 
     Examples
+    --------
+    >>> dewarp = EPIDeWarp()
+    >>> dewarp.inputs.epi_file = "functional.nii"
+    >>> dewarp.inputs.mag_file = "magnitude.nii"
+    >>> dewarp.inputs.dph_file = "phase.nii"
+    >>> res = dewarp.run() # doctest: +SKIP
 
-    >>> TODO
+    References
+    ----------
+    _epidewarp.fsl: http://surfer.nmr.mgh.harvard.edu/fswiki/epidewarp.fsl
+
     """
-    _cmd = 'invwarp'
+
+    _cmd = 'epidewarp.fsl'
+    input_spec = EPIDeWarpInputSpec
+    output_spec = EPIDeWarpOutputSpec
 
     def _gen_filename(self, name):
-        if name == 'inverse_warp':
-            in_file1 = self.inputs.in_file1
-            return '%s_inv%s' % os.path.splitext(in_file1)
+        if name == 'exfdw':
+            if isdefined(self.inputs.exf_file):
+                return self._gen_fname(self.inputs.exf_file,
+                                  suffix="_exfdw")
+            else:
+                return self._gen_fname("exfdw")
+        if name == 'epidw':
+            if isdefined(self.inputs.epi_file):
+                return self._gen_fname(self.inputs.epi_file,
+                                  suffix="_epidw")
+        if name == 'vsm':
+            return self._gen_fname('vsm')
+        if name == 'tmpdir':
+            return os.path.join(os.getcwd(), 'temp')
+        return None
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        if not isdefined(self.inputs.exfdw):
+            outputs['exfdw'] = self._gen_filename('exfdw')
         else:
-            raise NotImplementedError
+            outputs['exfdw'] = self.inputs.exfdw
+        if isdefined(self.inputs.epi_file):
+            if isdefined(self.inputs.epidw):
+                outputs['unwarped_file'] = self.inputs.epidw
+            else:
+                outputs['unwarped_file'] = self._gen_filename('epidw')
+        if not isdefined(self.inputs.vsm):
+            outputs['vsm_file'] = self._gen_filename('vsm')
+        else:
+            outputs['vsm_file'] = self._gen_fname(self.inputs.vsm)
+        if not isdefined(self.inputs.tmpdir):
+            outputs['exf_mask'] = self._gen_fname(cwd=self._gen_filename('tmpdir'),
+                                                  basename='maskexf')
+        else:
+            outputs['exf_mask'] = self._gen_fname(cwd=self.inputs.tmpdir,
+                                                  basename='maskexf')
+        return outputs
