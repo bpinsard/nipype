@@ -292,7 +292,8 @@ class RegressOutMaskSignalOutputSpec(TraitedSpec):
 
     beta_maps = File(exists=True,
                      desc = 'Maps of beta values from regression.')
-
+    regressors = File(exists=True,
+                      desc = 'Timecourses used as regressors')
 class RegressOutMaskSignal(BaseInterface):
     input_spec  = RegressOutMaskSignalInputSpec
     output_spec = RegressOutMaskSignalOutputSpec
@@ -344,7 +345,7 @@ class RegressOutMaskSignal(BaseInterface):
         betamaps[mask] = betas
         betanii = nb.Nifti1Image(betamaps,nii.get_affine())
         nb.save(betanii, self._list_outputs()['beta_maps'])
-
+        np.savetxt(self._list_outputs()['regressors'], signals)
         del nii, data, cdata, outnii, betas, betamaps, betanii
         return runtime
 
@@ -359,6 +360,12 @@ class RegressOutMaskSignal(BaseInterface):
             prefix = self.inputs.prefix,
             suffix = '_betas',
             newpath = os.getcwd())
+        outputs["regressors"] = fname_presuffix(
+            self.inputs.in_file,
+            prefix = self.inputs.prefix,
+            suffix = '_regs.txt',
+            newpath = os.getcwd(),
+            use_ext=False)
         return outputs
     
 
