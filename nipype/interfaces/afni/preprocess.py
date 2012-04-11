@@ -10,7 +10,7 @@
 """
 import warnings
 import os
-from .base import AFNITraitedSpec, AFNICommand, AFNIFile, afni_file_path
+from .base import AFNITraitedSpec, AFNICommand
 from ..base import (Directory, CommandLineInputSpec, CommandLine, TraitedSpec,
                     traits, isdefined, File)
 from ...utils.filemanip import (load_json, save_json, split_filename)
@@ -85,7 +85,7 @@ class To3D(AFNICommand):
 
 
 class TShiftInputSpec(AFNITraitedSpec):
-    in_file = AFNIFile(desc='input file to 3dTShift',
+    in_file = File(desc='input file to 3dTShift',
         argstr='%s',
         position=-1,
         mandatory=True,
@@ -175,9 +175,8 @@ class TShift(AFNICommand):
                 suffix = self.inputs.suffix
             else:
                 suffix = "_tshift"
-        outputs['out_file'] = self._gen_fname(
-            afni_file_path(self.inputs.in_file),
-            suffix=suffix)
+        outputs['out_file'] = self._gen_fname(self.inputs.in_file,
+             suffix=suffix)
         return outputs
 
 
@@ -392,7 +391,7 @@ class Resample(AFNICommand):
 
 
 class TStatInputSpec(AFNITraitedSpec):
-    in_file = AFNIFile(desc='input file to 3dTstat',
+    in_file = File(desc='input file to 3dTstat',
         argstr='%s',
         position=-1,
         mandatory=True,
@@ -439,7 +438,7 @@ class TStat(AFNICommand):
         """
 
         if name == 'out_file':
-            _, fname, ext = split_filename(afni_file_path(self.inputs.in_file))
+            _, fname, ext = split_filename(self.inputs.in_file)
             return os.path.join(os.getcwd(), ''.join((fname, '_3dT', ext)))
 
     def _list_outputs(self):
@@ -916,6 +915,73 @@ class Fourier(AFNICommand):
         if name == 'out_file':
             _, fname, ext = split_filename(self.inputs.in_file)
             return os.path.join(os.getcwd(), ''.join((fname, '_3dF', ext)))
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+
+        if not isdefined(self.inputs.out_file):
+            outputs['out_file'] = self._gen_filename('out_file')
+        else:
+            outputs['out_file'] = os.path.abspath(self.inputs.out_file)
+        return outputs
+
+class BandpassInputSpec(AFNITraitedSpec):
+    in_file = File(desc='input file to 3dFourier',
+        argstr='%s',
+        position=-1,
+        mandatory=True,
+        exists=True)
+    out_file = File(desc='output file from 3dFourier',
+         argstr='-prefix %s',
+         position=1 ,
+         genfile=True)
+    lowpass = traits.Float(desc='lowpass',
+        argstr='%f',
+        position=-2,
+        mandatory=True)
+    highpass = traits.Float(desc='highpass',
+        argstr='%f',
+        position=-3,
+        mandatory=True)
+    other = traits.Str(desc='other options',
+        argstr='%s')
+    
+class BandpassOutputSpec(AFNITraitedSpec):
+    out_file = File(desc='band-pass filtered file',
+        exists=True)
+
+
+class Bandpass(AFNICommand):
+    """Program to lowpass and/or highpass each voxel time series in a
+    dataset, offering more/different options than Fourier
+
+    For complete details, see the `3dBandpass Documentation.
+    <http://afni.nimh.nih.gov/pub/dist/doc/program_help/3dbandpass.html>`_
+
+    Examples
+    ========
+
+    >>> from nipype.interfaces import afni as afni
+    >>> from nipype.testing import  example_data
+    >>> bandpass = afni.Bandpass()
+    >>> bandpass.inputs.in_file = example_data('functional.nii')
+    >>> bandpass.inputs.highpass = 0.005
+    >>> bandpass.inputs.lowpass = 0.1
+    >>> res = bandpass.run() # doctest: +SKIP
+
+    """
+
+    _cmd = '3dBandpass'
+    input_spec = BandpassInputSpec
+    output_spec = BandpassOutputSpec
+
+
+    def _gen_filename(self, name):
+        """Generate output file name
+        """
+        if name == 'out_file':
+            _, fname, ext = split_filename(self.inputs.in_file)
+            return os.path.join(os.getcwd(), ''.join((fname, '_3dBp', ext)))
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
@@ -1518,29 +1584,28 @@ ${rest}_ss.nii.gz
 """
 
 
-class CalcInputSpec(AFNITraitedSpec):
-    # please do not change back to infile_*, standardisation is important !!
-    in_file_a = AFNIFile(desc='input file to 3dcalc',
+class CalcInputSpec(CommandLineInputSpec):
+    infile_a = File(desc='input file to 3dcalc',
         argstr='-a %s', position=0, mandatory=True)
-    in_file_b = AFNIFile(desc='operand file to 3dcalc',
+    infile_b = File(desc='operand file to 3dcalc',
         argstr=' -b %s', position=1)
     expr = traits.Str(desc='expr', argstr='-expr %s', position=2,
         mandatory=True)
     out_file = File(desc='output file from 3dFourier', argstr='-prefix %s',
         position=-1, genfile=True)
-    start_idx = traits.Int(desc='start index for in_file_a',
+    start_idx = traits.Int(desc='start index for infile_a',
         requires=['stop_idx'])
-    stop_idx = traits.Int(desc='stop index for in_file_a',
+    stop_idx = traits.Int(desc='stop index for infile_a',
         requires=['start_idx'])
-    single_idx = traits.Int(desc='volume index for in_file_a')
+    single_idx = traits.Int(desc='volume index for infile_a')
     other = File(desc='other options', argstr='')
 
 
-class CalcOutputSpec(AFNITraitedSpec):
+class CalcOutputSpec(TraitedSpec):
     out_file = File(desc=' output file', exists=True)
 
 
-class Calc(AFNICommand):
+class Calc(CommandLine):
     """This program does voxel-by-voxel arithmetic on 3D datasets
 
     For complete details, see the `3dcalc Documentation.
@@ -1552,8 +1617,8 @@ class Calc(AFNICommand):
     >>> from nipype.interfaces import afni as afni
     >>> from nipype.testing import  example_data
     >>> calc = afni.Calc()
-    >>> calc.inputs.in_file_a = example_data('functional.nii')
-    >>> calc.inputs.in_file_b = example_data('functional2.nii.gz')
+    >>> calc.inputs.infile_a = example_data('functional.nii')
+    >>> calc.inputs.Infile_b = example_data('functional2.nii.gz')
     >>> calc.inputs.expr='a*b'
     >>> calc.inputs.out_file =  'functional_calc.nii.gz'
     >>> res = calc.run() # doctest: +SKIP
@@ -1572,6 +1637,17 @@ class Calc(AFNICommand):
             outputs['out_file'] = os.path.abspath(self.inputs.out_file)
         return outputs
 
+    def _format_arg(self, name, trait_spec, value):
+        if name == 'infile_a':
+            arg = trait_spec.argstr % value
+            if isdefined(self.inputs.start_idx):
+                arg += '[%d..%d]' % (self.inputs.start_idx,
+                    self.inputs.stop_idx)
+            if isdefined(self.inputs.single_idx):
+                arg += '[%d]' % (self.inputs.single_idx)
+            return arg
+        return super(Calc, self)._format_arg(name, trait_spec, value)
+
     def _parse_inputs(self, skip=None):
         """Skip the arguments without argstr metadata
         """
@@ -1582,5 +1658,5 @@ class Calc(AFNICommand):
         """Generate output file name
         """
         if name == 'out_file':
-            _, fname, ext = split_filename(afni_file_path(self.inputs.in_file_a))
+            _, fname, ext = split_filename(self.inputs.infile_a)
             return os.path.join(os.getcwd(), ''.join((fname, '_3dc', ext)))
