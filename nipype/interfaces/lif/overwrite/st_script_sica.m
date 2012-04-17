@@ -378,7 +378,6 @@ for numSess=1:nb_sess
 
 end
 
-
 function data_d = st_detrend_array(data,pow)
 
 % On effectue la regression
