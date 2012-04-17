@@ -401,7 +401,9 @@ class TStatInputSpec(AFNITraitedSpec):
         argstr='-prefix %s',
         position=-2,
         genfile=True)
-
+    mask = File(desc='mask file',
+        argstr='-mask %s',
+        exists=True)
     options = traits.Str(desc='selected statistical output',
         argstr='%s')
 
@@ -926,12 +928,12 @@ class Fourier(AFNICommand):
         return outputs
 
 class BandpassInputSpec(AFNITraitedSpec):
-    in_file = File(desc='input file to 3dFourier',
+    in_file = File(desc='input file to 3dBandpass',
         argstr='%s',
         position=-1,
         mandatory=True,
         exists=True)
-    out_file = File(desc='output file from 3dFourier',
+    out_file = File(desc='output file from 3dBandpass',
          argstr='-prefix %s',
          position=1 ,
          genfile=True)
@@ -945,6 +947,10 @@ class BandpassInputSpec(AFNITraitedSpec):
         mandatory=True)
     other = traits.Str(desc='other options',
         argstr='%s')
+    mask = File(desc='mask file',
+        position=2,
+        argstr='-mask %s',
+        exists=True)
     
 class BandpassOutputSpec(TraitedSpec):
     out_file = File(desc='band-pass filtered file',
