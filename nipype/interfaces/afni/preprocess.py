@@ -1664,3 +1664,60 @@ class Calc(AFNICommand):
         """
         return super(Calc, self)._parse_inputs(
             skip=('start_idx', 'stop_idx', 'other'))
+
+
+class BlurInMaskInputSpec(AFNITraitedSpec):
+    in_file = File(
+        desc='input file to 3dSkullStrip',
+        argstr='-input %s',
+        position=1,
+        mandatory=True,
+        exists=True)
+    out_file = File(
+        desc='output to the file',
+        argstr='-prefix %s',
+        position=-1,
+        genfile=True)
+    mask = File(
+        desc='Mask dataset, if desired.  Blurring will occur only within the mask.  Voxels NOT in the mask will be set to zero in the output.',
+        argstr='-mask %s')
+    multimask = File(
+        desc='Multi-mask dataset -- each distinct nonzero value in dataset will be treated as a separate mask for blurring purposes.',
+        argstr='-Mmask %s')
+    automask = traits.Bool(
+        desc='Create an automask from the input dataset.',
+        argstr='-automask')
+    fwhm = traits.Float(
+        desc='fwhm kernel size', 
+        argstr='-FWHM %f',
+        mandatory=True)
+    preserve = traits.Bool(
+        desc = 'Normally, voxels not in the mask will be set to zero in the output.  If you want the original values in the dataset to be preserved in the output, use this option.',
+        argstr = '-preserve')
+    float_out = traits.Bool(
+        desc= 'Save dataset as floats, no matter what the input data type is.',
+        argstr='-float')
+    options = traits.Str(desc='options', argstr='%s', position=2)
+    suffix = traits.Str('_blurmask', desc="out_file suffix", usedefault=True)
+
+class BlurInMaskOutputSpec(TraitedSpec):
+    out_file = File(exists=True)
+
+class BlurInMask(AFNICommand):
+    _cmd = '3dBlurInMask'
+    input_spec  = BlurInMaskInputSpec
+    output_spec = BlurInMaskOutputSpec
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        if not isdefined(self.inputs.out_file):
+            outputs['out_file'] = self._gen_fname(self.inputs.in_file,
+                suffix = self.inputs.suffix)
+        else:
+            outputs['out_file'] = os.path.abspath(self.inputs.out_file)
+        return outputs
+
+    def _gen_filename(self, name):
+        if name == 'out_file':
+            return self._list_outputs()[name]
+    
