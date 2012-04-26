@@ -941,6 +941,7 @@ class BandpassInputSpec(AFNITraitedSpec):
         position=2,
         argstr='-mask %s',
         exists=True)
+    suffix = traits.Str('_bandpass', desc="out_file suffix", usedefault=True)
     
 class BandpassOutputSpec(TraitedSpec):
     out_file = File(desc='band-pass filtered file',
@@ -973,20 +974,17 @@ class Bandpass(AFNICommand):
 
 
     def _gen_filename(self, name):
-        """Generate output file name
-        """
         if name == 'out_file':
-            _, fname, ext = split_filename(self.inputs.in_file)
-            return os.path.join(os.getcwd(), ''.join((fname, '_3dBp', ext)))
+            return self._list_outputs()[name]
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
 
         if not isdefined(self.inputs.out_file):
-            outputs['out_file'] = self._gen_filename('out_file')
+            outputs['out_file'] = self._gen_fname(self.inputs.in_file,
+                                                  suffix=self.inputs.suffix)
         else:
             outputs['out_file'] = os.path.abspath(self.inputs.out_file)
-        return outputs
 
     def _gen_filename(self, name):
         if name == 'out_file':
