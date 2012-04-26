@@ -429,3 +429,35 @@ class AssertEqual(BaseInterface):
         assert_equal(data1, data2)
 
         return runtime
+
+
+# few connect functions 
+def flatten(l):
+    "Flatten a list, can be useful when merging lists of file with utility.Merge interface."
+    import collections
+    def flatgen(l):
+        for el in l:
+            if isinstance(el, collections.Iterable) and not isinstance(el, basestring):
+                for sub in flatten(el):
+                    yield sub
+            else:
+                yield el
+    return [el for el in flatgen(l)]
+
+
+def select(x,i):
+    "Select an element or a list of element from a iterable output."
+    if isinstance(i, list):
+        return [x[ii][0] for ii in i]
+    else:
+        return x[i]
+
+def repeat(x,n,flatten=False):
+    "Repeat a element or a list"
+    if isinstance(x,list):
+        o=x*n
+    else:
+        o=[x]*n
+    if flatten:
+        return flatten(o)
+    return o
