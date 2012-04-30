@@ -18,10 +18,9 @@ package_check('matplotlib')
 
 from nipype.interfaces.base import (TraitedSpec, File, Undefined, traits,
                                     BaseInterface, isdefined,
-                                    BaseInterfaceInputSpec,
-                                    InputMultiPath, OutputMultiPath)
+                                    BaseInterfaceInputSpec)
 
-from nipype.utils.filemanip import fname_presuffix, split_filename, loadpkl
+from nipype.utils.filemanip import fname_presuffix
 
 have_nitime = True
 try:
