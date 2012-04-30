@@ -7,29 +7,29 @@ import numpy as np
 import os
 
 
-class ICCInputSpec(BaseInterfaceInputSpec):
+class VolumeICCInputSpec(BaseInterfaceInputSpec):
     subjects_sessions = traits.List(traits.List(File(exists=True)),
                            desc="n subjects m sessions 3D stat files",
                            mandatory=True)
     mask = File(exists=True, mandatory=True)
 
 
-class ICCOutputSpec(TraitedSpec):
+class VolumeICCOutputSpec(TraitedSpec):
     icc_map = File(exists=True)
     sessions_F_map = File(exists=True, desc="F statistics for the effect of session")
     sessions_df_1 = traits.Int()
     sessions_df_2 = traits.Int()
 
 
-class ICC(BaseInterface):
+class VolumeICC(BaseInterface):
     '''
     Calculates Interclass Correlation Coefficient (3,1) as defined in
     P. E. Shrout & Joseph L. Fleiss (1979). "Intraclass Correlations: Uses in
     Assessing Rater Reliability". Psychological Bulletin 86 (2): 420-428. This
     particular implementation is aimed at relaibility (test-retest) studies.
     '''
-    input_spec = ICCInputSpec
-    output_spec = ICCOutputSpec
+    input_spec = VolumeICCInputSpec
+    output_spec = VolumeICCOutputSpec
 
     def _run_interface(self, runtime):
         maskdata = nb.load(self.inputs.mask).get_data()
@@ -118,3 +118,5 @@ def ICC_rep_anova(Y):
     ICC = (MSR - MSE) / (MSR + dfc * MSE)
 
     return ICC, session_effect_F, dfc, dfe
+
+
