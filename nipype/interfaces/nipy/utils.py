@@ -119,7 +119,6 @@ class SampleSeedsMapInputSpec(BaseInterfaceInputSpec):
         0, usedefault = True,
         desc = 'Threshold for the seed masks')
 
-
 class SampleSeedsMapOutputSpec(TraitedSpec):
     seed_maps = OutputMultiPath(
         File(exists=True),
@@ -203,6 +202,10 @@ class CorrelationDistributionMapsInput(BaseInterfaceInputSpec):
     min_distance = traits.Float(
         0, usedefault = True,
         desc = """The min distance threshold to compute correlation distribution""")
+
+    out_dtype = traits.Type(
+        np.float16, usedefault=True,
+        desc = 'Sampled correlation datatype used for storage.')
 
 class CorrelationDistributionMapsOutput(TraitedSpec):
     correlation_mean_maps = OutputMultiPath(
@@ -308,7 +311,7 @@ class CorrelationDistributionMaps(BaseInterface):
                 all_f = fname_presuffix(
                     fname, suffix='_seeds%d_correlations.npz'%si,
                     newpath=os.getcwd(),use_ext=False)
-                np.savez_compressed(all_f, corrs=cmaps.__array__())
+                np.savez_compressed(all_f, corrs=cmaps.__array__().astype(self.inputs.out_dtype))
                 del cmaps, ms, mean, var, std, seeds
                 gc.collect()
             #writing maps
