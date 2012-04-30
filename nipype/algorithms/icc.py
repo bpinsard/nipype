@@ -122,7 +122,7 @@ def ICC_rep_anova(Y):
 
 class ICCInputSpec(BaseInterfaceInputSpec):
     in_files = traits.List(traits.List(File(exists = True)),
-        desc = 'List of subject\'s list of session data files to be analyzed.')
+        desc = 'List of subject\'s list of session data files to be analyzed.Can be npy, npz or pklz files for now.')
     
     _xor_inputs = ('data_key','data_transform')
 
@@ -143,6 +143,13 @@ class ICCOutputSpec(TraitedSpec):
     sessions_df_2 = traits.Int()
 
 class ICC(BaseInterface):
+    '''
+    Calculates Interclass Correlation Coefficient (3,1) as defined in
+    P. E. Shrout & Joseph L. Fleiss (1979). "Intraclass Correlations: Uses in
+    Assessing Rater Reliability". Psychological Bulletin 86 (2): 420-428. This
+    particular implementation is aimed at relaibility (test-retest) studies.
+    This is a tentative generic ICC interfaces to compute ICC over other values than statistic map.
+    '''    
     input_spec  = ICCInputSpec
     output_spec = ICCOutputSpec
     
