@@ -1,11 +1,13 @@
 import numpy as np
-from ..interfaces.base import BaseInterfaceInputSpec, TraitedSpec, \
-    BaseInterface, traits, File
 from scipy.stats import rankdata
+from ..interfaces.base import (TraitedSpec, File, Undefined, traits,
+                               BaseInterface, isdefined,
+                               BaseInterfaceInputSpec)
+from nipype.utils.filemanip import fname_presuffix, split_filename, loadpkl
 
 
 class KendallInputSpec(BaseInterfaceInputSpec):
-    in_files = traits.List(traits.List(File(exists = True)),
+    in_files = traits.List(File(exists = True),
         desc = 'List of subject\'s list of session data files to be analyzed.Can be npy, npz or pklz files for now.')
     
     _xor_inputs = ('data_key','data_transform')
@@ -29,18 +31,18 @@ class Kendall(BaseInterface):
     output_spec = KendallOutputSpec
     
     def _run_interface(self, runtime):
-        files = [[self._loadfile(f) for f in sessions] for sessions in self.inputs.in_files]
+        files = [self._loadfile(f) for f in self.inputs.in_files]
         if self.inputs.data_key is not Undefined:
-            data = [[s[self.inputs.data_key] for s in sessions] for sessions in files]
+            data = [f[self.inputs.data_key] for f in files]
         elif self.inputs.data_transform is not Undefined:
-            data = [[self.inputs.data_transform(s) for s in sessions] for sessions in files]
+            data = [self.inputs.data_transform(f) for f in files]
         else:
             data = files
-
+        data = np.array(data)
         k = kcc(data)
 
         outs = self._list_outputs()
-        np.save(outs['kcc'],kcc)
+        np.save(outs['kcc_file'],k)
         return runtime
 
     def _loadfile(self,f):

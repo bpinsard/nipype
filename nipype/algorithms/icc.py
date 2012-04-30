@@ -1,10 +1,11 @@
 from numpy import ones, kron, mean, eye, hstack, dot, tile
 from scipy.linalg import pinv
 from ..interfaces.base import BaseInterfaceInputSpec, TraitedSpec, \
-    BaseInterface, traits, File
+    BaseInterface, traits, File, Undefined, isdefined
 import nibabel as nb
 import numpy as np
 import os
+from nipype.utils.filemanip import fname_presuffix, split_filename, loadpkl
 
 
 class VolumeICCInputSpec(BaseInterfaceInputSpec):
@@ -162,9 +163,9 @@ class ICC(BaseInterface):
         else:
             data = files
         data = np.concatenate([np.concatenate([s[...,np.newaxis,np.newaxis] for s in sessions],-1) for sessions in data],-2)
-        icc = np.zeros(data.shape[:2])
-        fstat = np.zeros(data.shape[:2])
-        for ind in np.ndindex(data.shape[2:]):
+        icc = np.zeros(data.shape[:-2])
+        fstat = np.zeros(data.shape[:-2])
+        for ind in np.ndindex(data.shape[:-2]):
             icc[ind], fstat[ind], self._df1, self._df2 = ICC_rep_anova(data[ind])
         outs = self._list_outputs()
         np.save(outs['icc_file'],icc)
