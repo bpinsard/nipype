@@ -169,6 +169,8 @@ class AFNICommand(CommandLine):
             New filename based on given parameters.
 
         """
+        if if isinstance(basename,tuple):
+            basename = basename[0]
 
         if basename == '':
             msg = 'Unable to generate filename for command %s. ' % self.cmd
