@@ -169,7 +169,7 @@ class AFNICommand(CommandLine):
             New filename based on given parameters.
 
         """
-        if isinstance(basename,tuple):
+        if if isinstance(basename,tuple):
             basename = basename[0]
 
         if basename == '':
