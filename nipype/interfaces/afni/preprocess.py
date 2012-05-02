@@ -980,6 +980,7 @@ class Bandpass(AFNICommand):
                                                   suffix=self.inputs.suffix)
         else:
             outputs['out_file'] = os.path.abspath(self.inputs.out_file)
+        return outputs
 
     def _gen_filename(self, name):
         if name == 'out_file':
