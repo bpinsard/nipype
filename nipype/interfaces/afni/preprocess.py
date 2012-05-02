@@ -972,10 +972,6 @@ class Bandpass(AFNICommand):
     output_spec = BandpassOutputSpec
 
 
-    def _gen_filename(self, name):
-        if name == 'out_file':
-            return self._list_outputs()[name]
-
     def _list_outputs(self):
         outputs = self.output_spec().get()
 
