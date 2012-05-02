@@ -204,7 +204,10 @@ class CorrelationDistributionMapsInput(BaseInterfaceInputSpec):
         desc = """The min distance threshold to compute correlation distribution""")
 
     out_dtype = traits.Type(
-        np.float16, usedefault=True,
+        np.float16,
+        np.floating,
+        allow_none=False,
+        usedefault=True,
         desc = 'Sampled correlation datatype used for storage.')
 
 class CorrelationDistributionMapsOutput(TraitedSpec):
