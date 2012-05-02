@@ -192,6 +192,7 @@ class AFNICommand(CommandLine):
     def _format_arg(self, name, trait_spec, value):
         # dirty checking for an AFNIFile
         if trait_spec.is_trait_type(traits.TraitCompound) and\
+                isinstance(value,tuple) and\
                 isinstance(value[0],str) and\
                 os.path.exists(value[0]):
             if isinstance(value[1],list):
@@ -203,6 +204,7 @@ class AFNICommand(CommandLine):
                     value[1][2])
             elif isinstance(value[1],int):
                 bricks = str(value[1])
+            
             fname = '%s[%s]'%(value[0],bricks)
             arg = trait_spec.argstr % fname
             return arg
