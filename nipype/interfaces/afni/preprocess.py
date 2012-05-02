@@ -199,7 +199,7 @@ class RefitInputSpec(AFNITraitedSpec):
 
 
 class RefitOutputSpec(TraitedSpec):
-    out_file = File(desc='Same file as original infile with modified matrix',
+    out_file = File(desc='Same file as original in_file with modified matrix',
         exists=True)
 
 
@@ -768,7 +768,7 @@ class Merge(AFNICommand):
     >>> from nipype.interfaces import afni as afni
     >>> from nipype.testing import  example_data
     >>> merge = afni.Merge()
-    >>> merge.inputs.infile = example_data('functional.nii')
+    >>> merge.inputs.in_files = example_data('functional.nii')
     >>> merge.inputs.blurfwhm = 4.0
     >>> merge.inputs.doall = True
     >>> merge.inputs.outfile = 'e7.nii'
@@ -949,7 +949,7 @@ class ZCutUp(AFNICommand):
     >>> from nipype.interfaces import afni as afni
     >>> from nipype.testing import  example_data
     >>> zcutup = afni.Zcutup()
-    >>> zcutup.inputs.infile = example_data('functional.nii')
+    >>> zcutup.inputs.in_file = example_data('functional.nii')
     >>> zcutup.inputs.outfile= 'functional_zcutup.nii'
     >>> zcutup.inputs.keep= '0 10'
     >>> res = zcutup.run() # doctest: +SKIP
@@ -1007,7 +1007,7 @@ class Allineate(AFNICommand):
     >>> from nipype.interfaces import afni as afni
     >>> from nipype.testing import  example_data
     >>> allineate = afni.Allineate()
-    >>> allineate.inputs.infile = example_data('functional.nii')
+    >>> allineate.inputs.in_file = example_data('functional.nii')
     >>> allineate.inputs.outfile= 'functional_allineate.nii'
     >>> allineate.inputs.matrix= example_data('cmatrix.mat')
     >>> res = allineate.run() # doctest: +SKIP
@@ -1522,11 +1522,11 @@ class CalcInputSpec(AFNITraitedSpec):
         mandatory=True)
     out_file = File(desc='output file from 3dFourier', argstr='-prefix %s',
         position=-1, genfile=True)
-    start_idx = traits.Int(desc='start index for infile_a',
+    start_idx = traits.Int(desc='start index for in_file_a',
         requires=['stop_idx'])
-    stop_idx = traits.Int(desc='stop index for infile_a',
+    stop_idx = traits.Int(desc='stop index for in_file_a',
         requires=['start_idx'])
-    single_idx = traits.Int(desc='volume index for infile_a')
+    single_idx = traits.Int(desc='volume index for in_file_a')
     other = File(desc='other options', argstr='')
     suffix = traits.Str('_calc', desc="out_file suffix", usedefault=True)
 
@@ -1547,8 +1547,8 @@ class Calc(AFNICommand):
     >>> from nipype.interfaces import afni as afni
     >>> from nipype.testing import  example_data
     >>> calc = afni.Calc()
-    >>> calc.inputs.infile_a = example_data('functional.nii')
-    >>> calc.inputs.Infile_b = example_data('functional2.nii.gz')
+    >>> calc.inputs.in_file_a = example_data('functional.nii')
+    >>> calc.inputs.in_file_b = example_data('functional2.nii.gz')
     >>> calc.inputs.expr='a*b'
     >>> calc.inputs.out_file =  'functional_calc.nii.gz'
     >>> res = calc.run() # doctest: +SKIP
@@ -1574,7 +1574,7 @@ class Calc(AFNICommand):
             return self._list_outputs()[name]
 
     def _format_arg(self, name, trait_spec, value):
-        if name == 'infile_a':
+        if name == 'in_file_a':
             arg = trait_spec.argstr % value
             if isdefined(self.inputs.start_idx):
                 arg += '[%d..%d]' % (self.inputs.start_idx,
