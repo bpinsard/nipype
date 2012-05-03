@@ -185,8 +185,8 @@ class ICC(BaseInterface):
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
-        outputs['icc_file'] = 'icc.npy'
-        outputs['fstat_file'] = 'fstat.npy'
+        outputs['icc_file'] = os.path.abspath('icc.npy')
+        outputs['fstat_file'] = os.path.abspath('fstat.npy')
         outputs['sessions_df_1'] = self._df1
         outputs['sessions_df_2'] = self._df2
         return outputs
