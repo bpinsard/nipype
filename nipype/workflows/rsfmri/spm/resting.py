@@ -127,7 +127,7 @@ def create_compcorr(name='compcorr'):
         (tsnr, threshold_stddev,[('stddev_file', 'in_file')]),
         (tsnr, getthresh, [('stddev_file', 'in_file')]),
         (inputnode, getthresh, [('mask','mask_file')]),
-        (tsnr, remove_noise, [('detrended_file','in_file')]),
+        (inputnode, remove_noise, [('in_file','in_file')]),
         (getthresh, threshold_stddev,[('out_stat', 'thresh')]),
         (threshold_stddev, compcor, [('out_file',  'noise_mask_file')]),
         (compcor,remove_noise, [('noise_components', 'design_file')]),
