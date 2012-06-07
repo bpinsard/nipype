@@ -414,7 +414,7 @@ class MRIConvert(FSCommand):
 class DICOMConvertInputSpec(FSTraitedSpec):
     dicom_dir = Directory(exists=True, mandatory=True,
                          desc='dicom directory from which to convert dicom files')
-    base_output_dir = Directory(mandatory=True,
+    base_output_dir = Directory(
             desc='directory in which subject directories are created')
     subject_dir_template = traits.Str('S.%04d', usedefault=True,
                           desc='template for subject directory name')
