@@ -11,16 +11,23 @@ class Dcm2niiInputSpec(CommandLineInputSpec):
     source_names = traits.Either(InputMultiPath(File(exists=True)),
                                  Directory(exists=True),
                                  argstr="%s", position=-1, mandatory=True)
-    gzip_output = traits.Bool(False, argstr='-g', position=0, usedefault=True)
-    nii_output = traits.Bool(True, argstr='-n', position=1, usedefault=True)
-    anonymize = traits.Bool(argstr='-a', position=2)
-    id_in_filename = traits.Bool(False, argstr='-i', usedefault=True, position=3)
-    reorient = traits.Bool(argstr='-r', position=4)
-    reorient_and_crop = traits.Bool(argstr='-x', position=5)
-    output_dir = Directory(exists=True, argstr='-o %s', genfile=True, position=6)
-    config_file = File(exists=True, argstr="-b %s", genfile=True, position=7)
-    convert_all_pars = traits.Bool(argstr='-v', position=8)
-    args = traits.Str(argstr='%s', desc='Additional parameters to the command', position=9)
+    gzip_output = traits.Bool(False, argstr='-g', usedefault=True)
+    nii_output = traits.Bool(True, argstr='-n', usedefault=True)
+    anonymize = traits.Bool(argstr='-a')
+    id_in_filename = traits.Bool(False, argstr='-i', usedefault=True)
+    event_in_filename = traits.Bool(False, argstr='-e',usedefault=True)
+    protocol_in_filename = traits.Bool(False, argstr='-p',usedefault=True)
+    reorient = traits.Bool(argstr='-r')
+    reorient_and_crop = traits.Bool(argstr='-x')
+    output_dir = Directory(exists=True, argstr='-o %s', genfile=True)
+    clip_first = traits.Int(argstr='-b %d',
+        desc='Clip beginning volumes from 4D file: 0..1000')
+    clip_last = traits.Int(argstr='-l %d',
+        desc='Clip last volumes from 4D file: 0..1000')
+
+    config_file = File(exists=True, argstr="-b %s", genfile=True)
+    convert_all_pars = traits.Bool(argstr='-v',)
+    args = traits.Str(argstr='%s', desc='Additional parameters to the command')
 
 class Dcm2niiOutputSpec(TraitedSpec):
     converted_files = OutputMultiPath(File(exists=True))
@@ -36,7 +43,7 @@ class Dcm2nii(CommandLine):
     _cmd = 'dcm2nii'
 
     def _format_arg(self, opt, spec, val):
-        if opt in ['gzip_output', 'nii_output', 'anonymize', 'id_in_filename', 'reorient', 'reorient_and_crop', 'convert_all_pars']:
+        if opt in ['gzip_output', 'nii_output', 'anonymize', 'id_in_filename','event_in_filename', 'protocol_in_filename', 'reorient', 'reorient_and_crop', 'convert_all_pars']:
             spec = deepcopy(spec)
             if val:
                 spec.argstr += ' y'
