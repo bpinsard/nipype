@@ -21,10 +21,10 @@ class Dcm2niiInputSpec(CommandLineInputSpec):
     reorient = traits.Bool(argstr='-r')
     reorient_and_crop = traits.Bool(argstr='-x')
     output_dir = Directory(exists=True, argstr='-o %s', genfile=True)
-    clip_first = traits.Int(argstr='-b %d',
-        desc='Clip beginning volumes from 4D file: 0..1000')
-    clip_last = traits.Int(argstr='-l %d',
-        desc='Clip last volumes from 4D file: 0..1000')
+#    clip_first = traits.Int(argstr='-b %d',
+#        desc='Clip beginning volumes from 4D file: 0..1000')
+#    clip_last = traits.Int(argstr='-l %d',
+#        desc='Clip last volumes from 4D file: 0..1000')
 
     config_file = File(exists=True, argstr="-b %s", genfile=True)
     convert_all_pars = traits.Bool(argstr='-v',)
