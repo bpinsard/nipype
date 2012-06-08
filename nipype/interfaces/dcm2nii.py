@@ -16,6 +16,7 @@ class Dcm2niiInputSpec(CommandLineInputSpec):
     anonymize = traits.Bool(argstr='-a')
     id_in_filename = traits.Bool(False, argstr='-i', usedefault=True)
     event_in_filename = traits.Bool(False, argstr='-e',usedefault=True)
+    date_in_filename = traits.Bool(False, argstr='-d',usedefault=True)
     protocol_in_filename = traits.Bool(False, argstr='-p',usedefault=True)
     reorient = traits.Bool(argstr='-r')
     reorient_and_crop = traits.Bool(argstr='-x')
@@ -43,7 +44,7 @@ class Dcm2nii(CommandLine):
     _cmd = 'dcm2nii'
 
     def _format_arg(self, opt, spec, val):
-        if opt in ['gzip_output', 'nii_output', 'anonymize', 'id_in_filename','event_in_filename', 'protocol_in_filename', 'reorient', 'reorient_and_crop', 'convert_all_pars']:
+        if opt in ['gzip_output', 'nii_output', 'anonymize', 'id_in_filename','event_in_filename', 'protocol_in_filename', 'date_in_filename', 'reorient', 'reorient_and_crop', 'convert_all_pars']:
             spec = deepcopy(spec)
             if val:
                 spec.argstr += ' y'
