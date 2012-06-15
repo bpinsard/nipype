@@ -12,7 +12,7 @@ import warnings
 import os
 from .base import AFNITraitedSpec, AFNICommand
 from ..base import (Directory, CommandLineInputSpec, CommandLine, TraitedSpec,
-                    traits, isdefined, File, InputMultiPath)
+                    traits, isdefined, File, InputMultiPath, Undefined)
 from ...utils.filemanip import (load_json, save_json, split_filename)
 
 warn = warnings.warn
@@ -1715,3 +1715,112 @@ class BlurInMask(AFNICommand):
         if name == 'out_file':
             return self._list_outputs()[name]
     
+
+class TCorrMapInputSpec(AFNITraitedSpec):
+    in_file = File(exists=True, argstr='-input %s', mandatory=True)
+    seeds = File(exists=True, argstr='-seed %s',xor=('seeds_width'))
+    mask = File(exists=True, argstr='-mask %s')
+    automask = traits.Bool(argstr='-automask')
+    polort = traits.Int(argstr='-polort %d')
+    bandpass = traits.Tuple((traits.Float(), traits.Float()),
+                             argstr='-bpass %f %f')
+    regress_out_timeseries = traits.File(exists=True, argstr='-ort %s')
+    blur_fwhm = traits.Float(argstr='-Gblur %f')
+    seeds_width = traits.Float(argstr='-Mseed %f', xor=('seeds'))
+    
+    #outputs
+    mean_file = File(genfile=True,argstr='-Mean %s',suffix='_mean')
+    zmean = File(genfile=True,argstr='-Zmean %s',suffix='_zmean')
+    qmean = File(genfile=True,argstr='-Qmean %s',suffix='_qmean')
+    pmean = File(genfile=True,argstr='-Pmean %s',suffix='_pmean')
+
+    
+    _thresh_opts = ('absolute_threshold','var_absolute_threshold','var_absolute_threshold_normalize')
+    thresholds = traits.List(traits.Int())
+    absolute_threshold = File(
+        genfile=True,
+        argstr='-Thresh %f %s', suffix='_thresh',
+        xor=_thresh_opts)
+    var_absolute_threshold = File(
+        genfile=True,
+        argstr='-VarThresh %f %f %f %s', suffix='_varthresh',
+        xor=_thresh_opts)
+    var_absolute_threshold_normalize = File(
+        genfile=True,
+        argstr='-VarThreshN %f %f %f %s', suffix='_varthreshn',
+        xor=_thresh_opts)
+
+    correlation_maps = File(
+        genfile=True, argstr='-CorrMap %s', suffix='_corrmap')
+    correlation_maps_masked = File(
+        genfile=True, argstr='-CorrMask %s', suffix='_corrmask')
+
+    _expr_opts = ('average_expr','average_expr_nonzero','sum_expr')
+    expr = traits.Str()
+    average_expr = File(
+        genfile=True,
+        argstr='-Aexpr %s %s', suffix='_aexpr',
+        xor=_expr_opts)
+    average_expr_nonzero  = File(
+        genfile=True,
+        argstr='-Cexpr %s %s', suffix='_cexpr',
+        xor=_expr_opts)
+    sum_expr = File(
+        genfile=True,
+        argstr='-Sexpr %s %s', suffix='_sexpr',
+        xor=_expr_opts)
+    histogram_bin_numbers = traits.Int()
+    histogram = File(
+        genfile=True,
+        argstr='-Hist %d %s', suffix='_hist')
+
+class TCorrMapOutputSpec(TraitedSpec):
+
+    mean_file = File(genfile=True)
+    zmean = File()
+    qmean = File()
+    pmean = File()
+    absolute_threshold = File()
+    var_absolute_threshold = File()
+    var_absolute_threshold_normalize = File()
+    correlation_maps = File()
+    correlation_maps_masked = File()
+    average_expr = File()
+    average_expr_nonzero = File()
+    sum_expr = File()
+    histogram = File()
+    
+class TCorrMap(AFNICommand):
+    _cmd = '3dTcorrMap'
+    input_spec  = TCorrMapInputSpec
+    output_spec = TCorrMapOutputSpec
+
+    def _format_arg(self, name, trait_spec, value):
+        if name in self.inputs._thresh_opts:
+            return trait_spec.argstr % self.inputs.thresholds + [value]
+        elif name in self.inputs._expr_opts:
+            return trait_spec.argstr % (self.inputs.expr, value)
+        else:
+            return super(TCorrMap, self)._format_arg(name,trait_spec,value)
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        for o in self._outputs().get().keys():
+            ov = getattr(self.inputs,o)
+            if not isdefined(ov):
+                ov = self._gen_fname(
+                    o, suffix=self.input_spec.class_traits()[o].suffix)
+            outputs[o]=ov
+        return outputs
+
+    def _parse_inputs(self,skip=None):
+        outs = self._list_outputs()
+        #skip under
+        if skip==None:
+            skip=[]
+        skip.extend([k for k in self._outputs().get().keys() if not isdefined(outs[k])])
+        return super(TCorrMap, self)._parse_inputs(skip=skip)
+        
+    def _gen_filename(self, name):
+        if name in self._outputs().get().keys():
+            return self._list_outputs()[name]
