@@ -96,7 +96,7 @@ class SICA(SICABase):
 class CORSICAInputSpec(BaseInterfaceInputSpec):
     in_file = File(exists=True, mandatory=True)
     sica_file = File(exists=True)
-    noise_rois = File(code_path+'data/tpl_corsica.img', exists=True)
+    noise_rois = InputMultiPath(File(exists=True))
     n_cluster = traits.Int(-1,desc='default floor(nbvox/10), where nbvox is the number of voxels in the region)', field='nb_clust')
     n_kmeans = traits.Int(3,desc='(default 3) the number of repetition for kmeans clustering.', field='nb_kmeans')
     score_type = traits.Enum('freq','inertia', desc='(default \'freq\') type of computed score. \'freq\' for the frequency of selection of the regressor and \'inertia\' for the relative part of inertia explained by the clusters "selecting" the regressor', field='type_score')
@@ -119,15 +119,17 @@ class CORSICA(SICABase):
     def _run_interface(self, runtime):
         opts=self._parse_inputs(skip=['in_file','sica_file','mask_file'])
         outputs = self._list_outputs()
+        noise_rois=filename_to_list(self.inputs.noise_rois)
+        noise_rois=('\',\'').join(noise_rois)
         d=dict(sica_file=self.inputs.sica_file,
-               mask_file=self.inputs.noise_rois,
+               mask_file=noise_rois,
                corrected_file=outputs['corrected_file'],
                noise_components_mat=outputs['noise_components_mat'],
                opts=opts)
         script = Template("""
         opts=struct($opts);
         load('$sica_file');
-        mask = '$mask_file';
+        mask = ['$mask_file'];
         compSel_corsica = st_script_spatial_sel_comp(sica, mask,opts);
         ncomps=compSel_corsica.numcomp;
         disp(ncomps);
