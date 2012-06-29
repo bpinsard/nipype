@@ -1,5 +1,5 @@
 from nipype.interfaces.matlab import MatlabCommand
-from nipype.interfaces.base import TraitedSpec, BaseInterface, BaseInterfaceInputSpec, File, traits, OutputMultiPath, isdefined
+from nipype.interfaces.base import TraitedSpec, BaseInterface, BaseInterfaceInputSpec, File, traits, InputMultiPath, OutputMultiPath, isdefined
 import os,sys
 from string import Template
 
