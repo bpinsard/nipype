@@ -3,7 +3,8 @@ from nipype.interfaces.base import TraitedSpec, BaseInterface, BaseInterfaceInpu
 import os,sys
 from string import Template
 
-from nipype.utils.filemanip import fname_presuffix
+
+from nipype.utils.filemanip import fname_presuffix, filename_to_list
 
 code_path, filename = os.path.split(os.path.abspath(__file__))
 nbw_path='/coconut/applis/src/nbw/st_pub/'
