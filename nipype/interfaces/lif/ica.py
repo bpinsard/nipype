@@ -135,7 +135,8 @@ class CORSICA(SICABase):
         ncomps=compSel_corsica.numcomp;
         disp(ncomps);
         save('$noise_components_mat', 'ncomps');
-        data=st_suppress_comp(sica,compSel_corsica);
+        opts.comps = ncomps;
+        data=st_suppress_comp(sica,opts);
         
         ni = nifti;
         ni.dat = file_array('$corrected_file', ...
