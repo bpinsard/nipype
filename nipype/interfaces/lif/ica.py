@@ -130,7 +130,7 @@ class CORSICA(SICABase):
         script = Template("""
         opts=struct($opts);
         load('$sica_file');
-        mask = ['$mask_file'];
+        mask = {'$mask_file'};
         compSel_corsica = st_script_spatial_sel_comp(sica, mask,opts);
         ncomps=compSel_corsica.numcomp;
         disp(ncomps);
