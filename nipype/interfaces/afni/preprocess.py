@@ -9,7 +9,7 @@
     >>> os.chdir(datadir)
 """
 import warnings
-import os
+import os, re
 from .base import AFNITraitedSpec, AFNICommand
 from ..base import (Directory, CommandLineInputSpec, CommandLine, TraitedSpec,
                     traits, isdefined, File, InputMultiPath, Undefined)
@@ -1824,3 +1824,39 @@ class TCorrMap(AFNICommand):
     def _gen_filename(self, name):
         if name in self._outputs().get().keys():
             return self._list_outputs()[name]
+
+
+class AutoboxInputSpec(AFNITraitedSpec):
+    in_file = File(exists=True, mandatory=True, argstr='-input %s')
+    padding = traits.Int(argstr='-npad')
+    out_file = File(argstr="-prefix %s")
+    no_clustering = traits.Bool(argstr='-noclust')
+
+class AutoboxOuputSpec(TraitedSpec):
+    x_min = traits.Int()
+    x_max = traits.Int()
+    y_min = traits.Int()
+    y_max = traits.Int()
+    z_min = traits.Int()
+    z_max = traits.Int()
+
+    out_file = File()
+
+class Autobox(AFNICommand):
+    _cmd = '3dAutobox'
+    input_spec  = AutoboxInputSpec
+    output_spec = AutoboxOuputSpec
+    
+    def aggregate_outputs(self, runtime=None, needed_outputs=None):
+        outputs = self._outputs()
+        pattern = 'x=(?P<x_min>\d*)\.\.(?P<x_max>\d*)  y=(?P<y_min>\d*)\.\.(?P<y_max>\d*)  z=(?P<z_min>\d*)\.\.(?P<z_max>\d*)'
+        for line in runtime.stderr.split('\n'):
+            m = re.search(pattern,line)
+            if m:
+                d=m.groupdict()
+                for k in d.keys():
+                    d[k]=int(d[k])
+                outputs.set(**d)
+        if isdefined(self.inputs.out_file):
+            outputs.set(out_file = os.path.abspath(self.inputs.out_file))
+        return outputs
