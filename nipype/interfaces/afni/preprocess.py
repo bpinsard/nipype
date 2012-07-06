@@ -1061,7 +1061,6 @@ if not given the reference will be the first volume of in_file.""")
     suffix = traits.Str('_allineate', desc="out_file suffix", usedefault=True)
 
     out_param_file = File(
-        exists = True,
         argstr = '-1Dparam_save %s',
         desc = 'Save the warp parameters in ASCII (.1D) format.')
     in_param_file = File(
@@ -1070,15 +1069,20 @@ if not given the reference will be the first volume of in_file.""")
         desc = """Read warp parameters from file and apply them to 
                   the source dataset, and produce a new dataset""")
     out_matrix = File(
-        exists=True,
         argstr='-1Dmatrix_save %s',
         desc='Save the transformation matrix for each volume.')
     in_matrix = File(desc='matrix to align input file',
         argstr='-1Dmatrix_apply %s',
         position=-3)
 
-    _cost_funcs = ['leastsq','mutualinfo','corratio_mul','norm_mutualinfo',
-                   'hellinger','corratio_add','corratio_uns']
+    _cost_funcs = [
+        'leastsq', 'ls',
+        'mutualinfo', 'mi',
+        'corratio_mul', 'crM',
+        'norm_mutualinfo', 'nmi',
+        'hellinger', 'hel',
+        'corratio_add', 'crA',
+        'corratio_uns', 'crU']
 
     cost = traits.Enum(
         *_cost_funcs, argstr='-cost %s',
@@ -1095,19 +1099,19 @@ if not given the reference will be the first volume of in_file.""")
     #   TECHNICAL OPTIONS (used for fine control of the program):
     nmatch = traits.Int(
         argstr='-nmatch %d',
-        desc='Use at most 'nnn' scattered points to match the datasets.')
+        desc='Use at most n scattered points to match the datasets.')
     no_pad = traits.Bool(
         argstr='-nopad',
         desc='Do not use zero-padding on the base image.')
     zclip = traits.Bool(
         argstr='-zclip',
         desc='Replace negative values in the input datasets (source & base) with zero.')
-    convergence = trait.Float(
+    convergence = traits.Float(
         argstr='-conv %f',
         desc='Convergence test in millimeters (default 0.05mm).')
     usetemp = traits.Bool(argstr='-usetemp', desc='temporary file use')
     check = traits.List(
-        Traits.Enum(*_cost_funcs), argstr='-check %s',
+        traits.Enum(*_cost_funcs), argstr='-check %s',
         desc="""After cost functional optimization is done, start at the
                 final parameters and RE-optimize using this new cost functions.
                 If the results are too different, a warning message will be 
@@ -1117,13 +1121,13 @@ if not given the reference will be the first volume of in_file.""")
     #      ** PARAMETERS THAT AFFECT THE COST OPTIMIZATION STRATEGY **
     one_pass = traits.Bool(
         argstr='-onepass', 
-        desc = 'Use only the refining pass -- do not try a coarse
+        desc = """Use only the refining pass -- do not try a coarse
                 resolution pass first.  Useful if you know that only
-                small amounts of image alignment are needed.')
+                small amounts of image alignment are needed.""")
     two_pass = traits.Bool(
         argstr='-twopass',
-        desc='Use a two pass alignment strategy for all volumes, searching for
-              a large rotation+shift and then refining the alignment.')
+        desc="""Use a two pass alignment strategy for all volumes, searching
+              for a large rotation+shift and then refining the alignment.""")
     two_blur = traits.Float(
         argstr='-twoblur',
         desc='Set the blurring radius for the first pass in mm.')
@@ -1189,11 +1193,12 @@ if not given the reference will be the first volume of in_file.""")
         argstr='-warpfreeze',
         desc='Freeze the non-rigid body parameters after first volume.')
     replacebase = traits.Bool(
-        argstr=='-replacebase',
-        desc='If the source has more than one volume, then after the first 
-volume is aligned to the base')
-    replacemeth = traits.Bool(
-        *_cost_funcs,argstr='-replacemeth %s',
+        argstr='-replacebase',
+        desc="""If the source has more than one volume, then after the first 
+                volume is aligned to the base""")
+    replacemeth = traits.Enum(
+        *_cost_funcs,
+        argstr='-replacemeth %s',
         desc="""After first volume is aligned, switch method for later volumes.
                 For use with '-replacebase'.""")
     epi = traits.Bool(
@@ -1205,7 +1210,7 @@ volume is aligned to the base')
     master = File(
         exists=True, argstr='-master %s',
         desc='Write the output dataset on the same grid as this file')
-    newgrid = trait.Float(
+    newgrid = traits.Float(
         argstr='-newgrid %f',
         desc='Write the output dataset using isotropic grid spacing in mm')
     
@@ -1217,6 +1222,15 @@ volume is aligned to the base')
     nwarp = traits.Enum(
         *_nwarp_types, argstr='-nwarp %s',
          desc='Experimental nonlinear warping: bilinear or legendre poly.')
+    _dirs = ['X','Y','Z','I','J','K']
+    nwarp_fixmot = traits.List(
+        traits.Enum(*_dirs),
+        argstr='-nwarp_fixmot%s',
+        desc='To fix motion along directions.')
+    nwarp_fixdep = traits.List(
+        traits.Enum(*_dirs),
+        argstr='-nwarp_fixdep%s',
+        desc='To fix non-linear warp dependency along directions.')
 
 class AllineateOutputSpec(TraitedSpec):
     out_file = File(desc='out file',
@@ -1245,6 +1259,13 @@ class Allineate(AFNICommand):
     _cmd = '3dAllineate'
     input_spec = AllineateInputSpec
     output_spec = AllineateOutputSpec
+
+    def _format_arg(self, name, trait_spec, value):
+        if name == 'nwarp_fixmot' or name == 'nwarp_fixdep':
+            arg = ' '.join([trait_spec.argstr % v for v in value])
+            return arg
+        return super(Allineate, self)._format_arg(name, trait_spec, value)
+
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
