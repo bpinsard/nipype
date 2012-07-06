@@ -1049,18 +1049,177 @@ class AllineateInputSpec(AFNITraitedSpec):
         position=-1,
         mandatory=True,
         exists=True)
+    reference = File(
+        exists=True,
+        argstr='-base %s',
+        desc="""file to be used as reference, the first volume will be used
+if not given the reference will be the first volume of in_file.""")
     out_file = File(desc='output file from 3dAllineate',
          argstr='-prefix %s',
          position=-2,
          genfile=True)
-    matrix = File(desc='matrix to align input file',
-        argstr='-1dmatrix_apply %s',
-        position=-3)
     suffix = traits.Str('_allineate', desc="out_file suffix", usedefault=True)
 
+    out_param_file = File(
+        exists = True,
+        argstr = '-1Dparam_save %s',
+        desc = 'Save the warp parameters in ASCII (.1D) format.')
+    in_param_file = File(
+        exists = True,
+        argstr = '-1Dparam_apply %s',
+        desc = """Read warp parameters from file and apply them to 
+                  the source dataset, and produce a new dataset""")
+    out_matrix = File(
+        exists=True,
+        argstr='-1Dmatrix_save %s',
+        desc='Save the transformation matrix for each volume.')
+    in_matrix = File(desc='matrix to align input file',
+        argstr='-1Dmatrix_apply %s',
+        position=-3)
+
+    _cost_funcs = ['leastsq','mutualinfo','corratio_mul','norm_mutualinfo',
+                   'hellinger','corratio_add','corratio_uns']
+
+    cost = traits.Enum(
+        *_cost_funcs, argstr='-cost %s',
+        desc="""Defines the 'cost' function that defines the matching
+                between the source and the base""")
+    _interp_funcs= ['nearestneighbour','linear','cubic','quintic','wsinc5']
+    interpolation = traits.Enum(
+        *_interp_funcs[:-1], argstr='-interp %s',
+        desc='Defines interpolation method to use during matching')
+    final_interpolation = traits.Enum(
+        *_interp_funcs, argstr='-final %s',
+        desc='Defines interpolation method used to create the output dataset')
+    
+    #   TECHNICAL OPTIONS (used for fine control of the program):
+    nmatch = traits.Int(
+        argstr='-nmatch %d',
+        desc='Use at most 'nnn' scattered points to match the datasets.')
+    no_pad = traits.Bool(
+        argstr='-nopad',
+        desc='Do not use zero-padding on the base image.')
+    zclip = traits.Bool(
+        argstr='-zclip',
+        desc='Replace negative values in the input datasets (source & base) with zero.')
+    convergence = trait.Float(
+        argstr='-conv %f',
+        desc='Convergence test in millimeters (default 0.05mm).')
+    usetemp = traits.Bool(argstr='-usetemp', desc='temporary file use')
+    check = traits.List(
+        Traits.Enum(*_cost_funcs), argstr='-check %s',
+        desc="""After cost functional optimization is done, start at the
+                final parameters and RE-optimize using this new cost functions.
+                If the results are too different, a warning message will be 
+                printed.  However, the final parameters from the original
+                optimization will be used to create the output dataset.""")
+
+    #      ** PARAMETERS THAT AFFECT THE COST OPTIMIZATION STRATEGY **
+    one_pass = traits.Bool(
+        argstr='-onepass', 
+        desc = 'Use only the refining pass -- do not try a coarse
+                resolution pass first.  Useful if you know that only
+                small amounts of image alignment are needed.')
+    two_pass = traits.Bool(
+        argstr='-twopass',
+        desc='Use a two pass alignment strategy for all volumes, searching for
+              a large rotation+shift and then refining the alignment.')
+    two_blur = traits.Float(
+        argstr='-twoblur',
+        desc='Set the blurring radius for the first pass in mm.')
+    two_first = traits.Bool(
+        argstr='-twofirst',
+        desc = """Use -twopass on the first image to be registered, and
+               then on all subsequent images from the source dataset,
+               use results from the first image's coarse pass to start
+               the fine pass.""")
+    two_best = traits.Int(
+        argstr='-twobest %d',
+        desc="""In the coarse pass, use the best 'bb' set of initial
+               points to search for the starting point for the fine
+               pass.  If bb==0, then no search is made for the best
+               starting point, and the identity transformation is
+               used as the starting point.  [Default=5; min=0 max=11]""")
+    fine_blur = traits.Float(
+        argstr='-fineblur %f',
+        desc="""Set the blurring radius to use in the fine resolution
+               pass to 'x' mm.  A small amount (1-2 mm?) of blurring at
+               the fine step may help with convergence, if there is
+               some problem, especially if the base volume is very noisy.
+               [Default == 0 mm = no blurring at the final alignment pass]""")
+
+    center_of_mass = traits.Str(
+        argstr = '-cmass%s',
+        desc='Use the center-of-mass calculation to bracket the shifts.')
+    autoweight = traits.Str(
+        argstr='-autoweight%s',
+        desc="""Compute a weight function using the 3dAutomask
+               algorithm plus some blurring of the base image.""")
+    automask = traits.Int(
+        argstr='-automask+%d',
+        desc="""Compute a mask function, set a value for dilation or 0.""")
+    autobox = traits.Bool(
+        argstr='-autobox',
+        desc="""Expand the -automask function to enclose a rectangular
+                box that holds the irregular mask.""")
+    nomask = traits.Bool(
+        argstr='-nomask',
+        desc="""Don't compute the autoweight/mask; if -weight is not
+                also used, then every voxel will be counted equally.""")
+    weight_file = File(
+        argstr='-weight %s',exists=True,
+        desc="""Set the weighting for each voxel in the base dataset;
+                larger weights mean that voxel count more in the cost function.
+                Must be defined on the same grid as the base dataset""")
+    out_weight_file = traits.File(
+        argstr='-wtprefix %s',
+        desc="""Write the weight volume to disk as a dataset""")
+    
+    source_mask = File(
+        exists=True, argstr='-source_mask %s',
+        desc='mask the input dataset')
+    source_automask = traits.Int(
+        argstr='-source_automask+%d',
+        desc='Automatically mask the source dataset with dilation or 0.')
+    warp_type = traits.Enum(
+        'shift_only','shift_rotate','shift_rotate_scale','affine_general',
+        argstr='-warp %s',
+        desc='Set the warp type.')
+    warpfreeze = traits.Bool(
+        argstr='-warpfreeze',
+        desc='Freeze the non-rigid body parameters after first volume.')
+    replacebase = traits.Bool(
+        argstr=='-replacebase',
+        desc='If the source has more than one volume, then after the first 
+volume is aligned to the base')
+    replacemeth = traits.Bool(
+        *_cost_funcs,argstr='-replacemeth %s',
+        desc="""After first volume is aligned, switch method for later volumes.
+                For use with '-replacebase'.""")
+    epi = traits.Bool(
+        argstr='-EPI',
+        desc="""Treat the source dataset as being composed of warped
+                EPI slices, and the base as comprising anatomically
+                'true' images.  Only phase-encoding direction image
+                shearing and scaling will be allowed with this option.""")
+    master = File(
+        exists=True, argstr='-master %s',
+        desc='Write the output dataset on the same grid as this file')
+    newgrid = trait.Float(
+        argstr='-newgrid %f',
+        desc='Write the output dataset using isotropic grid spacing in mm')
+    
+    
+    #Non-linear experimental
+    _nwarp_types=['bilinear',
+                  'cubic', 'quintic', 'heptic', 'nonic',
+                  'poly3', 'poly5', 'poly7',  'poly9'] # same non-hellenistic
+    nwarp = traits.Enum(
+        *_nwarp_types, argstr='-nwarp %s',
+         desc='Experimental nonlinear warping: bilinear or legendre poly.')
 
 class AllineateOutputSpec(TraitedSpec):
-    out_file = File(desc='cut file',
+    out_file = File(desc='out file',
           exists=True)
 
 
