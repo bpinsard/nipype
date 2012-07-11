@@ -9,10 +9,10 @@
     >>> os.chdir(datadir)
 """
 import warnings
-import os
+import os, re
 from .base import AFNITraitedSpec, AFNICommand
 from ..base import (Directory, CommandLineInputSpec, CommandLine, TraitedSpec,
-                    traits, isdefined, File, InputMultiPath)
+                    traits, isdefined, File, InputMultiPath, Undefined)
 from ...utils.filemanip import (load_json, save_json, split_filename)
 from nipype.utils.filemanip import fname_presuffix
 
@@ -201,7 +201,7 @@ class RefitInputSpec(AFNITraitedSpec):
 
 
 class RefitOutputSpec(TraitedSpec):
-    out_file = File(desc='Same file as original infile with modified matrix',
+    out_file = File(desc='Same file as original in_file with modified matrix',
         exists=True)
 
 
@@ -395,6 +395,13 @@ class TStatInputSpec(AFNITraitedSpec):
         position=-2,
         genfile=True,
         hash_files=False)
+
+    mask = File(desc='mask file',
+        argstr='-mask %s',
+        exists=True)
+
+    options = traits.Str(desc='selected statistical output',
+        argstr='%s')
 
     suffix = traits.Str('_tstat', desc="out_file suffix", usedefault=True)
 
@@ -591,8 +598,7 @@ class AutomaskOutputSpec(TraitedSpec):
     out_file = File(desc='mask file',
         exists=True)
 
-    brain_file = File(desc='brain file (skull stripped)',
-        exists=True)
+    brain_file = File(desc='brain file (skull stripped)')
 
 
 class Automask(AFNICommand):
@@ -761,7 +767,7 @@ class Merge(AFNICommand):
     >>> from nipype.interfaces import afni as afni
     >>> from nipype.testing import  example_data
     >>> merge = afni.Merge()
-    >>> merge.inputs.infile = example_data('functional.nii')
+    >>> merge.inputs.in_files = example_data('functional.nii')
     >>> merge.inputs.blurfwhm = 4.0
     >>> merge.inputs.doall = True
     >>> merge.inputs.outfile = 'e7.nii'
@@ -906,6 +912,75 @@ class Fourier(AFNICommand):
         if name == 'out_file':
             return self._list_outputs()[name]
 
+class BandpassInputSpec(AFNITraitedSpec):
+    in_file = File(desc='input file to 3dBandpass',
+        argstr='%s',
+        position=-1,
+        mandatory=True,
+        exists=True)
+    out_file = File(desc='output file from 3dBandpass',
+         argstr='-prefix %s',
+         position=1 ,
+         genfile=True)
+    lowpass = traits.Float(desc='lowpass',
+        argstr='%f',
+        position=-2,
+        mandatory=True)
+    highpass = traits.Float(desc='highpass',
+        argstr='%f',
+        position=-3,
+        mandatory=True)
+    other = traits.Str(desc='other options',
+        argstr='%s')
+    mask = File(desc='mask file',
+        position=2,
+        argstr='-mask %s',
+        exists=True)
+    suffix = traits.Str('_bandpass', desc="out_file suffix", usedefault=True)
+    
+class BandpassOutputSpec(TraitedSpec):
+    out_file = File(desc='band-pass filtered file',
+        exists=True)
+
+
+class Bandpass(AFNICommand):
+    """Program to lowpass and/or highpass each voxel time series in a
+    dataset, offering more/different options than Fourier
+
+    For complete details, see the `3dBandpass Documentation.
+    <http://afni.nimh.nih.gov/pub/dist/doc/program_help/3dbandpass.html>`_
+
+    Examples
+    ========
+
+    >>> from nipype.interfaces import afni as afni
+    >>> from nipype.testing import  example_data
+    >>> bandpass = afni.Bandpass()
+    >>> bandpass.inputs.in_file = example_data('functional.nii')
+    >>> bandpass.inputs.highpass = 0.005
+    >>> bandpass.inputs.lowpass = 0.1
+    >>> res = bandpass.run() # doctest: +SKIP
+
+    """
+
+    _cmd = '3dBandpass'
+    input_spec = BandpassInputSpec
+    output_spec = BandpassOutputSpec
+
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+
+        if not isdefined(self.inputs.out_file):
+            outputs['out_file'] = self._gen_fname(self.inputs.in_file,
+                                                  suffix=self.inputs.suffix)
+        else:
+            outputs['out_file'] = os.path.abspath(self.inputs.out_file)
+        return outputs
+
+    def _gen_filename(self, name):
+        if name == 'out_file':
+            return self._list_outputs()[name]
 
 class ZCutUpInputSpec(AFNITraitedSpec):
     in_file = File(desc='input file to 3dZcutup',
@@ -939,7 +1014,7 @@ class ZCutUp(AFNICommand):
     >>> from nipype.interfaces import afni as afni
     >>> from nipype.testing import  example_data
     >>> zcutup = afni.Zcutup()
-    >>> zcutup.inputs.infile = example_data('functional.nii')
+    >>> zcutup.inputs.in_file = example_data('functional.nii')
     >>> zcutup.inputs.outfile= 'functional_zcutup.nii'
     >>> zcutup.inputs.keep= '0 10'
     >>> res = zcutup.run() # doctest: +SKIP
@@ -970,21 +1045,195 @@ class AllineateInputSpec(AFNITraitedSpec):
         position=-1,
         mandatory=True,
         exists=True)
+
+    reference = File(
+        exists=True,
+        argstr='-base %s',
+        desc="""file to be used as reference, the first volume will be used
+if not given the reference will be the first volume of in_file.""")
+
     out_file = File(desc='output file from 3dAllineate',
          argstr='-prefix %s',
          position=-2,
          genfile=True,
          hash_files=False)
-    matrix = File(desc='matrix to align input file',
-        argstr='-1dmatrix_apply %s',
-        position=-3,
-        exists=True)
+
     suffix = traits.Str('_allineate', desc="out_file suffix", usedefault=True)
 
+    out_param_file = File(
+        argstr = '-1Dparam_save %s',
+        desc = 'Save the warp parameters in ASCII (.1D) format.')
+    in_param_file = File(
+        exists = True,
+        argstr = '-1Dparam_apply %s',
+        desc = """Read warp parameters from file and apply them to 
+                  the source dataset, and produce a new dataset""")
+    out_matrix = File(
+        argstr='-1Dmatrix_save %s',
+        desc='Save the transformation matrix for each volume.')
+    in_matrix = File(desc='matrix to align input file',
+        argstr='-1Dmatrix_apply %s',
+        position=-3)
+
+    _cost_funcs = [
+        'leastsq', 'ls',
+        'mutualinfo', 'mi',
+        'corratio_mul', 'crM',
+        'norm_mutualinfo', 'nmi',
+        'hellinger', 'hel',
+        'corratio_add', 'crA',
+        'corratio_uns', 'crU']
+
+    cost = traits.Enum(
+        *_cost_funcs, argstr='-cost %s',
+        desc="""Defines the 'cost' function that defines the matching
+                between the source and the base""")
+    _interp_funcs= ['nearestneighbour','linear','cubic','quintic','wsinc5']
+    interpolation = traits.Enum(
+        *_interp_funcs[:-1], argstr='-interp %s',
+        desc='Defines interpolation method to use during matching')
+    final_interpolation = traits.Enum(
+        *_interp_funcs, argstr='-final %s',
+        desc='Defines interpolation method used to create the output dataset')
+    
+    #   TECHNICAL OPTIONS (used for fine control of the program):
+    nmatch = traits.Int(
+        argstr='-nmatch %d',
+        desc='Use at most n scattered points to match the datasets.')
+    no_pad = traits.Bool(
+        argstr='-nopad',
+        desc='Do not use zero-padding on the base image.')
+    zclip = traits.Bool(
+        argstr='-zclip',
+        desc='Replace negative values in the input datasets (source & base) with zero.')
+    convergence = traits.Float(
+        argstr='-conv %f',
+        desc='Convergence test in millimeters (default 0.05mm).')
+    usetemp = traits.Bool(argstr='-usetemp', desc='temporary file use')
+    check = traits.List(
+        traits.Enum(*_cost_funcs), argstr='-check %s',
+        desc="""After cost functional optimization is done, start at the
+                final parameters and RE-optimize using this new cost functions.
+                If the results are too different, a warning message will be 
+                printed.  However, the final parameters from the original
+                optimization will be used to create the output dataset.""")
+
+    #      ** PARAMETERS THAT AFFECT THE COST OPTIMIZATION STRATEGY **
+    one_pass = traits.Bool(
+        argstr='-onepass', 
+        desc = """Use only the refining pass -- do not try a coarse
+                resolution pass first.  Useful if you know that only
+                small amounts of image alignment are needed.""")
+    two_pass = traits.Bool(
+        argstr='-twopass',
+        desc="""Use a two pass alignment strategy for all volumes, searching
+              for a large rotation+shift and then refining the alignment.""")
+    two_blur = traits.Float(
+        argstr='-twoblur',
+        desc='Set the blurring radius for the first pass in mm.')
+    two_first = traits.Bool(
+        argstr='-twofirst',
+        desc = """Use -twopass on the first image to be registered, and
+               then on all subsequent images from the source dataset,
+               use results from the first image's coarse pass to start
+               the fine pass.""")
+    two_best = traits.Int(
+        argstr='-twobest %d',
+        desc="""In the coarse pass, use the best 'bb' set of initial
+               points to search for the starting point for the fine
+               pass.  If bb==0, then no search is made for the best
+               starting point, and the identity transformation is
+               used as the starting point.  [Default=5; min=0 max=11]""")
+    fine_blur = traits.Float(
+        argstr='-fineblur %f',
+        desc="""Set the blurring radius to use in the fine resolution
+               pass to 'x' mm.  A small amount (1-2 mm?) of blurring at
+               the fine step may help with convergence, if there is
+               some problem, especially if the base volume is very noisy.
+               [Default == 0 mm = no blurring at the final alignment pass]""")
+
+    center_of_mass = traits.Str(
+        argstr = '-cmass%s',
+        desc='Use the center-of-mass calculation to bracket the shifts.')
+    autoweight = traits.Str(
+        argstr='-autoweight%s',
+        desc="""Compute a weight function using the 3dAutomask
+               algorithm plus some blurring of the base image.""")
+    automask = traits.Int(
+        argstr='-automask+%d',
+        desc="""Compute a mask function, set a value for dilation or 0.""")
+    autobox = traits.Bool(
+        argstr='-autobox',
+        desc="""Expand the -automask function to enclose a rectangular
+                box that holds the irregular mask.""")
+    nomask = traits.Bool(
+        argstr='-nomask',
+        desc="""Don't compute the autoweight/mask; if -weight is not
+                also used, then every voxel will be counted equally.""")
+    weight_file = File(
+        argstr='-weight %s',exists=True,
+        desc="""Set the weighting for each voxel in the base dataset;
+                larger weights mean that voxel count more in the cost function.
+                Must be defined on the same grid as the base dataset""")
+    out_weight_file = traits.File(
+        argstr='-wtprefix %s',
+        desc="""Write the weight volume to disk as a dataset""")
+    
+    source_mask = File(
+        exists=True, argstr='-source_mask %s',
+        desc='mask the input dataset')
+    source_automask = traits.Int(
+        argstr='-source_automask+%d',
+        desc='Automatically mask the source dataset with dilation or 0.')
+    warp_type = traits.Enum(
+        'shift_only','shift_rotate','shift_rotate_scale','affine_general',
+        argstr='-warp %s',
+        desc='Set the warp type.')
+    warpfreeze = traits.Bool(
+        argstr='-warpfreeze',
+        desc='Freeze the non-rigid body parameters after first volume.')
+    replacebase = traits.Bool(
+        argstr='-replacebase',
+        desc="""If the source has more than one volume, then after the first 
+                volume is aligned to the base""")
+    replacemeth = traits.Enum(
+        *_cost_funcs,
+        argstr='-replacemeth %s',
+        desc="""After first volume is aligned, switch method for later volumes.
+                For use with '-replacebase'.""")
+    epi = traits.Bool(
+        argstr='-EPI',
+        desc="""Treat the source dataset as being composed of warped
+                EPI slices, and the base as comprising anatomically
+                'true' images.  Only phase-encoding direction image
+                shearing and scaling will be allowed with this option.""")
+    master = File(
+        exists=True, argstr='-master %s',
+        desc='Write the output dataset on the same grid as this file')
+    newgrid = traits.Float(
+        argstr='-newgrid %f',
+        desc='Write the output dataset using isotropic grid spacing in mm')
+    
+    
+    #Non-linear experimental
+    _nwarp_types=['bilinear',
+                  'cubic', 'quintic', 'heptic', 'nonic',
+                  'poly3', 'poly5', 'poly7',  'poly9'] # same non-hellenistic
+    nwarp = traits.Enum(
+        *_nwarp_types, argstr='-nwarp %s',
+         desc='Experimental nonlinear warping: bilinear or legendre poly.')
+    _dirs = ['X','Y','Z','I','J','K']
+    nwarp_fixmot = traits.List(
+        traits.Enum(*_dirs),
+        argstr='-nwarp_fixmot%s',
+        desc='To fix motion along directions.')
+    nwarp_fixdep = traits.List(
+        traits.Enum(*_dirs),
+        argstr='-nwarp_fixdep%s',
+        desc='To fix non-linear warp dependency along directions.')
 
 class AllineateOutputSpec(TraitedSpec):
-    out_file = File(desc='cut file', exists=True)
-
+    out_file = File(desc='out file',exists=True)
 
 class Allineate(AFNICommand):
     """Program to align one dataset (the 'source') to a base dataset
@@ -998,7 +1247,7 @@ class Allineate(AFNICommand):
     >>> from nipype.interfaces import afni as afni
     >>> from nipype.testing import  example_data
     >>> allineate = afni.Allineate()
-    >>> allineate.inputs.infile = example_data('functional.nii')
+    >>> allineate.inputs.in_file = example_data('functional.nii')
     >>> allineate.inputs.outfile= 'functional_allineate.nii'
     >>> allineate.inputs.matrix= example_data('cmatrix.mat')
     >>> res = allineate.run() # doctest: +SKIP
@@ -1008,6 +1257,13 @@ class Allineate(AFNICommand):
     _cmd = '3dAllineate'
     input_spec = AllineateInputSpec
     output_spec = AllineateOutputSpec
+
+    def _format_arg(self, name, trait_spec, value):
+        if name == 'nwarp_fixmot' or name == 'nwarp_fixdep':
+            arg = ' '.join([trait_spec.argstr % v for v in value])
+            return arg
+        return super(Allineate, self)._format_arg(name, trait_spec, value)
+
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
@@ -1518,11 +1774,11 @@ class CalcInputSpec(AFNITraitedSpec):
         mandatory=True)
     out_file = File(desc='output file from 3dFourier', argstr='-prefix %s',
         position=-1, genfile=True)
-    start_idx = traits.Int(desc='start index for infile_a',
+    start_idx = traits.Int(desc='start index for in_file_a',
         requires=['stop_idx'])
-    stop_idx = traits.Int(desc='stop index for infile_a',
+    stop_idx = traits.Int(desc='stop index for in_file_a',
         requires=['start_idx'])
-    single_idx = traits.Int(desc='volume index for infile_a')
+    single_idx = traits.Int(desc='volume index for in_file_a')
     suffix = traits.Str('_calc', desc="out_file suffix", usedefault=True)
 
 
@@ -1542,8 +1798,8 @@ class Calc(AFNICommand):
     >>> from nipype.interfaces import afni as afni
     >>> from nipype.testing import  example_data
     >>> calc = afni.Calc()
-    >>> calc.inputs.infile_a = example_data('functional.nii')
-    >>> calc.inputs.Infile_b = example_data('functional2.nii.gz')
+    >>> calc.inputs.in_file_a = example_data('functional.nii')
+    >>> calc.inputs.in_file_b = example_data('functional2.nii.gz')
     >>> calc.inputs.expr='a*b'
     >>> calc.inputs.out_file =  'functional_calc.nii.gz'
     >>> res = calc.run() # doctest: +SKIP
@@ -1568,7 +1824,7 @@ class Calc(AFNICommand):
             return self._list_outputs()[name]
 
     def _format_arg(self, name, trait_spec, value):
-        if name == 'infile_a':
+        if name == 'in_file_a':
             arg = trait_spec.argstr % value
             if isdefined(self.inputs.start_idx):
                 arg += '[%d..%d]' % (self.inputs.start_idx,
@@ -1583,3 +1839,205 @@ class Calc(AFNICommand):
         """
         return super(Calc, self)._parse_inputs(
             skip=('start_idx', 'stop_idx', 'other'))
+
+
+class BlurInMaskInputSpec(AFNITraitedSpec):
+    in_file = File(
+        desc='input file to 3dSkullStrip',
+        argstr='-input %s',
+        position=1,
+        mandatory=True,
+        exists=True)
+    out_file = File(
+        desc='output to the file',
+        argstr='-prefix %s',
+        position=-1,
+        genfile=True)
+    mask = File(
+        desc='Mask dataset, if desired.  Blurring will occur only within the mask.  Voxels NOT in the mask will be set to zero in the output.',
+        argstr='-mask %s')
+    multimask = File(
+        desc='Multi-mask dataset -- each distinct nonzero value in dataset will be treated as a separate mask for blurring purposes.',
+        argstr='-Mmask %s')
+    automask = traits.Bool(
+        desc='Create an automask from the input dataset.',
+        argstr='-automask')
+    fwhm = traits.Float(
+        desc='fwhm kernel size', 
+        argstr='-FWHM %f',
+        mandatory=True)
+    preserve = traits.Bool(
+        desc = 'Normally, voxels not in the mask will be set to zero in the output.  If you want the original values in the dataset to be preserved in the output, use this option.',
+        argstr = '-preserve')
+    float_out = traits.Bool(
+        desc= 'Save dataset as floats, no matter what the input data type is.',
+        argstr='-float')
+    options = traits.Str(desc='options', argstr='%s', position=2)
+    suffix = traits.Str('_blurmask', desc="out_file suffix", usedefault=True)
+
+class BlurInMaskOutputSpec(TraitedSpec):
+    out_file = File(exists=True)
+
+class BlurInMask(AFNICommand):
+    _cmd = '3dBlurInMask'
+    input_spec  = BlurInMaskInputSpec
+    output_spec = BlurInMaskOutputSpec
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        if not isdefined(self.inputs.out_file):
+            outputs['out_file'] = self._gen_fname(self.inputs.in_file,
+                suffix = self.inputs.suffix)
+        else:
+            outputs['out_file'] = os.path.abspath(self.inputs.out_file)
+        return outputs
+
+    def _gen_filename(self, name):
+        if name == 'out_file':
+            return self._list_outputs()[name]
+    
+
+class TCorrMapInputSpec(AFNITraitedSpec):
+    in_file = File(exists=True, argstr='-input %s', mandatory=True)
+    seeds = File(exists=True, argstr='-seed %s',xor=('seeds_width'))
+    mask = File(exists=True, argstr='-mask %s')
+    automask = traits.Bool(argstr='-automask')
+    polort = traits.Int(argstr='-polort %d')
+    bandpass = traits.Tuple((traits.Float(), traits.Float()),
+                             argstr='-bpass %f %f')
+    regress_out_timeseries = traits.File(exists=True, argstr='-ort %s')
+    blur_fwhm = traits.Float(argstr='-Gblur %f')
+    seeds_width = traits.Float(argstr='-Mseed %f', xor=('seeds'))
+    
+    #outputs
+    mean_file = File(genfile=True,argstr='-Mean %s',suffix='_mean')
+    zmean = File(genfile=True,argstr='-Zmean %s',suffix='_zmean')
+    qmean = File(genfile=True,argstr='-Qmean %s',suffix='_qmean')
+    pmean = File(genfile=True,argstr='-Pmean %s',suffix='_pmean')
+
+    
+    _thresh_opts = ('absolute_threshold','var_absolute_threshold','var_absolute_threshold_normalize')
+    thresholds = traits.List(traits.Int())
+    absolute_threshold = File(
+        genfile=True,
+        argstr='-Thresh %f %s', suffix='_thresh',
+        xor=_thresh_opts)
+    var_absolute_threshold = File(
+        genfile=True,
+        argstr='-VarThresh %f %f %f %s', suffix='_varthresh',
+        xor=_thresh_opts)
+    var_absolute_threshold_normalize = File(
+        genfile=True,
+        argstr='-VarThreshN %f %f %f %s', suffix='_varthreshn',
+        xor=_thresh_opts)
+
+    correlation_maps = File(
+        genfile=True, argstr='-CorrMap %s', suffix='_corrmap')
+    correlation_maps_masked = File(
+        genfile=True, argstr='-CorrMask %s', suffix='_corrmask')
+
+    _expr_opts = ('average_expr','average_expr_nonzero','sum_expr')
+    expr = traits.Str()
+    average_expr = File(
+        genfile=True,
+        argstr='-Aexpr %s %s', suffix='_aexpr',
+        xor=_expr_opts)
+    average_expr_nonzero  = File(
+        genfile=True,
+        argstr='-Cexpr %s %s', suffix='_cexpr',
+        xor=_expr_opts)
+    sum_expr = File(
+        genfile=True,
+        argstr='-Sexpr %s %s', suffix='_sexpr',
+        xor=_expr_opts)
+    histogram_bin_numbers = traits.Int()
+    histogram = File(
+        genfile=True,
+        argstr='-Hist %d %s', suffix='_hist')
+
+class TCorrMapOutputSpec(TraitedSpec):
+
+    mean_file = File(genfile=True)
+    zmean = File()
+    qmean = File()
+    pmean = File()
+    absolute_threshold = File()
+    var_absolute_threshold = File()
+    var_absolute_threshold_normalize = File()
+    correlation_maps = File()
+    correlation_maps_masked = File()
+    average_expr = File()
+    average_expr_nonzero = File()
+    sum_expr = File()
+    histogram = File()
+    
+class TCorrMap(AFNICommand):
+    _cmd = '3dTcorrMap'
+    input_spec  = TCorrMapInputSpec
+    output_spec = TCorrMapOutputSpec
+
+    def _format_arg(self, name, trait_spec, value):
+        if name in self.inputs._thresh_opts:
+            return trait_spec.argstr % self.inputs.thresholds + [value]
+        elif name in self.inputs._expr_opts:
+            return trait_spec.argstr % (self.inputs.expr, value)
+        else:
+            return super(TCorrMap, self)._format_arg(name,trait_spec,value)
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        for o in self._outputs().get().keys():
+            ov = getattr(self.inputs,o)
+            if not isdefined(ov):
+                ov = self._gen_fname(
+                    o, suffix=self.input_spec.class_traits()[o].suffix)
+            outputs[o]=ov
+        return outputs
+
+    def _parse_inputs(self,skip=None):
+        outs = self._list_outputs()
+        #skip under
+        if skip==None:
+            skip=[]
+        skip.extend([k for k in self._outputs().get().keys() if not isdefined(outs[k])])
+        return super(TCorrMap, self)._parse_inputs(skip=skip)
+        
+    def _gen_filename(self, name):
+        if name in self._outputs().get().keys():
+            return self._list_outputs()[name]
+
+
+class AutoboxInputSpec(AFNITraitedSpec):
+    in_file = File(exists=True, mandatory=True, argstr='-input %s')
+    padding = traits.Int(argstr='-npad %d')
+    out_file = File(argstr="-prefix %s")
+    no_clustering = traits.Bool(argstr='-noclust')
+
+class AutoboxOuputSpec(TraitedSpec):
+    x_min = traits.Int()
+    x_max = traits.Int()
+    y_min = traits.Int()
+    y_max = traits.Int()
+    z_min = traits.Int()
+    z_max = traits.Int()
+
+    out_file = File()
+
+class Autobox(AFNICommand):
+    _cmd = '3dAutobox'
+    input_spec  = AutoboxInputSpec
+    output_spec = AutoboxOuputSpec
+    
+    def aggregate_outputs(self, runtime=None, needed_outputs=None):
+        outputs = self._outputs()
+        pattern = 'x=(?P<x_min>-?\d+)\.\.(?P<x_max>-?\d+)  y=(?P<y_min>-?\d+)\.\.(?P<y_max>-?\d+)  z=(?P<z_min>-?\d+)\.\.(?P<z_max>-?\d+)'
+        for line in runtime.stderr.split('\n'):
+            m = re.search(pattern,line)
+            if m:
+                d=m.groupdict()
+                for k in d.keys():
+                    d[k]=int(d[k])
+                outputs.set(**d)
+        if isdefined(self.inputs.out_file):
+            outputs.set(out_file = os.path.abspath(self.inputs.out_file))
+        return outputs

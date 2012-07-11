@@ -7,7 +7,7 @@ import os
 import warnings
 
 from ...utils.filemanip import fname_presuffix
-from ..base import (CommandLine, traits, CommandLineInputSpec, isdefined)
+from ..base import (BaseInterface, CommandLine, traits, CommandLineInputSpec, isdefined, File, TraitedSpec)
 
 warn = warnings.warn
 warnings.filterwarnings('always', category=UserWarning)
@@ -128,8 +128,9 @@ class AFNICommand(CommandLine):
         self._outputtype = self.inputs.outputtype
 
 
-    @classmethod
-    def set_default_outputtype(cls, outputtype):
+    # name change for standardisation with others interfaces 
+    @classmethod 
+    def set_default_output_type(cls, outputtype):
         """Set the default output type for AFNI classes.
 
         This method is used to set the default output type for all afni
@@ -168,6 +169,8 @@ class AFNICommand(CommandLine):
             New filename based on given parameters.
 
         """
+        if isinstance(basename,tuple):
+            basename = basename[0]
 
         if basename == '':
             msg = 'Unable to generate filename for command %s. ' % self.cmd
@@ -186,4 +189,95 @@ class AFNICommand(CommandLine):
         return fname
 
 
+    def _format_arg(self, name, trait_spec, value):
+        # dirty checking for an AFNIFile
+        if trait_spec.is_trait_type(traits.TraitCompound) and\
+                isinstance(value,tuple) and\
+                isinstance(value[0],str) and\
+                os.path.exists(value[0]):
+            if isinstance(value[1],list):
+                bricks = ','.join(value[1])
+            elif isinstance(value[1],tuple):
+                bricks = '%d..%s\(%d\)'%(
+                    value[1][0],
+                    (str(value[1][1]) if value[1][1]>=0 else '$'),
+                    value[1][2])
+            elif isinstance(value[1],int):
+                bricks = str(value[1])
+            
+            fname = '%s[%s]'%(value[0],bricks)
+            arg = trait_spec.argstr % fname
+            return arg
+        return super(AFNICommand, self)._format_arg(name, trait_spec, value)
 
+
+
+class AFNIFile(traits.Either):
+    """
+    traits describing a sub-brick of a file
+    This is a file with either a list of indices of images in the files, 
+    or a tuple with (start,stop,step), with let say -1 (pythonic) for end of file
+    """
+
+    def __init__(self, value = '', filter = None, auto_set = False,
+                 entries = 0, exists = False, **metadata):
+        super( AFNIFile, self ).__init__(
+            File(value=value,
+                 filter=filter,
+                 auto_set=auto_set,
+                 entries=entries,
+                 exists=exists), 
+            traits.Tuple(File(value=value,
+                              filter=filter,
+                              auto_set=auto_set,
+                              entries=entries,
+                              exists=exists),
+                         traits.Either(traits.Tuple(traits.Int(0),
+                                                    traits.Int(-1),
+                                                    traits.Int(1)),
+                                       traits.Int(),
+                                       traits.List(traits.Int()),
+                                       usedefault=True ) ),
+            **metadata)
+        
+def brick_selector(f,bricks):
+    # simple interface function to add static brick selection to a pipeline
+    return (f,bricks)
+
+def afni_file_path(af):
+    if isinstance(af,tuple):
+        return af[0]
+    return af
+
+class BrickSelectorInputSpec(TraitedSpec):
+    
+    in_file = traits.File(
+        mandatory=True,
+        exists=True,
+        desc='Regular file from which to select sub-bricks.')
+    bricks = traits.Either(
+        traits.Tuple(traits.Int(0),traits.Int(-1),traits.Int(1)),
+        traits.Int(),
+        traits.ListInt(),
+        desc='Sub bricks as a list of indices or a tuple (start,stop,step) or single index')
+
+class BrickSelectorOutputSpec(TraitedSpec):
+
+    out_file = AFNIFile()
+
+class BrickSelector(BaseInterface):
+    """
+    Simple interface to perform brick selection with bricks being a dynamic input.
+    We could add a brick selection validation with file dimensions etc...
+    """
+
+    input_spec  = BrickSelectorInputSpec
+    output_spec = BrickSelectorOutputSpec
+
+    def _run_interface(self,runtime): 
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['out_file'] = (self.inputs.in_file, self.inputs.bricks)
+        return outputs
