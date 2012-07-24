@@ -437,7 +437,7 @@ def flatten(l):
     import collections
     def flatgen(l):
         for el in l:
-            if isinstance(el, collections.Iterable) and not isinstance(el, basestring):
+            if isinstance(el, collections.Iterable) and not isinstance(el, basestring) and not isinstance(el,dict):
                 for sub in flatten(el):
                     yield sub
             else:
