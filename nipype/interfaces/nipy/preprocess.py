@@ -277,7 +277,7 @@ class RegressOutMaskSignalInputSpec(BaseInterfaceInputSpec):
         desc = "Masks file to compute the regressed out signals.")
 
     signal_masks_threshold = traits.Either(
-        traits.Float(), traits.List(trait.Float()),
+        traits.Float(), traits.List(traits.Float()),
         0, usedefault=True,
         desc = 'Value to threshold mask images. Default is >0.')
     signal_estimate_function = traits.Function(
@@ -306,7 +306,7 @@ class RegressOutMaskSignal(BaseInterface):
         mask = nb.load(self.inputs.mask).get_data()>0
         signal_masks_nii = [nb.load(m) for m in self.inputs.signal_masks]
         thr = self.inputs.signal_masks_threshold
-        if isinstance(thr,list)
+        if isinstance(thr,list):
             signal_masks=[m.get_data()>t for m,t in zip(signal_masks_nii,thr)]
         else:
             signal_masks = [m.get_data()>thr for m in signal_masks_nii]
