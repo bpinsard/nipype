@@ -10,6 +10,7 @@ import re
 class Dcm2niiInputSpec(CommandLineInputSpec):
     source_names = traits.Either(InputMultiPath(File(exists=True)),
                                  Directory(exists=True),
+                                 traits.Str(),#allow to specify file pattern
                                  argstr="%s", position=-1, mandatory=True)
     gzip_output = traits.Bool(False, argstr='-g', usedefault=True)
     nii_output = traits.Bool(True, argstr='-n', usedefault=True)
