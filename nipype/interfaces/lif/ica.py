@@ -2,9 +2,9 @@ from nipype.interfaces.matlab import MatlabCommand
 from nipype.interfaces.base import TraitedSpec, BaseInterface, BaseInterfaceInputSpec, File, traits, InputMultiPath, OutputMultiPath, isdefined
 import os,sys
 from string import Template
+import gzip,tempfile
 
-
-from nipype.utils.filemanip import fname_presuffix, filename_to_list
+from nipype.utils.filemanip import fname_presuffix, filename_to_list, split_filename
 
 code_path, filename = os.path.split(os.path.abspath(__file__))
 nbw_path=os.environ['NBW_PATH']
@@ -68,8 +68,25 @@ class SICA(SICABase):
     def _run_interface(self, runtime):
         opts=self._parse_inputs(skip=['in_file','sica_file','sica_comp_files_fmt','filter_low','filter_high'])
         filters=self._parse_inputs(only=['filter_high','filter_low'])
-        comp_filename=os.path.join(os.getcwd(),self.inputs.sica_comp_filename)
-        d=dict(in_file=self.inputs.in_file,
+        in_file=self.inputs.in_file
+        pat,bas,ext = split_filename(in_file)
+        tmp_dir = tempfile.mkdtemp()
+        if ext == '.nii.gz':
+            gunziped_file = fname_presuffix(in_file,path=tmp_dir,
+                                            suffix='.nii',use_ext=False)
+            f_in = gzip.open(in_file,'rb')
+            f_out = open(gunziped_file,'wb')
+            f_out.write(f_in)
+            f_out.close()
+            f_in.close()
+            in_file = gunziped_file
+        pat,basm,ext = split_filename(self.inputs.sica_comp_filename)
+        if ext == '.nii.gz':
+            comp_filename = fname_presuffix(
+                self.inputs.sica_comp_filename
+                newpath=os.getcwd(),suffix='.nii',use_ext=False,)
+
+        d=dict(in_file=in_file,
                sica_file=self.inputs.sica_file,
                opts=opts,
                filters=filters,
@@ -86,12 +103,19 @@ class SICA(SICABase):
 
         mlab = MatlabCommand(script=script, mfile=True)
         result = mlab.run()
+        if ext == '.nii.gz':
+            f_out = gzip.open(self._list_outputs()['components'],'wb')
+            f_in = open(comp_filename,'rb')
+            f_out.write(f_in)
+            f_out.close()
+            f_in.close()
+        
         return result.runtime
     
     def _list_outputs(self):
         outputs = self._outputs().get()
         outputs['sica_file'] = os.path.abspath(self.inputs.sica_file)
-        outputs['components'] = os.path.join(os.getcwd(),'sica_comp.nii')
+        outputs['components'] = os.path.join(os.getcwd(),self.inputs.sica_comp_filename)
         return outputs
 
 class CORSICAInputSpec(BaseInterfaceInputSpec):
