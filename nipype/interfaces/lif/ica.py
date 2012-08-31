@@ -68,29 +68,11 @@ class SICA(SICABase):
     def _run_interface(self, runtime):
         opts=self._parse_inputs(skip=['in_file','sica_file','sica_comp_files_fmt','filter_low','filter_high'])
         filters=self._parse_inputs(only=['filter_high','filter_low'])
-        in_file=self.inputs.in_file
-        pat,bas,ext = split_filename(in_file)
-        tmp_dir = tempfile.mkdtemp()
-        if ext == '.nii.gz':
-            gunziped_file = fname_presuffix(in_file,path=tmp_dir,
-                                            suffix='.nii',use_ext=False)
-            f_in = gzip.open(in_file,'rb')
-            f_out = open(gunziped_file,'wb')
-            f_out.write(f_in)
-            f_out.close()
-            f_in.close()
-            in_file = gunziped_file
-        pat,basm,ext = split_filename(self.inputs.sica_comp_filename)
-        if ext == '.nii.gz':
-            comp_filename = fname_presuffix(
-                self.inputs.sica_comp_filename
-                newpath=os.getcwd(),suffix='.nii',use_ext=False,)
-
-        d=dict(in_file=in_file,
+        d=dict(in_file=self.inputs.in_file,
                sica_file=self.inputs.sica_file,
                opts=opts,
                filters=filters,
-               comp_filename=comp_filename)
+               comp_filename=self.inputs.sica_comp_filename)
         script = Template("""
         opts=struct($opts);
         opts.filter=struct($filters);
@@ -102,14 +84,7 @@ class SICA(SICABase):
         """).substitute(d)
 
         mlab = MatlabCommand(script=script, mfile=True)
-        result = mlab.run()
-        if ext == '.nii.gz':
-            f_out = gzip.open(self._list_outputs()['components'],'wb')
-            f_in = open(comp_filename,'rb')
-            f_out.write(f_in)
-            f_out.close()
-            f_in.close()
-        
+        result = mlab.run()        
         return result.runtime
     
     def _list_outputs(self):
