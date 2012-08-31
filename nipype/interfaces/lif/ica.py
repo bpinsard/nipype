@@ -91,7 +91,7 @@ class SICA(SICABase):
     def _list_outputs(self):
         outputs = self._outputs().get()
         outputs['sica_file'] = os.path.abspath(self.inputs.sica_file)
-        outputs['components'] = os.path.join(os.getcwd(),self.inputs.sica_comp_filename)
+        outputs['components'] = os.path.abspath(os.path.join(os.getcwd(),self.inputs.sica_comp_filename))
         return outputs
 
 class CORSICAInputSpec(BaseInterfaceInputSpec):
