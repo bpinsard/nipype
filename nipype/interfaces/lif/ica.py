@@ -68,11 +68,12 @@ class SICA(SICABase):
     def _run_interface(self, runtime):
         opts=self._parse_inputs(skip=['in_file','sica_file','sica_comp_files_fmt','filter_low','filter_high'])
         filters=self._parse_inputs(only=['filter_high','filter_low'])
+        outputs = self._list_outputs()
         d=dict(in_file=self.inputs.in_file,
-               sica_file=self.inputs.sica_file,
+               sica_file=outputs['sica_file'],
                opts=opts,
                filters=filters,
-               comp_filename=self.inputs.sica_comp_filename)
+               comp_filename=outputs['components'])
         script = Template("""
         opts=struct($opts);
         opts.filter=struct($filters);
