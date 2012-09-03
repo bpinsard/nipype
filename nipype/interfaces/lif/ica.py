@@ -107,6 +107,7 @@ class CORSICAInputSpec(BaseInterfaceInputSpec):
 
     baseline = traits.Int(0,desc='value of artificial baseline (default 1000)',field='baseline', usedefault=True)
     add_residuals  = traits.Bool(True, desc='whether to add or not the residuals to the recontructed data', field='addres', usedefault = True)
+    corrected_file = File(desc='corrected file name')
 
 
 class CORSICAOutputSpec(TraitedSpec):
@@ -159,7 +160,13 @@ class CORSICA(SICABase):
     def _list_outputs(self):
         outputs = self._outputs().get()
         outputs['noise_components_mat'] = fname_presuffix(self.inputs.in_file, suffix=self.inputs.noise_components_mat, newpath=os.getcwd(), use_ext=False)
-        outputs['corrected_file'] = fname_presuffix(self.inputs.in_file, prefix='c', suffix='.nii',newpath=os.getcwd(), use_ext=False)
+        if isdefined(self.inputs.corrected_file):
+            outputs['corrected_file'] = os.path.abspath(os.path.join(
+                    os.getcwd(),self.inputs.corrected_file))
+        else:
+            outputs['corrected_file'] = fname_presuffix(
+                self.inputs.in_file,prefix='c', suffix='.nii',
+                newpath=os.getcwd(), use_ext=False)
         return outputs
     
     
