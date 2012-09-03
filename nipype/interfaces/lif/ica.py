@@ -159,7 +159,7 @@ class CORSICA(SICABase):
     def _list_outputs(self):
         outputs = self._outputs().get()
         outputs['noise_components_mat'] = fname_presuffix(self.inputs.in_file, suffix=self.inputs.noise_components_mat, newpath=os.getcwd(), use_ext=False)
-        outputs['corrected_file'] = fname_presuffix(self.inputs.in_file, prefix='c', newpath=os.getcwd())
+        outputs['corrected_file'] = fname_presuffix(self.inputs.in_file, prefix='c', suffix='.nii',newpath=os.getcwd(), use_ext=False)
         return outputs
     
     
