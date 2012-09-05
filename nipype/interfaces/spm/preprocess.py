@@ -87,7 +87,7 @@ class SliceTiming(SPMCommand):
             return scans_for_fnames(filename_to_list(val),
                                     keep4d=False,
                                     separate_sessions=True)
-        return val
+        return super(SliceTiming, self)._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -102,7 +102,7 @@ class SliceTiming(SPMCommand):
                     run.append(fname_presuffix(inner_f,
                                                prefix=self.inputs.out_prefix))
             else:
-                realigned_run = fname_presuffix(f, 
+                realigned_run = fname_presuffix(f,
                                                 prefix=self.inputs.out_prefix)
             outputs['timecorrected_files'].append(realigned_run)
         return outputs
@@ -177,9 +177,7 @@ class Realign(SPMCommand):
             return scans_for_fnames(val,
                                     keep4d=True,
                                     separate_sessions=True)
-        if opt == 'register_to_mean': # XX check if this is necessary
-            return int(val)
-        return val
+        return super(Realign, self)._format_arg(opt, spec, val)
 
     def _parse_inputs(self):
         """validate spm realign options if set to None ignore
@@ -296,7 +294,7 @@ class Coregister(SPMCommand):
                 return scans_for_fnames(val+self.inputs.apply_to_files)
             else:
                 return scans_for_fnames(val)
-        return val
+        return super(Coregister, self)._format_arg(opt, spec, val)
 
     def _parse_inputs(self):
         """validate spm coregister options if set to None ignore
@@ -411,7 +409,7 @@ class Normalize(SPMCommand):
         if opt in ['write_wrap']:
             if len(val) != 3:
                 raise ValueError('%s must have 3 elements' % opt)
-        return val
+        return super(Normalize, self)._format_arg(opt, spec, val)
 
     def _parse_inputs(self):
         """validate spm realign options if set to None ignore
@@ -560,13 +558,11 @@ class Segment(SPMCommand):
                 return scans_for_fname(val)
         if 'output_type' in opt:
             return [int(v) for v in val]
-        if opt == 'save_bias_corrected':
-            return int(val)
         if opt == 'mask_image':
             return scans_for_fname(val)
         if opt == 'clean_masks':
             return clean_masks_dict[val]
-        return val
+        return super(Segment, self)._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -718,16 +714,16 @@ class NewSegment(SPMCommand):
             if isdefined(self.inputs.tissues):
                 for i, tissue in enumerate(self.inputs.tissues):
                     if tissue[2][0]:
-                        outputs['native_class_images'][i].append(os.path.join(pth,"c%d%s%s"%(i+1, base, ext)))
+                        outputs['native_class_images'][i].append(os.path.join(pth,"c%d%s.nii"%(i+1, base)))
                     if tissue[2][1]:
-                        outputs['dartel_input_images'][i].append(os.path.join(pth,"rc%d%s%s"%(i+1, base, ext)))
+                        outputs['dartel_input_images'][i].append(os.path.join(pth,"rc%d%s.nii"%(i+1, base)))
                     if tissue[3][0]:
-                        outputs['normalized_class_images'][i].append(os.path.join(pth,"wc%d%s%s"%(i+1, base, ext)))
+                        outputs['normalized_class_images'][i].append(os.path.join(pth,"wc%d%s.nii"%(i+1, base)))
                     if tissue[3][1]:
-                        outputs['modulated_class_images'][i].append(os.path.join(pth,"mwc%d%s%s"%(i+1, base, ext)))
+                        outputs['modulated_class_images'][i].append(os.path.join(pth,"mwc%d%s.nii"%(i+1, base)))
             else:
                 for i in range(n_classes):
-                    outputs['native_class_images'][i].append(os.path.join(pth,"c%d%s%s"%(i+1, base, ext)))
+                    outputs['native_class_images'][i].append(os.path.join(pth,"c%d%s.nii"%(i+1, base)))
             outputs['transformation_mat'].append(os.path.join(pth, "%s_seg8.mat" % base))
 
             if isdefined(self.inputs.write_deformation_fields):
@@ -738,9 +734,9 @@ class NewSegment(SPMCommand):
 
             if isdefined(self.inputs.channel_info):
                 if self.inputs.channel_info[2][0]:
-                    outputs['bias_corrected_images'].append(os.path.join(pth, "m%s%s" % (base, ext)))
+                    outputs['bias_corrected_images'].append(os.path.join(pth, "m%s.nii" % (base)))
                 if self.inputs.channel_info[2][1]:
-                    outputs['bias_field_images'].append(os.path.join(pth, "BiasField_%s%s" % (base, ext)))
+                    outputs['bias_field_images'].append(os.path.join(pth, "BiasField_%s.nii" % (base)))
         return outputs
 
 class SmoothInputSpec(SPMCommandInputSpec):
@@ -785,10 +781,8 @@ class Smooth(SPMCommand):
                     return [val[0], val[0], val[0]]
                 else:
                     return val
-        if opt == 'implicit_masking':
-            return int(val)
 
-        return val
+        return super(Smooth, self)._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -872,14 +866,14 @@ class DARTEL(SPMCommand):
                 new_param['slam'] = param[3]
                 params.append(new_param)
             return params
-        elif opt == 'optimization parameters':
+        elif opt == 'optimization_parameters':
             new_param = {}
             new_param['lmreg'] = val[0]
             new_param['cyc'] = val[1]
             new_param['its'] = val[2]
             return [new_param]
         else:
-            return val
+            return super(DARTEL, self)._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -917,7 +911,7 @@ class DARTELNorm2MNIInputSpec(SPMCommandInputSpec):
                                 field='mni_norm.bb')
     modulate = traits.Bool(field='mni_norm.preserve',
                            desc="Modulate out images - no modulation preserves concentrations")
-    fwhm = traits.Either(traits.Tuple(traits.Float(), traits.Float, traits.Float),
+    fwhm = traits.Either(traits.List(traits.Float(), minlen=3, maxlen=3),
                          traits.Float(), field='mni_norm.fwhm',
                          desc='3-list of fwhm for each dimension')
 
@@ -961,14 +955,12 @@ class DARTELNorm2MNI(SPMCommand):
         elif opt == 'bounding_box':
             return list(val)
         elif opt == 'fwhm':
-            if not isinstance(val, tuple):
-                return [val, val, val]
-            if isinstance(val, tuple):
+            if isinstance(val, list):
                 return val
-        elif opt == 'modulate':
-            return int(val)
+            else:
+                return [val, val, val]
         else:
-            return val
+            return super(DARTELNorm2MNI, self)._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -1040,7 +1032,7 @@ class CreateWarped(SPMCommand):
         if opt in ['flowfield_files']:
             return scans_for_fnames(val, keep4d=True)
         else:
-            return val
+            return super(CreateWarped, self)._format_arg(opt, spec, val)
 
     def _list_outputs(self):
         outputs = self._outputs().get()

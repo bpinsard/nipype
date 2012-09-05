@@ -457,6 +457,8 @@ class BaseTraitedSpec(traits.HasTraits):
         for name, val in sorted(self.get().items()):
             if isdefined(val):
                 trait = self.trait(name)
+                if has_metadata(trait.trait_type, "nohash", True):
+                    continue
                 hash_files = not has_metadata(trait.trait_type, "hash_files", False)
                 dict_nofilename[name] = self._get_sorteddict(val, hash_method=hash_method, hash_files=hash_files)
                 dict_withhash[name] = self._get_sorteddict(val, True, hash_method=hash_method, hash_files=hash_files)
@@ -497,6 +499,17 @@ class BaseTraitedSpec(traits.HasTraits):
                     out = object
         return out
 
+    def __getstate__(self):
+        state = super(BaseTraitedSpec, self).__getstate__()
+        inst_traits = self._instance_traits()
+        state['__instance_traits__'] = inst_traits
+        return state
+
+    def __setstate__(self, state):
+        inst_traits = state.pop('__instance_traits__', {})
+        for attr, trait in inst_traits.iteritems():
+            self.add_trait(attr, trait)
+        super(BaseTraitedSpec, self).__setstate__(state)
 
 class DynamicTraitedSpec(BaseTraitedSpec):
     """ A subclass to handle dynamic traits
@@ -511,20 +524,9 @@ class DynamicTraitedSpec(BaseTraitedSpec):
         id_self = id(self)
         if id_self in memo:
             return memo[id_self]
-        dup_dict = deepcopy(self.get(), memo)
-        # access all keys
-        for key in self.copyable_trait_names():
-            _ = getattr(self, key)
-        # clone once
+        dup_dict = deepcopy(self.__getstate__(), memo)
         dup = self.clone_traits(memo=memo)
-        for key in self.copyable_trait_names():
-            try:
-                _ = getattr(dup, key)
-            except:
-                pass
-        # clone twice
-        dup = self.clone_traits(memo=memo)
-        dup.set(**dup_dict)
+        dup.__setstate__(dup_dict)
         return dup
 
 
@@ -604,7 +606,8 @@ class Interface(object):
 
 class BaseInterfaceInputSpec(TraitedSpec):
     ignore_exception = traits.Bool(False, desc="Print an error message instead \
-of throwing an exception in case the interface fails to run", usedefault=True)
+of throwing an exception in case the interface fails to run", usedefault=True,
+                                   nohash=True)
 
 
 class BaseInterface(Interface):
@@ -932,7 +935,7 @@ class Stream(object):
         self._lastidx = len(self._rows)
 
 
-def run_command(runtime, timeout=0.2):
+def run_command(runtime, timeout=0.01):
     """
     Run a command, read stdout and stderr, prefix with timestamp. The returned
     runtime contains a merged stdout+stderr log with timestamps
@@ -987,7 +990,8 @@ def run_command(runtime, timeout=0.2):
 
 class CommandLineInputSpec(BaseInterfaceInputSpec):
     args = traits.Str(argstr='%s', desc='Additional parameters to the command')
-    environ = traits.DictStrStr(desc='Environment variables', usedefault=True)
+    environ = traits.DictStrStr(desc='Environment variables', usedefault=True,
+                                nohash=True)
 
 
 class CommandLine(BaseInterface):
@@ -1013,11 +1017,11 @@ class CommandLine(BaseInterface):
     >>> cli.cmdline
     'ls -al'
 
-    >>> cli.inputs.trait_get() #doctest: +SKIP
+    >>> cli.inputs.trait_get()
     {'ignore_exception': False, 'args': '-al', 'environ': {'DISPLAY': ':1'}}
 
     >>> cli.inputs.get_hashval()
-    ({'ignore_exception': False, 'args': '-al', 'environ': {'DISPLAY': ':1'}}, 'b1faf85652295456a906f053d48daef6')
+    ({'args': '-al'}, 'a2f45e04a34630c5f33a75ea2a533cdd')
 
     """
 
@@ -1033,11 +1037,6 @@ class CommandLine(BaseInterface):
             raise Exception("Missing command")
         if command:
             self._cmd = command
-        try:
-            display_var = config.get('execution', 'display_variable')
-            self.inputs.environ['DISPLAY'] = display_var
-        except NoOptionError:
-            pass
 
     @property
     def cmd(self):
@@ -1087,7 +1086,16 @@ class CommandLine(BaseInterface):
         setattr(runtime, 'stdout', None)
         setattr(runtime, 'stderr', None)
         setattr(runtime, 'cmdline', self.cmdline)
-        runtime.environ.update(self.inputs.environ)
+        out_environ = {}
+        try:
+            display_var = config.get('execution', 'display_variable')
+            out_environ = {'DISPLAY': display_var}
+        except NoOptionError:
+            pass
+        iflogger.debug(out_environ)
+        if isdefined(self.inputs.environ):
+            out_environ.update(self.inputs.environ)
+        runtime.environ.update(out_environ)
         if not self._exists_in_path(self.cmd.split()[0]):
             raise IOError("%s could not be found on host %s" % (self.cmd.split()[0],
                                                                 runtime.hostname))
@@ -1124,20 +1132,14 @@ class CommandLine(BaseInterface):
         Formats a trait containing argstr metadata
         """
         argstr = trait_spec.argstr
+        iflogger.debug('%s_%s' %(name, str(value)))
         if trait_spec.is_trait_type(traits.Bool):
             if value:
                 # Boolean options have no format string. Just append options
                 # if True.
                 return argstr
             else:
-                # If we end up here we're trying to add a Boolean to
-                # the arg string but whose value is False.  This
-                # should not happen, something went wrong upstream.
-                # Raise an error.
-                msg = "Object '%s' attempting to format argument " \
-                    "string for attr '%s' with value '%s'."  \
-                    % (self, trait_spec.name, value)
-                raise ValueError(msg)
+                return None
         #traits.Either turns into traits.TraitCompound and does not have any inner_traits
         elif trait_spec.is_trait_type(traits.List) \
         or (trait_spec.is_trait_type(traits.TraitCompound) \
@@ -1193,6 +1195,8 @@ class CommandLine(BaseInterface):
                 else:
                     continue
             arg = self._format_arg(name, spec, value)
+            if arg is None:
+                continue
             pos = spec.position
             if pos is not None:
                 if pos >= 0:

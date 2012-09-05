@@ -17,9 +17,8 @@ class VolumeICCInputSpec(BaseInterfaceInputSpec):
 
 class VolumeICCOutputSpec(TraitedSpec):
     icc_map = File(exists=True)
-    sessions_F_map = File(exists=True, desc="F statistics for the effect of session")
-    sessions_df_1 = traits.Int()
-    sessions_df_2 = traits.Int()
+    session_var_map = File(exists=True, desc="variance between sessions")
+    subject_var_map = File(exists=True, desc="variance between subjects")
 
 
 class VolumeICC(BaseInterface):
@@ -37,20 +36,16 @@ class VolumeICC(BaseInterface):
         maskdata = np.logical_not(np.logical_or(maskdata == 0, np.isnan(maskdata)))
 
         session_datas = [[nb.load(fname).get_data()[maskdata].reshape(-1, 1) for fname in sessions] for sessions in self.inputs.subjects_sessions]
-        list_of_sessions = [np.hstack(session_data) for session_data in session_datas]
-        all_data = np.dstack(list_of_sessions)
+        list_of_sessions = [np.dstack(session_data) for session_data in session_datas]
+        all_data = np.hstack(list_of_sessions)
         icc = np.zeros(session_datas[0][0].shape)
         session_F = np.zeros(session_datas[0][0].shape)
+        session_var = np.zeros(session_datas[0][0].shape)
+        subject_var = np.zeros(session_datas[0][0].shape)
 
         for x in range(icc.shape[0]):
             Y = all_data[x, :, :]
-            icc[x], session_F[x], self._df1, self._df2 = ICC_rep_anova(Y)
-
-        nim = nb.load(self.inputs.subjects_sessions[0][0])
-        new_data = np.zeros(nim.get_shape())
-        new_data[maskdata] = icc.reshape(-1,)
-        new_img = nb.Nifti1Image(new_data, nim.get_affine(), nim.get_header())
-        nb.save(new_img, 'icc_map.nii')
+            icc[x], subject_var[x], session_var[x],  session_F[x], _, _ = ICC_rep_anova(Y)
 
         new_data = np.zeros(nim.get_shape())
         new_data[maskdata] = session_F.reshape(-1,)
@@ -63,8 +58,8 @@ class VolumeICC(BaseInterface):
         outputs = self._outputs().get()
         outputs['icc_map'] = os.path.abspath('icc_map.nii')
         outputs['sessions_F_map'] = os.path.abspath('sessions_F_map.nii')
-        outputs['sessions_df_1'] = self._df1
-        outputs['sessions_df_2'] = self._df2
+        outputs['session_var_map'] = os.path.abspath('session_var_map.nii')
+        outputs['subject_var_map'] = os.path.abspath('subject_var_map.nii')
         return outputs
 
 
@@ -117,8 +112,10 @@ def ICC_rep_anova(Y):
 
     # ICC(3,1) = (mean square subjeT - mean square error) / (mean square subjeT + (k-1)*-mean square error)
     ICC = (MSR - MSE) / (MSR + dfc * MSE)
+    e_var = MSE #variance of error
+    r_var = (MSR - MSE)/nb_conditions #variance between subjects
 
-    return ICC, session_effect_F, dfc, dfe
+    return ICC, r_var, e_var, session_effect_F, dfc, dfe
 
 
 class ICCInputSpec(BaseInterfaceInputSpec):
