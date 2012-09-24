@@ -141,7 +141,8 @@ class SampleSeedsMap(BaseInterface):
 
         # compute coordinates for distance
         voxel_size = np.sqrt(np.square(masknii.get_affine()[:3,:3]).sum(0))
-        coords = np.array(np.where(mask)+(np.ones(np.count_nonzero(mask)),))
+        coords = np.array(np.where(mask)+(np.ones(np.count_nonzero(mask)),),
+                          dtype=np.float32)
         coords = masknii.get_affine().dot(coords)[:3].T
 
         for si,seed_mask in enumerate(seed_masks):
@@ -161,6 +162,7 @@ class SampleSeedsMap(BaseInterface):
 
             dists = np.sqrt(((coords[:,np.newaxis,:].repeat(nsamp,1)-
                               coords[seed_map[mask]>0][np.newaxis])**2).sum(2))
+            dists = (dists*100).astype(np.uint16)
             dists_f = fname_presuffix(
                 self.inputs.seed_masks[si], suffix='_distances.npz',
                 newpath=os.getcwd(),use_ext=False)
@@ -284,7 +286,7 @@ class CorrelationDistributionMaps(BaseInterface):
                 if self.inputs.min_distance > 0:
                     cmaps = np.ma.array(
                         cmaps, 
-                        mask = all_dists[si]['dists']<self.inputs.min_distance)
+                        mask = all_dists[si]['dists']<self.inputs.min_distance*100)
                 mean = np.array(cmaps.mean(1))
                 var = np.array(cmaps.var(1))
                 std = var**0.5
