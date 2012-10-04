@@ -47,6 +47,17 @@ class VolumeICC(BaseInterface):
             Y = all_data[x, :, :]
             icc[x], subject_var[x], session_var[x],  session_F[x], _, _ = ICC_rep_anova(Y)
 
+        nim = nb.load(self.inputs.subjects_sessions[0][0])
+        new_data = np.zeros(nim.get_shape())
+        new_data[maskdata] = icc.reshape(-1,)
+        new_img = nb.Nifti1Image(new_data, nim.get_affine(), nim.get_header())
+        nb.save(new_img, 'icc_map.nii')
+
+        new_data = np.zeros(nim.get_shape())
+        new_data[maskdata] = session_var.reshape(-1,)
+        new_img = nb.Nifti1Image(new_data, nim.get_affine(), nim.get_header())
+        nb.save(new_img, 'session_var_map.nii')
+
         new_data = np.zeros(nim.get_shape())
         new_data[maskdata] = session_F.reshape(-1,)
         new_img = nb.Nifti1Image(new_data, nim.get_affine(), nim.get_header())
