@@ -664,7 +664,7 @@ class MotionEstimate(BaseInterface):
         motion=np.diff(motion,axis=0)
         # global motion parameter (Van Dijk like)
         rot_mm = self.inputs.global_head_radius * motion[:,3:]
-        global_motion_drms = (rot_mm**2 + motion[:,:3]**2).sum(0)
+        global_motion_drms = np.sqrt((rot_mm**2 + motion[:,:3]**2).sum(-1))
         self._global_motion_max = global_motion_drms.max()
         self._global_motion_mean = global_motion_drms.mean()
         
