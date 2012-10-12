@@ -2,5 +2,4 @@
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """The nbw module provides classes for interfacing with NetBrainWork
 """
-
 from nipype.interfaces.lif.ica import (SICABase,SICA,CORSICA)
