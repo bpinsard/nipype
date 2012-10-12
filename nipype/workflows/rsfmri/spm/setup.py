@@ -3,9 +3,7 @@
 def configuration(parent_package='',top_path=None):
     from numpy.distutils.misc_util import Configuration
 
-    config = Configuration('rsfmri', parent_package, top_path)
-    config.add_subpackage('fsl')
-    config.add_subpackage('spm')
+    config = Configuration('spm', parent_package, top_path)
 
     return config
 
