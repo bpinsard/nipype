@@ -5,7 +5,6 @@ def configuration(parent_package='',top_path=None):
 
     config = Configuration('lif', parent_package, top_path)
 
-    config.add_data_dir('data')
     config.add_data_dir('overwrite')
     
 
