@@ -430,14 +430,17 @@ class CorrelationAnalysis(BaseInterface):
                 self.inputs.bootstrap_nsamples)
             pval = std
             corr = samples.mean(0)
-            print np.count_nonzero(np.isnan(samples)) ,'nan in correlations'
-            try:
-                samples_part = np.array([corr_to_partialcorr(s) for s in samples])
-                partialcorr = samples_part.mean(0)
-                partialpval = samples_part.std(0)
-            except ValueError:                
-                partialcorr = None
-                partialpval = None
+            nnan = np.count_nonzero(np.isnan(samples))
+            print nnan ,'nan in correlations'
+            partialcorr = None
+            partialpval = None
+            if nnan == 0:
+                try:
+                    samples_part = np.array([corr_to_partialcorr(s) for s in samples])
+                    partialcorr = samples_part.mean(0)
+                    partialpval = samples_part.std(0)
+                except ValueError:                
+                    pass
         else:
             corr = np.corrcoef(ts)
             try:
