@@ -238,7 +238,7 @@ class RegressOutMotion(BaseInterface):
             slicing_axis = self.inputs.slicing_axis,
             global_signal = self.inputs.global_signal
             )
-        outnii = nb.Nifti1Image(cdata,nii.get_affine())
+        outnii = nb.Nifti1Image(cdata,nii.get_affine(),nii.get_header().copy())
         outnii.set_data_dtype(np.float32)
         nb.save(outnii, self._list_outputs()['out_file'])
         
@@ -336,7 +336,7 @@ class RegressOutMaskSignal(BaseInterface):
         cdata = np.zeros(nii.shape)
         cdata[mask] = data
 
-        outnii = nb.Nifti1Image(cdata,nii.get_affine())
+        outnii = nb.Nifti1Image(cdata,nii.get_affine(),nii.get_header().copy())
         outnii.set_data_dtype(np.float32)
         out_fname = self._list_outputs()['out_file']
 
@@ -442,7 +442,8 @@ class Scrubbing(BaseInterface):
             drms_threshold = self.inputs.drms_threshold,
             extend_mask = self.inputs.extend_scrubbing)
         
-        out_nii = nb.Nifti1Image(self.scrubbed, nii.get_affine())
+        out_nii = nb.Nifti1Image(self.scrubbed, nii.get_affine(),
+                                 nii.get_header().copy())
         nb.save(out_nii, self._list_outputs()['out_file'])
         np.savetxt(self._list_outputs()['motion'], motion[self.scrub_mask])
         return runtime
