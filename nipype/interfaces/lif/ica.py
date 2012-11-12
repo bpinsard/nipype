@@ -146,6 +146,8 @@ class CORSICA(SICABase):
           0,1,0);
         ni.mat = sica.header.mat;
         ni.mat0= sica.header.mat;
+        ni.vox = sica.header.vox;
+        ni.private = sica.header.private;
         ni.descrip = 'Corsica corrected data';
         create(ni);
         for t=1:size(data,4); ni.dat(:,:,:,t) = data(:,:,:,t); end
