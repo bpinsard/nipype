@@ -207,10 +207,8 @@ class RegressOutMotionInputSpec(BaseInterfaceInputSpec):
     global_signal = traits.Bool(
         False, usedefault = True,
         desc = 'Regress out global signal (estimated with mean in mask) from data.')
-    regressors_transform = traits.Enum(
-        'raw', 'bw_derivatives', 'fw_derivatives',
-        desc = 'Which transform to apply to motion parameters'
-        )
+    regressors_transform = traits.Str(
+        desc = 'Which transform to apply to motion parameters')
 
     slicing_axis = traits.Int(
         2, usedefault = True, desc = 'Axis for outplane motion measure')
