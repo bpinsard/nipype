@@ -322,14 +322,14 @@ class RegressOutMaskSignal(BaseInterface):
         for i in m.nonzero()[0]:
             nans = np.isnan(data[i])
             data[i] = np.interp(y(nans),y(~nans),data[i,~nans])
+        nt=data.shape[-1]
         
-        signals = np.array([self.inputs.signal_estimate_function(data[m]) for m in signal_masks])
+        signals = np.array([self.inputs.signal_estimate_function(data[m]) for m in signal_masks]).reshape((nt,-1))
         #normalize
         for sig in signals:
             sig[...] = (sig-sig.mean())/sig.var()
         signals = signals.T
         data = data[mask]
-        nt=data.shape[-1]
 
         reg_pinv = np.linalg.pinv(np.concatenate((signals,np.ones((nt,1))),
                                                  axis=1))
