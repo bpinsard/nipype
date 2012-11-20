@@ -263,6 +263,11 @@ class RegressOutMotion(BaseInterface):
 def mean_ts(tss):
     return tss.mean(axis=0)
 
+def pca_ts(tss,numcomp=5):
+    import scipy as sp
+    u,s,v = sp.linalg.svd(tss, full_matrices=False)
+    return v[:numcomp, :].T
+
 class RegressOutMaskSignalInputSpec(BaseInterfaceInputSpec):
     in_file = File(
         exists=True,
