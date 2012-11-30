@@ -564,7 +564,9 @@ class IntegrationAnalysis(BaseInterface):
         if isinstance(self.inputs.networks,dict):
             nets = self.inputs.networks
 
-        integ_anlzr = nta.IntegrationAnalyzer(correlations['corr'],
+        ids = np.concatenate(nets.values())
+        corrs = correlations['corr'][ids][:,ids]
+        integ_anlzr = nta.IntegrationAnalyzer(corrs,
                                               networks=nets)
         self.total, self.inter, self.intra = integ_anlzr.integration
         return runtime
