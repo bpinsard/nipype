@@ -752,8 +752,7 @@ class Fourier(AFNICommand):
     output_spec = AFNICommandOutputSpec
 
 
-<<<<<<< HEAD
-class BandpassInputSpec(AFNITraitedSpec):
+class BandpassInputSpec(AFNICommandInputSpec):
     in_file = File(desc='input file to 3dBandpass',
         argstr='%s',
         position=-1,
@@ -779,7 +778,7 @@ class BandpassInputSpec(AFNITraitedSpec):
         exists=True)
     suffix = traits.Str('_bandpass', desc="out_file suffix", usedefault=True)
     
-class BandpassOutputSpec(TraitedSpec):
+class BandpassOutputSpec(AFNICommandOutputSpec):
     out_file = File(desc='band-pass filtered file',
         exists=True)
 
@@ -1526,7 +1525,7 @@ class Calc(AFNICommand):
             skip=('start_idx', 'stop_idx', 'other'))
 
 
-class BlurInMaskInputSpec(AFNITraitedSpec):
+class BlurInMaskInputSpec(AFNICommandInputSpec):
     in_file = File(
         desc='input file to 3dSkullStrip',
         argstr='-input %s',
@@ -1582,7 +1581,7 @@ class BlurInMask(AFNICommand):
             return self._list_outputs()[name]
     
 
-class TCorrMapInputSpec(AFNITraitedSpec):
+class TCorrMapInputSpec(AFNICommandInputSpec):
     in_file = File(exists=True, argstr='-input %s', mandatory=True)
     seeds = File(exists=True, argstr='-seed %s',xor=('seeds_width'))
     mask = File(exists=True, argstr='-mask %s')
@@ -1692,13 +1691,13 @@ class TCorrMap(AFNICommand):
             return self._list_outputs()[name]
 
 
-class AutoboxInputSpec(AFNITraitedSpec):
+class AutoboxInputSpec(AFNICommandInputSpec):
     in_file = File(exists=True, mandatory=True, argstr='-input %s')
     padding = traits.Int(argstr='-npad %d')
     out_file = File(argstr="-prefix %s")
     no_clustering = traits.Bool(argstr='-noclust')
 
-class AutoboxOuputSpec(TraitedSpec):
+class AutoboxOuputSpec(AFNICommandOutputSpec):
     x_min = traits.Int()
     x_max = traits.Int()
     y_min = traits.Int()
