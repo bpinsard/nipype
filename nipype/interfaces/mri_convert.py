@@ -51,6 +51,9 @@ class MRIConvertOutputSpec(TraitedSpec):
     out_files = OutputMultiPath(File(exists=True))
 
 class MRIConvert(CommandLine):
+    """
+    Interface to mcverter dicom converter
+    """
     input_spec=MRIConvertInputSpec
     output_spec=MRIConvertOutputSpec
 
