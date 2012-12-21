@@ -80,7 +80,7 @@ class IdentityInterface(IOBase):
 class MergeInputSpec(DynamicTraitedSpec, BaseInterfaceInputSpec):
     axis = traits.Enum('vstack', 'hstack', usedefault=True,
                 desc='direction in which to merge, hstack requires same number of elements in each input')
-
+    no_flatten = traits.Bool(False, usedefault=True, desc='append to outlist instead of extending in vstack mode')
 
 class MergeOutputSpec(TraitedSpec):
     out = traits.List(desc='Merged output')
@@ -117,7 +117,7 @@ class Merge(IOBase):
             for idx in range(self.numinputs):
                 value = getattr(self.inputs, 'in%d' % (idx + 1))
                 if isdefined(value):
-                    if isinstance(value, list):
+                    if isinstance(value, list) and not self.inputs.no_flatten:
                         out.extend(value)
                     else:
                         out.append(value)
@@ -356,7 +356,7 @@ class Function(IOBase):
                     raise Exception('Interface Function does not accept ' \
                                         'function objects defined interactively in a python session')
             elif isinstance(function, str):
-                self.inputs.function_str = function
+                self.inputs.function_str = dumps(function)
             else:
                 raise Exception('Unknown type of function')
         self.inputs.on_trait_change(self._set_function_string, 'function_str')

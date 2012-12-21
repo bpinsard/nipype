@@ -63,7 +63,8 @@ def fix_keys_for_gexf(orig):
     for node in nodes:
         newnodedata = {}
         newnodedata.update(orig.node[node])
-        newnodedata['label'] = orig.node[node]['dn_fsname']
+        if orig.node[node].has_key('dn_fsname'):
+			newnodedata['label'] = orig.node[node]['dn_fsname']
         ntwk.add_node(str(node), newnodedata)
         if ntwk.node[str(node)].has_key('dn_position') and newnodedata.has_key('dn_position'):
             ntwk.node[str(node)]['dn_position'] = str(newnodedata['dn_position'])
@@ -124,7 +125,6 @@ def average_networks(in_files, ntwk_res_file, group_id):
                 if ntwk.has_edge(edge[0], edge[1]):
                     current = {}
                     current = ntwk.edge[edge[0]][edge[1]]
-                    #current['count'] = current['count'] + 1
                     data = add_dicts_by_key(current, data)
                 ntwk.add_edge(edge[0], edge[1], data)
             nodes = tmp.nodes_iter()
@@ -154,7 +154,6 @@ def average_networks(in_files, ntwk_res_file, group_id):
         for edge in edges:
             data = ntwk.edge[edge[0]][edge[1]]
             if ntwk.edge[edge[0]][edge[1]]['count'] >= count_to_keep_edge:
-                iflogger.info('Count: {c} is greater than or equal to the minimum, {n}, for edge {e1}-{e2}'.format(c=ntwk.edge[edge[0]][edge[1]]['count'], n=count_to_keep_edge, e1=edge[0], e2=edge[1]))
                 for key in data.keys():
                     if not key == 'count':
                         data[key] = data[key] / len(in_files)
@@ -276,11 +275,20 @@ def compute_singlevalued_measures(ntwk, weighted=True, calculate_cliques=False):
     measures['transitivity'] = nx.transitivity(ntwk)
     iflogger.info('...Computing number of connected_components...')
     measures['number_connected_components'] = nx.number_connected_components(ntwk)
+    iflogger.info('...Computing graph density...')
+    measures['graph_density'] = nx.density(ntwk)
+    iflogger.info('...Recording number of edges...')
+    measures['number_of_edges'] = nx.number_of_edges(ntwk)
+    iflogger.info('...Recording number of nodes...')
+    measures['number_of_nodes'] = nx.number_of_nodes(ntwk)
     iflogger.info('...Computing average clustering...')
     measures['average_clustering'] = nx.average_clustering(ntwk)
     if nx.is_connected(ntwk):
         iflogger.info('...Calculating average shortest path length...')
         measures['average_shortest_path_length'] = nx.average_shortest_path_length(ntwk, weighted)
+    else:
+        iflogger.info('...Calculating average shortest path length...')
+        measures['average_shortest_path_length'] = nx.average_shortest_path_length(nx.connected_component_subgraphs(ntwk)[0], weighted)
     if calculate_cliques:
         iflogger.info('...Computing graph clique number...')
         measures['graph_clique_number'] = nx.graph_clique_number(ntwk) #out of memory error
@@ -299,7 +307,6 @@ def compute_network_measures(ntwk):
 
 
 def add_node_data(node_array, ntwk):
-    ntwk = read_unknown_ntwk(ntwk)
     node_ntwk = nx.Graph()
     newdata = {}
     for idx, data in ntwk.nodes_iter(data=True):
@@ -311,7 +318,6 @@ def add_node_data(node_array, ntwk):
 
 
 def add_edge_data(edge_array, ntwk, above=0, below=0):
-    ntwk = read_unknown_ntwk(ntwk)
     edge_ntwk = ntwk.copy()
     data = {}
     for x, row in enumerate(edge_array):
@@ -395,7 +401,7 @@ class NetworkXMetrics(BaseInterface):
 
         node_measures = compute_node_measures(ntwk, calculate_cliques)
         for key in node_measures.keys():
-            newntwk = add_node_data(node_measures[key], self.inputs.in_file)
+            newntwk = add_node_data(node_measures[key], ntwk)
             out_file = op.abspath(self._gen_outfilename(key, 'pck'))
             nx.write_gpickle(newntwk, out_file)
             nodentwks.append(out_file)
@@ -409,7 +415,7 @@ class NetworkXMetrics(BaseInterface):
 
         edge_measures = compute_edge_measures(ntwk)
         for key in edge_measures.keys():
-            newntwk = add_edge_data(edge_measures[key], self.inputs.in_file)
+            newntwk = add_edge_data(edge_measures[key], ntwk)
             out_file = op.abspath(self._gen_outfilename(key, 'pck'))
             nx.write_gpickle(newntwk, out_file)
             edgentwks.append(out_file)
