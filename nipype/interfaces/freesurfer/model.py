@@ -756,7 +756,10 @@ class Label2Vol(FSCommand):
         if not isdefined(outfile):
             for key in ['label_file', 'annot_file', 'seg_file']:
                 if isdefined(getattr(self.inputs,key)):
-                    _, src = os.path.split(getattr(self.inputs, key))
+                    path = getattr(self.inputs, key)
+                    if isinstance(path,list):
+                        path = path[0]
+                    _, src = os.path.split(path)
             if isdefined(self.inputs.aparc_aseg):
                 src = 'aparc+aseg.mgz'
             outfile = fname_presuffix(src, suffix='_vol.nii.gz',
@@ -779,7 +782,14 @@ class MS_LDAInputSpec(FSTraitedSpec):
                         desc='filename for the LDA weights (input or output)')
     output_synth = traits.File(exists=False, argstr='-synth %s',
                                mandatory=True,
-                             desc='filename for the synthesized output volume')
+                               desc='filename for the synthesized output volume',
+                               deprecated='0.8',
+                               new_name='vol_synth_file',
+                               xor=['vol_synth_file', 'output_synth'])
+    vol_synth_file = traits.File(exists=False, argstr='-synth %s',
+                               mandatory=True,
+                               desc='filename for the synthesized output volume',
+                               xor=['vol_synth_file', 'output_synth'])
     label_file = traits.File(exists=True, argstr='-label %s',
                              desc='filename of the label volume')
     mask_file = traits.File(exists=True, argstr='-mask %s',
@@ -813,11 +823,11 @@ class MS_LDA(FSCommand):
     >>> zero_value = 1
     >>> optimalWeights = MS_LDA(lda_labels=[grey_label, white_label], \
                                 label_file='label.mgz', weight_file='weights.txt', \
-                                shift=zero_value, output_synth='synth_out.mgz', \
+                                shift=zero_value, vol_synth_file='synth_out.mgz', \
                                 conform=True, use_weights=True, \
                                 images=['FLASH1.mgz', 'FLASH2.mgz', 'FLASH3.mgz'])
     >>> optimalWeights.cmdline
-    'mri_ms_LDA -conform -label label.mgz -lda 2 3 -synth synth_out.mgz -shift 1 -W -weight weights.txt FLASH1.mgz FLASH2.mgz FLASH3.mgz'
+    'mri_ms_LDA -conform -label label.mgz -lda 2 3 -shift 1 -W -synth synth_out.mgz -weight weights.txt FLASH1.mgz FLASH2.mgz FLASH3.mgz'
     """
 
     _cmd = 'mri_ms_LDA'
@@ -826,7 +836,10 @@ class MS_LDA(FSCommand):
 
     def _list_outputs(self):
         outputs = self._outputs().get()
-        outputs['vol_synth_file'] = os.path.abspath(self.inputs.output_synth)
+        if isdefined(self.inputs.output_synth):
+            outputs['vol_synth_file'] = os.path.abspath(self.inputs.output_synth)
+        else:
+            outputs['vol_synth_file'] = os.path.abspath(self.inputs.vol_synth_file)
         if not isdefined(self.inputs.use_weights) or self.inputs.use_weights is False:
             outputs['weight_file'] = os.path.abspath(self.inputs.weight_file)
         return outputs

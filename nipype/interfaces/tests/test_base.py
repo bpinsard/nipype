@@ -9,6 +9,7 @@ from nipype.testing import (assert_equal, assert_not_equal, assert_raises,
                         skipif)
 import nipype.interfaces.base as nib
 from nipype.interfaces.base import Undefined, config
+from traits.testing.nose_tools import skip
 
 #test Bunch
 def test_bunch():
@@ -91,6 +92,19 @@ def test_TraitedSpec():
     #yield assert_equal, infields.hashval[1], hashval[1]
     yield assert_equal, infields.__repr__(), '\nfoo = 1\ngoo = 0.0\n'
 
+@skip
+def test_TraitedSpec_dynamic():
+    from cPickle import dumps, loads
+    a = nib.BaseTraitedSpec()
+    a.add_trait('foo', nib.traits.Int)
+    a.foo = 1
+    assign_a = lambda : setattr(a, 'foo', 'a')
+    yield assert_raises, Exception, assign_a
+    pkld_a = dumps(a)
+    unpkld_a = loads(pkld_a)
+    assign_a_again = lambda : setattr(unpkld_a, 'foo', 'a')
+    yield assert_raises, Exception, assign_a_again
+
 def test_TraitedSpec_logic():
     class spec3(nib.TraitedSpec):
         _xor_inputs = ('foo', 'bar')
@@ -118,6 +132,44 @@ def test_TraitedSpec_logic():
     myif.inputs.kung = 2
     yield assert_equal, myif.inputs.kung, 2.0
 
+def test_deprecation():
+    class DeprecationSpec1(nib.TraitedSpec):
+        foo = nib.traits.Int(deprecated='0.1')
+    spec_instance = DeprecationSpec1()
+    set_foo = lambda : setattr(spec_instance, 'foo', 1)
+    yield assert_raises, nib.TraitError, set_foo
+    class DeprecationSpec1numeric(nib.TraitedSpec):
+        foo = nib.traits.Int(deprecated='0.1')
+    spec_instance = DeprecationSpec1numeric()
+    set_foo = lambda : setattr(spec_instance, 'foo', 1)
+    yield assert_raises, nib.TraitError, set_foo
+    class DeprecationSpec2(nib.TraitedSpec):
+        foo = nib.traits.Int(deprecated='100', new_name='bar')
+    spec_instance = DeprecationSpec2()
+    set_foo = lambda : setattr(spec_instance, 'foo', 1)
+    yield assert_raises, nib.TraitError, set_foo
+    class DeprecationSpec3(nib.TraitedSpec):
+        foo = nib.traits.Int(deprecated='1000', new_name='bar')
+        bar = nib.traits.Int()
+    spec_instance = DeprecationSpec3()
+    not_raised = True
+    try:
+        spec_instance.foo = 1
+    except nib.TraitError:
+        not_raised = False
+    yield assert_true, not_raised
+    class DeprecationSpec3(nib.TraitedSpec):
+        foo = nib.traits.Int(deprecated='1000', new_name='bar')
+        bar = nib.traits.Int()
+    spec_instance = DeprecationSpec3()
+    not_raised = True
+    try:
+        spec_instance.foo = 1
+    except nib.TraitError:
+        not_raised = False
+    yield assert_true, not_raised
+    yield assert_equal, spec_instance.foo, Undefined
+    yield assert_equal, spec_instance.bar, 1
 
 def checknose():
     """check version of nose for known incompatability"""
@@ -153,6 +205,20 @@ def test_TraitedSpec_withNoFileHashing():
     infields = spec2(moo=nme, doo=[tmp_infile])
     hashval = infields.get_hashval(hash_method='content')
     yield assert_equal, hashval[1], '642c326a05add933e9cdc333ce2d0ac2'
+    
+    class spec3(nib.TraitedSpec):
+        moo = nib.File(exists=True, name_source="doo")
+        doo = nib.traits.List(nib.File(exists=True))
+    infields = spec3(moo=nme, doo=[tmp_infile])
+    hashval1 = infields.get_hashval(hash_method='content')
+    
+    class spec4(nib.TraitedSpec):
+        moo = nib.File(exists=True)
+        doo = nib.traits.List(nib.File(exists=True))
+    infields = spec4(moo=nme, doo=[tmp_infile])
+    hashval2 = infields.get_hashval(hash_method='content')
+    
+    yield assert_not_equal, hashval1[1],  hashval2[1]
     os.chdir(pwd)
     teardown_file(tmpd)
 
@@ -215,6 +281,117 @@ def test_BaseInterface():
     nib.BaseInterface.input_spec = None
     yield assert_raises, Exception, nib.BaseInterface
 
+def test_input_version():
+    class InputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int', min_ver='0.9')
+    class DerivedInterface1(nib.BaseInterface):
+        input_spec = InputSpec
+    obj = DerivedInterface1()
+    not_raised = True
+    try:
+        obj._check_version_requirements(obj.inputs)
+    except:
+        not_raised = False
+    yield assert_true, not_raised
+    config.set('execution', 'stop_on_unknown_version', True)
+    try:
+        obj._check_version_requirements(obj.inputs)
+    except:
+        not_raised = False
+    yield assert_false, not_raised
+    config.set_default_config()
+    class InputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int', min_ver='0.9')
+    class DerivedInterface1(nib.BaseInterface):
+        input_spec = InputSpec
+        _version = '0.8'
+    obj = DerivedInterface1()
+    obj.inputs.foo = 1
+    yield assert_raises, Exception, obj._check_version_requirements
+    class InputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int', min_ver='0.9')
+    class DerivedInterface1(nib.BaseInterface):
+        input_spec = InputSpec
+        _version = '0.10'
+    obj = DerivedInterface1()
+    not_raised = True
+    try:
+        obj._check_version_requirements(obj.inputs)
+    except:
+        not_raised = False
+    yield assert_true, not_raised
+    class InputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int', min_ver='0.9')
+    class DerivedInterface1(nib.BaseInterface):
+        input_spec = InputSpec
+        _version = '0.9'
+    obj = DerivedInterface1()
+    obj.inputs.foo = 1
+    not_raised = True
+    try:
+        obj._check_version_requirements(obj.inputs)
+    except:
+        not_raised = False
+    yield assert_true, not_raised
+    class InputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int', max_ver='0.7')
+    class DerivedInterface2(nib.BaseInterface):
+        input_spec = InputSpec
+        _version = '0.8'
+    obj = DerivedInterface2()
+    obj.inputs.foo = 1
+    yield assert_raises, Exception, obj._check_version_requirements
+    class InputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int', max_ver='0.9')
+    class DerivedInterface1(nib.BaseInterface):
+        input_spec = InputSpec
+        _version = '0.9'
+    obj = DerivedInterface1()
+    obj.inputs.foo = 1
+    not_raised = True
+    try:
+        obj._check_version_requirements(obj.inputs)
+    except:
+        not_raised = False
+    yield assert_true, not_raised
+
+def test_output_version():
+    class InputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int')
+    class OutputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int', min_ver='0.9')
+    class DerivedInterface1(nib.BaseInterface):
+        input_spec = InputSpec
+        output_spec = OutputSpec
+        _version = '0.10'
+    obj = DerivedInterface1()
+    yield assert_equal, obj._check_version_requirements(obj._outputs()), []
+
+    class InputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int')
+    class OutputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int', min_ver='0.11')
+    class DerivedInterface1(nib.BaseInterface):
+        input_spec = InputSpec
+        output_spec = OutputSpec
+        _version = '0.10'
+    obj = DerivedInterface1()
+    yield assert_equal, obj._check_version_requirements(obj._outputs()), ['foo']
+    class InputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int')
+    class OutputSpec(nib.TraitedSpec):
+        foo = nib.traits.Int(desc='a random int', min_ver='0.11')
+    class DerivedInterface1(nib.BaseInterface):
+        input_spec = InputSpec
+        output_spec = OutputSpec
+        _version = '0.10'
+        def _run_interface(self, runtime):
+            return runtime
+        def _list_outputs(self):
+            return {'foo': 1}
+    obj = DerivedInterface1()
+    yield assert_raises, KeyError, obj.run
+
 def test_Commandline():
     yield assert_raises, Exception, nib.CommandLine
     ci = nib.CommandLine(command='which')
@@ -236,6 +413,7 @@ def test_Commandline():
                               position=-1)
         noo = nib.traits.Int(argstr='-x %d', desc='an int')
         roo = nib.traits.Str(desc='not on command line')
+        soo = nib.traits.Bool(argstr="-soo")
     nib.CommandLine.input_spec = CommandLineInputSpec1
     ci4 = nib.CommandLine(command='cmd')
     ci4.inputs.foo = 'foo'
@@ -244,10 +422,15 @@ def test_Commandline():
     ci4.inputs.moo = [1, 2, 3]
     ci4.inputs.noo = 0
     ci4.inputs.roo = 'hello'
+    ci4.inputs.soo = False
     cmd = ci4._parse_inputs()
     yield assert_equal, cmd[0], '-g'
     yield assert_equal, cmd[-1], '-i 1 -i 2 -i 3'
     yield assert_true, 'hello' not in ' '.join(cmd)
+    yield assert_true, '-soo' not in ' '.join(cmd)
+    ci4.inputs.soo = True
+    cmd = ci4._parse_inputs()
+    yield assert_true, '-soo' in ' '.join(cmd)
 
     class CommandLineInputSpec2(nib.CommandLineInputSpec):
         foo = nib.File(argstr='%s', desc='a str', genfile=True)
