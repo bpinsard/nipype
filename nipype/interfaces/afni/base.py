@@ -213,7 +213,7 @@ class AFNIBaseCommand(CommandLine):
             fname = '%s[%s]'%(value[0],bricks)
             arg = trait_spec.argstr % fname
             return arg
-        return super(AFNICommand, self)._format_arg(name, trait_spec, value)
+        return super(AFNIBaseCommand, self)._format_arg(name, trait_spec, value)
 
 
 
