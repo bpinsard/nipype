@@ -5,12 +5,22 @@ import nipype.pipeline.engine as pe
 
 import nipype.interfaces.fsl as fsl
 import nipype.interfaces.freesurfer as fs
+import nipype.interfaces.meshfix as mf
 import nipype.interfaces.io as nio
 import nipype.interfaces.utility as niu
 import nipype.algorithms.misc as misc
 from nipype.interfaces.utility import Function
 from nipype.workflows.misc.utils import region_list_from_volume, id_list_from_lookup_table
 import os, os.path as op
+
+
+def get_aparc_aseg(files):
+    """Return the aparc+aseg.mgz file"""
+    for name in files:
+        if 'aparc+aseg' in name:
+            return name
+    raise ValueError('aparc+aseg.mgz not found')
+
 
 def create_getmask_flow(name='getmask', dilate_mask=True):
     """Registers a source file to freesurfer space and create a brain mask in
@@ -70,46 +80,40 @@ def create_getmask_flow(name='getmask', dilate_mask=True):
     """
     Define all the nodes of the workflow:
 
-      fssource: used to retrieve aseg.mgz
-      threshold : binarize aseg
-      register : coregister source file to freesurfer space
-      voltransform: convert binarized aparc+aseg to source file space
-
+    fssource: used to retrieve aseg.mgz
+    threshold : binarize aseg
+    register : coregister source file to freesurfer space
+    voltransform: convert binarized aseg to source file space
     """
 
     fssource = pe.Node(nio.FreeSurferSource(),
-                       name = 'fssource')
+        name = 'fssource')
     threshold = pe.Node(fs.Binarize(min=0.5, out_type='nii'),
-                        name='threshold')
+        name='threshold')
     register = pe.MapNode(fs.BBRegister(init='fsl'),
-                          iterfield=['source_file'],
-                          name='register')
+        iterfield=['source_file'],
+        name='register')
     voltransform = pe.MapNode(fs.ApplyVolTransform(inverse=True),
-                              iterfield=['source_file', 'reg_file'],
-                              name='transform')
+        iterfield=['source_file', 'reg_file'],
+        name='transform')
 
     """
     Connect the nodes
     """
-    def get_aparc_aseg(files):
-        for name in files:
-            if 'aparc+aseg' in name:
-                return name
-        raise ValueError('aparc+aseg.mgz not found')
 
     getmask.connect([
-            (inputnode, fssource, [('subject_id','subject_id'),
-                                   ('subjects_dir','subjects_dir')]),
-            (inputnode, register, [('source_file', 'source_file'),
-                                   ('subject_id', 'subject_id'),
-                                   ('subjects_dir', 'subjects_dir'),
-                                   ('contrast_type', 'contrast_type')]),
-            (inputnode, voltransform, [('subjects_dir', 'subjects_dir'),
-                                       ('source_file', 'source_file')]),
-            (fssource, threshold, [(('aparc_aseg', get_aparc_aseg), 'in_file')]),
-            (register, voltransform, [('out_reg_file','reg_file')]),
-            (threshold, voltransform, [('binary_file','target_file')])
-            ])
+        (inputnode, fssource, [('subject_id','subject_id'),
+            ('subjects_dir','subjects_dir')]),
+        (inputnode, register, [('source_file', 'source_file'),
+            ('subject_id', 'subject_id'),
+            ('subjects_dir', 'subjects_dir'),
+            ('contrast_type', 'contrast_type')]),
+        (inputnode, voltransform, [('subjects_dir', 'subjects_dir'),
+            ('source_file', 'source_file')]),
+        (fssource, threshold, [(('aparc_aseg', get_aparc_aseg), 'in_file')]),
+        (register, voltransform, [('out_reg_file','reg_file')]),
+        (threshold, voltransform, [('binary_file','target_file')])
+    ])
 
 
     """
@@ -120,35 +124,28 @@ def create_getmask_flow(name='getmask', dilate_mask=True):
     """
 
     threshold2 = pe.MapNode(fs.Binarize(min=0.5, out_type='nii'),
-                            iterfield=['in_file'],
-                        name='threshold2')
+        iterfield=['in_file'],
+        name='threshold2')
     if dilate_mask:
-        dilate = pe.MapNode(fsl.maths.DilateImage(operation='max'),
-                            iterfield=['in_file'],
-                            name='dilate')
-        getmask.connect([
-            (voltransform, dilate, [('transformed_file', 'in_file')]),
-            (dilate, threshold2, [('out_file', 'in_file')]),
-            ])
-    else:
-        getmask.connect([
-            (voltransform, threshold2, [('transformed_file', 'in_file')])
-            ])
+        threshold2.inputs.dilate = 1
+    getmask.connect([
+        (voltransform, threshold2, [('transformed_file', 'in_file')])
+    ])
 
     """
     Setup an outputnode that defines relevant inputs of the workflow.
     """
 
     outputnode = pe.Node(niu.IdentityInterface(fields=["mask_file",
-                                                        "reg_file",
-                                                        "reg_cost"
-                                                        ]),
-                         name="outputspec")
+                                                       "reg_file",
+                                                       "reg_cost"
+    ]),
+        name="outputspec")
     getmask.connect([
-            (register, outputnode, [("out_reg_file", "reg_file")]),
-            (register, outputnode, [("min_cost_file", "reg_cost")]),
-            (threshold2, outputnode, [("binary_file", "mask_file")]),
-            ])
+        (register, outputnode, [("out_reg_file", "reg_file")]),
+        (register, outputnode, [("min_cost_file", "reg_cost")]),
+        (threshold2, outputnode, [("binary_file", "mask_file")]),
+    ])
     return getmask
 
 def create_get_stats_flow(name='getstats', withreg=False):
@@ -316,15 +313,18 @@ def create_tessellation_flow(name='tessellate', out_format='stl'):
     tessellate = pe.MapNode(fs.MRIMarchingCubes(),
                         iterfield=['label_value','out_file'],
                         name='tessellate')
-    surfconvert = pe.MapNode(fs.MRIsConvert(out_datatype=out_format),
+    surfconvert = pe.MapNode(fs.MRIsConvert(out_datatype='stl'),
                           iterfield=['in_file'],
                           name='surfconvert')
-    smoother = pe.MapNode(fs.SmoothTessellation(),
-                          iterfield=['in_file'],
+    smoother = pe.MapNode(mf.MeshFix(),
+			  iterfield=['in_file1'],
                           name='smoother')
-
-    smoother.inputs.curvature_averaging_iterations = 1
-    smoother.inputs.smoothing_iterations = 1
+    if out_format == 'gii':
+	stl_to_gifti = pe.MapNode(fs.MRIsConvert(out_datatype=out_format),
+			      iterfield=['in_file'],
+			      name='stl_to_gifti')
+    smoother.inputs.save_as_stl = True
+    smoother.inputs.laplacian_smoothing_steps = 1
 
     region_list_from_volume_interface = Function(input_names=["in_file"],
                              output_names=["region_list"],
@@ -352,7 +352,7 @@ def create_tessellation_flow(name='tessellate', out_format='stl'):
             (id_list_from_lookup_table_node, tessellate, [('id_list', 'out_file')]),
             (fssource, tessellate, [('aseg', 'in_file')]),
             (tessellate, surfconvert, [('surface','in_file')]),
-            (surfconvert, smoother, [('converted','in_file')]),
+	    (surfconvert, smoother, [('converted','in_file1')]),
             ])
 
     """
@@ -360,8 +360,17 @@ def create_tessellation_flow(name='tessellate', out_format='stl'):
     """
 
     outputnode = pe.Node(niu.IdentityInterface(fields=["meshes"]),
-                         name="outputspec")
-    tessflow.connect([
-            (smoother, outputnode, [("surface", "meshes")]),
+			 name="outputspec")
+
+    if out_format == 'gii':
+	tessflow.connect([
+	    (smoother, stl_to_gifti, [("mesh_file", "in_file")]),
+	    ])
+	tessflow.connect([
+	    (stl_to_gifti, outputnode, [("converted", "meshes")]),
+	    ])
+    else:
+	tessflow.connect([
+	    (smoother, outputnode, [("mesh_file", "meshes")]),
             ])
     return tessflow

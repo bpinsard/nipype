@@ -308,7 +308,7 @@ class SurfaceTransformInputSpec(FSTraitedSpec):
                                    help="subject id of target surface")
     target_ico_order = traits.Enum(1, 2, 3, 4, 5, 6, 7, argstr="--trgicoorder %d",
                                    help="order of the icosahedron if target_subject is 'ico'")
-    source_type = traits.Enum(filetypes, argstr='--sfmt %s', requires=['source_file'], 
+    source_type = traits.Enum(filetypes, argstr='--sfmt %s', requires=['source_file'],
                               help="source file format")
     target_type = traits.Enum(filetypes, argstr='--tfmt %s', help="output format")
     reshape = traits.Bool(argstr="--reshape", help="reshape output surface to conform with Nifti")
@@ -923,9 +923,9 @@ class SmoothTessellationInputSpec(FSTraitedSpec):
     normalize_area = traits.Bool(argstr='-area', desc='Normalizes the area after smoothing')
     use_momentum = traits.Bool(argstr='-m', desc='Uses momentum')
 
-    out_file = File(argstr='./%s', position=2, genfile=True, desc='output filename or True to generate one')
-    out_curvature_file = File(argstr='-c ./%s', desc='Write curvature to ?h.curvname (default "curv")')
-    out_area_file = File(argstr='-b ./%s', desc='Write area to ?h.areaname (default "area")')
+    out_file = File(argstr='%s', position=2, genfile=True, desc='output filename or True to generate one')
+    out_curvature_file = File(argstr='-c %s', desc='Write curvature to ?h.curvname (default "curv")')
+    out_area_file = File(argstr='-b %s', desc='Write area to ?h.areaname (default "area")')
 
 class SmoothTessellationOutputSpec(TraitedSpec):
     """
@@ -972,6 +972,15 @@ class SmoothTessellation(FSCommand):
         else:
             _, name, ext = split_filename(self.inputs.in_file)
             return os.path.abspath(name + '_smoothed' + ext)
+    
+    def _run_interface(self, runtime):
+        # The returncode is meaningless in BET.  So check the output
+        # in stderr and if it's set, then update the returncode
+        # accordingly.
+        runtime = super(SmoothTessellation, self)._run_interface(runtime)
+        if "failed" in runtime.stderr:
+            self.raise_exception(runtime)
+        return runtime
 
 
 class MakeAverageSubjectInputSpec(FSTraitedSpec):
@@ -988,7 +997,7 @@ class MakeAverageSubjectOutputSpec(TraitedSpec):
 
 class MakeAverageSubject(FSCommand):
     """Make an average freesurfer subject
-    
+
     Examples
     --------
 

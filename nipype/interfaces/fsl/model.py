@@ -1285,28 +1285,28 @@ class ClusterInputSpec(FSLCommandInputSpec):
                              desc='threshold for input volume')
     out_index_file = traits.Either(traits.Bool, File,
                                    argstr='--oindex=%s',
-                                   desc='output of cluster index (in size order)')
+                                   desc='output of cluster index (in size order)', hash_files=False)
     out_threshold_file = traits.Either(traits.Bool, File,
                                        argstr='--othresh=%s',
-                                       desc='thresholded image')
+                                       desc='thresholded image', hash_files=False)
     out_localmax_txt_file = traits.Either(traits.Bool, File,
                                           argstr='--olmax=%s',
-                                          desc='local maxima text file')
+                                          desc='local maxima text file', hash_files=False)
     out_localmax_vol_file = traits.Either(traits.Bool, File,
                                           argstr='--olmaxim=%s',
-                                          desc='output of local maxima volume')
+                                          desc='output of local maxima volume', hash_files=False)
     out_size_file = traits.Either(traits.Bool, File,
                                   argstr='--osize=%s',
-                                  desc='filename for output of size image')
+                                  desc='filename for output of size image', hash_files=False)
     out_max_file = traits.Either(traits.Bool, File,
                                  argstr='--omax=%s',
-                                 desc='filename for output of max image')
+                                 desc='filename for output of max image', hash_files=False)
     out_mean_file = traits.Either(traits.Bool, File,
                                   argstr='--omean=%s',
-                                  desc='filename for output of mean image')
+                                  desc='filename for output of mean image', hash_files=False)
     out_pval_file = traits.Either(traits.Bool, File,
                                   argstr='--opvals=%s',
-                                  desc='filename for image output of log pvals')
+                                  desc='filename for image output of log pvals', hash_files=False)
     pthreshold = traits.Float(argstr='--pthresh=%.10f',
                               requires=['dlh', 'volume'],
                               desc='p-threshold for clusters')
@@ -1387,7 +1387,7 @@ class Cluster(FSLCommand):
                                                           suffix='_' + suffix,
                                                           change_ext=change_ext)
                 else:
-                    outputs[outkey] = inval
+                    outputs[outkey] = os.pardir.abspath(inval)
         return outputs
 
     def _format_arg(self, name, spec, value):
@@ -1403,15 +1403,15 @@ class Cluster(FSLCommand):
 class RandomiseInputSpec(FSLCommandInputSpec):
     in_file = File(exists=True, desc='4D input file', argstr='-i %s', position=0, mandatory=True)
     base_name = traits.Str('tbss_', desc='the rootname that all generated files will have',
-                          argstr='-o %s', position=1, usedefault=True)
-    design_mat = File(exists=True, desc='design matrix file', argstr='-d %s', position=2, mandatory=True)
-    tcon = File(exists=True, desc='t contrasts file', argstr='-t %s', position=3, mandatory=True)
+                          argstr='-o "%s"', position=1, usedefault=True)
+    design_mat = File(exists=True, desc='design matrix file', argstr='-d %s', position=2)
+    tcon = File(exists=True, desc='t contrasts file', argstr='-t %s', position=3)
     fcon = File(exists=True, desc='f contrasts file', argstr='-f %s')
     mask = File(exists=True, desc='mask image', argstr='-m %s')
     x_block_labels = File(exists=True, desc='exchangeability block labels file', argstr='-e %s')
     demean = traits.Bool(desc='demean data temporally before model fitting', argstr='-D')
     one_sample_group_mean = traits.Bool(desc='perform 1-sample group-mean test instead of generic permutation test',
-                                  argstr='-l')
+                                  argstr='-1')
     show_total_perms = traits.Bool(desc='print out how many unique permutations would be generated and exit',
                                  argstr='-q')
     show_info_parallel_mode = traits.Bool(desc='print out information required for parallel mode and exit',
@@ -1487,11 +1487,9 @@ class Randomise(FSLCommand):
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
-        outputs['tstat_files'] = glob(os.path.join(
-                os.getcwd(),
+        outputs['tstat_files'] = glob(self._gen_fname(\
                 '%s_tstat*.nii' % self.inputs.base_name))
-        outputs['fstat_files'] = glob(os.path.join(
-                os.getcwd(),
+        outputs['fstat_files'] = glob(self._gen_fname(\
                 '%s_fstat*.nii' % self.inputs.base_name))
         prefix = False
         if self.inputs.tfce or self.inputs.tfce2D:
@@ -1503,18 +1501,13 @@ class Randomise(FSLCommand):
         elif self.inputs.cm_thresh or self.inputs.f_cm_thresh:
             prefix = 'clusterm'
         if prefix:
-            outputs['t_p_files'] = glob(os.path.join(
-                os.getcwd(),
-                '%s_%s_p_tstat*.nii' % (self.inputs.base_name, prefix)))
-            outputs['t_corrected_p_files'] = glob(os.path.join(
-                os.getcwd(),
+            outputs['t_p_files'] = glob(self._gen_fname(\
+                     '%s_%s_p_tstat*' % (self.inputs.base_name, prefix)))
+            outputs['t_corrected_p_files'] = glob(self._gen_fname(\
                 '%s_%s_corrp_tstat*.nii' % (self.inputs.base_name, prefix)))
 
-            outputs['f_p_files'] = glob(os.path.join(
-                os.getcwd(),
+            outputs['f_p_files'] = glob(self._gen_fname(\
                 '%s_%s_p_fstat*.nii' % (self.inputs.base_name, prefix)))
-            outputs['f_corrected_p_files'] = glob(os.path.join(
-                os.getcwd(),
+            outputs['f_corrected_p_files'] = glob(self._gen_fname(\
                 '%s_%s_corrp_fstat*.nii' % (self.inputs.base_name, prefix)))
-
         return outputs

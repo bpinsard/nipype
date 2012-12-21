@@ -1,3 +1,11 @@
+"""
+    Change directory to provide relative paths for doctests
+    >>> import os
+    >>> filepath = os.path.dirname( os.path.realpath( __file__ ) )
+    >>> datadir = os.path.realpath(os.path.join(filepath, '../../testing/data'))
+    >>> os.chdir(datadir)
+
+"""
 import warnings
 
 import nibabel as nb
@@ -50,6 +58,8 @@ class Similarity(BaseInterface):
     >>> similarity = Similarity()
     >>> similarity.inputs.volume1 = 'rc1s1.nii'
     >>> similarity.inputs.volume2 = 'rc1s2.nii'
+    >>> similarity.inputs.mask1 = 'mask.nii'
+    >>> similarity.inputs.mask2 = 'mask.nii'
     >>> similarity.inputs.metric = 'cr'
     >>> res = similarity.run() # doctest: +SKIP
     """
@@ -61,14 +71,14 @@ class Similarity(BaseInterface):
 
         vol1_nii = nb.load(self.inputs.volume1)
         vol2_nii = nb.load(self.inputs.volume2)
-        
+
         if isdefined(self.inputs.mask1):
             mask1_nii = nb.load(self.inputs.mask1)
             mask1_nii = nb.Nifti1Image(nb.load(self.inputs.mask1).get_data() == 1, mask1_nii.get_affine(),
                                        mask1_nii.get_header())
         else:
             mask1_nii = None
-            
+
         if isdefined(self.inputs.mask2):
             mask2_nii = nb.load(self.inputs.mask2)
             mask2_nii = nb.Nifti1Image(nb.load(self.inputs.mask2).get_data() == 1, mask2_nii.get_affine(),

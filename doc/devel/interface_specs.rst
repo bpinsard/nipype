@@ -194,6 +194,9 @@ Common
 	    TraitError: The 'infile' trait of a BetInputSpec instance must be a file 
 	    name, but a value of 'does_not_exist.nii' <type 'str'> was specified.
 	    
+``hash_files``
+	To be used with inputs that are defining output filenames. When this flag is set to false any Nipype will not try to hash any files described by this input. This is useful to avoid rerunning when the specified output file already exists and has changed.
+	    
 ``desc``
 	All trait objects have a set of default metadata attributes.  ``desc``
 	is one of those and is used as a simple, one-line docstring.  The
@@ -259,7 +262,50 @@ Common
 	can be set to either `True` or `False`. `False` indicates that contents 
 	should be symlinked, while `True` indicates that the contents should be 
 	copied over.
-	
+
+``min_ver`` and ``max_ver``
+    These metadata determine if a particular trait will be available when a
+    given version of the underlying interface runs. Note that this check is
+    performed at runtime.::
+
+	    class RealignInputSpec(BaseInterfaceInputSpec):
+	        jobtype = traits.Enum('estwrite', 'estimate', 'write', min_ver='5',
+	                              usedefault=True)
+``deprecated`` and ``new_name``
+    This is metadata for removing or renaming an input field from a spec.::
+
+        class RealignInputSpec(BaseInterfaceInputSpec):
+            jobtype = traits.Enum('estwrite', 'estimate', 'write',
+                                  deprecated='0.8',
+                                  desc='one of: estimate, write, estwrite',
+                                  usedefault=True)
+
+    In the above example this means that the `jobtype` input is deprecated and
+    will be removed in version 0.8. Deprecation should be set to two versions
+    from current release. Raises `TraitError` after package version crosses the
+    deprecation version.
+
+    For inputs that are being renamed, one can specify the new name of the
+    field.::
+
+        class RealignInputSpec(BaseInterfaceInputSpec):
+            jobtype = traits.Enum('estwrite', 'estimate', 'write',
+                                  deprecated='0.8', new_name='job_type',
+                                  desc='one of: estimate, write, estwrite',
+                                  usedefault=True)
+            job_type = traits.Enum('estwrite', 'estimate', 'write',
+                                  desc='one of: estimate, write, estwrite',
+                                  usedefault=True)
+
+    In the above example, the `jobtype` field is being renamed to `job_type`.
+    When `new_name` is provided it must exist as a trait, otherwise an exception
+    will be raised.
+
+.. note::
+
+   The version information for `min_ver`, `max_ver` and `deprecated` has to be
+   provided as a string. For example, `min_ver='0.1'`.
+
 CommandLine
 ^^^^^^^^^^^
 
