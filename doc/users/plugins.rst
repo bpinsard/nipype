@@ -71,11 +71,17 @@ a local system.
 
 Optional arguments::
 
-  n_procs :  Number of processes to launch in parallel
+  n_procs :  Number of processes to launch in parallel, if not set number of 
+  processors/threads will be automatically detected
 
 To distribute processing on a multicore machine, simply call::
 
-  workflow.run(plugin='MultiProc', plugin_args={'n_procs' : 2})
+  workflow.run(plugin='MultiProc')
+
+This will use all available CPUs. If on the other hand you would like to restrict
+the number of used resources (to say 2 CPUs), you can call::
+
+  workflow.run(plugin='MultiProc', plugin_args={'n_procs' : 2}
 
 IPython
 -------

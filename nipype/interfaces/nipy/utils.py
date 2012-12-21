@@ -1,3 +1,12 @@
+
+"""
+    Change directory to provide relative paths for doctests
+    >>> import os
+    >>> filepath = os.path.dirname( os.path.realpath( __file__ ) )
+    >>> datadir = os.path.realpath(os.path.join(filepath, '../../testing/data'))
+    >>> os.chdir(datadir)
+
+"""
 import os
 import warnings
 
@@ -61,6 +70,8 @@ class Similarity(BaseInterface):
     >>> similarity = Similarity()
     >>> similarity.inputs.volume1 = 'rc1s1.nii'
     >>> similarity.inputs.volume2 = 'rc1s2.nii'
+    >>> similarity.inputs.mask1 = 'mask.nii'
+    >>> similarity.inputs.mask2 = 'mask.nii'
     >>> similarity.inputs.metric = 'cr'
     >>> res = similarity.run() # doctest: +SKIP
     """
