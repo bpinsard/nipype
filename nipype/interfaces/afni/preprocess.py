@@ -1694,7 +1694,7 @@ class TCorrMap(AFNICommand):
 class AutoboxInputSpec(AFNICommandInputSpec):
     in_file = File(exists=True, mandatory=True, argstr='-input %s')
     padding = traits.Int(argstr='-npad %d')
-    out_file = File(argstr="-prefix %s")
+    out_file = File(argstr="-prefix %s", name_source="in_file")
     no_clustering = traits.Bool(argstr='-noclust')
 
 class AutoboxOuputSpec(TraitedSpec): # out_file not mandatory
