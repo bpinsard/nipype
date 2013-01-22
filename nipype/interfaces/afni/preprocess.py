@@ -1697,7 +1697,7 @@ class AutoboxInputSpec(AFNICommandInputSpec):
     out_file = File(argstr="-prefix %s")
     no_clustering = traits.Bool(argstr='-noclust')
 
-class AutoboxOuputSpec(AFNICommandOutputSpec):
+class AutoboxOuputSpec(TraitedSpec): # out_file not mandatory
     x_min = traits.Int()
     x_max = traits.Int()
     y_min = traits.Int()
@@ -1705,7 +1705,7 @@ class AutoboxOuputSpec(AFNICommandOutputSpec):
     z_min = traits.Int()
     z_max = traits.Int()
 
-    out_file = File()
+    out_file = File(desc='output file')
 
 class Autobox(AFNICommand):
     _cmd = '3dAutobox'
@@ -1722,6 +1722,10 @@ class Autobox(AFNICommand):
                 for k in d.keys():
                     d[k]=int(d[k])
                 outputs.set(**d)
-        if isdefined(self.inputs.out_file):
-            outputs.set(out_file = os.path.abspath(self.inputs.out_file))
+        outputs.set(out_file=self._gen_filename('out_file'))
         return outputs
+
+    def _gen_filename(self, name):
+        if name=='out_file' and (not isdefined(self.inputs.out_file)):
+            return Undefined
+        return super(Autobox,self)._gen_filename(name)
