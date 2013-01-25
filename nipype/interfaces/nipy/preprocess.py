@@ -14,7 +14,7 @@ import numpy as np
 
 from ...utils.misc import package_check
 from ...utils.filemanip import split_filename, fname_presuffix
-
+from .base import *
 
 try:
     package_check('nipy')
@@ -202,10 +202,7 @@ class TrimInputSpec(BaseInterfaceInputSpec):
     end_index = traits.Int(
         0, usedefault=True,
         desc='last volume indexed as in python (and 0 for last)')
-    out_file = File(desc='output filename')
-    suffix = traits.Str(
-        '_trim', usedefault=True,
-        desc='suffix for out_file to use if no out_file provided')
+    out_file = File('%s_trim', desc='output filename', source_name='in_file')
 
 
 class TrimOutputSpec(TraitedSpec):
@@ -253,13 +250,11 @@ class Trim(BaseInterface):
         outputs['out_file'] = os.path.abspath(outputs['out_file'])
         return outputs
 
-class CropInputSpec(BaseInterfaceInputSpec):
-    in_file = File(desc='input file',exists=True,mandatory=True)
-    out_file = File(desc='output file')
-
-    suffix = traits.Str(
-        '_crop', usedefault=True,
-        desc='suffix for out_file to use if no out_file provided')
+class CropInputSpec(NipyBaseInterfaceInputSpec):
+    in_file = File(desc='input file', exists=True, mandatory=True,)
+    out_file = File('%s_crop', desc='output file',
+                    overload_extension=True,
+                    name_source='in_file')
 
     x_min = traits.Int(0, usedefault=True)
     x_max = traits.Either(None,traits.Int, usedefault=True)
@@ -271,7 +266,7 @@ class CropInputSpec(BaseInterfaceInputSpec):
 class CropOutputSpec(TraitedSpec):
     out_file = File(desc='output file')
 
-class Crop(BaseInterface):
+class Crop(NipyBaseInterface):
     """ Simple interface to crop a volume using voxel space
     contrary to afni.Autobox or afni.Resample this keep the oblique matrices
 
@@ -300,16 +295,4 @@ class Crop(BaseInterface):
         out_file.set_data_dtype(in_file.get_data_dtype())
         out_filename = self._list_outputs()['out_file']
         nb.save(out_file,out_filename)
-        return runtime
-
-    def _list_outputs(self):
-        outputs = self.output_spec().get()
-        outputs['out_file'] = self.inputs.out_file
-        if not isdefined(outputs['out_file']):
-            outputs['out_file'] = fname_presuffix(
-                self.inputs.in_file,
-                newpath=os.getcwd(),
-                suffix=self.inputs.suffix)
-        outputs['out_file'] = os.path.abspath(outputs['out_file'])
-        return outputs
-    
+        return runtime    
