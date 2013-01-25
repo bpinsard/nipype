@@ -297,6 +297,7 @@ class Crop(BaseInterface):
         orig_coords = mat.dot([s.start for s in slices]+[1]).ravel()[:3]
         mat[:3,3] = orig_coords
         out_file = nb.Nifti1Image(data,mat)
+        out_file.set_data_dtype(in_file.get_data_dtype())
         out_filename = self._list_outputs()['out_file']
         nb.save(out_file,out_filename)
         return runtime
