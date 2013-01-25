@@ -262,11 +262,11 @@ class CropInputSpec(BaseInterfaceInputSpec):
         desc='suffix for out_file to use if no out_file provided')
 
     x_min = traits.Int(0, usedefault=True)
-    x_max = traits.Int(None, usedefault=True)
+    x_max = traits.Either(None,traits.Int, usedefault=True)
     y_min = traits.Int(0, usedefault=True)
-    y_max = traits.Int(None, usedefault=True)
+    y_max = traits.Either(None,traits.Int, usedefault=True)
     z_min = traits.Int(0, usedefault=True)
-    z_max = traits.Int(None, usedefault=True)
+    z_max = traits.Either(None,traits.Int, usedefault=True)
 
 class CropOutputSpec(TraitedSpec):
     out_file = File(desc='output file')
