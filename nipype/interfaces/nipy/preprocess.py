@@ -252,3 +252,63 @@ class Trim(BaseInterface):
                 suffix=self.inputs.suffix)
         outputs['out_file'] = os.path.abspath(outputs['out_file'])
         return outputs
+
+class CropInputSpec(BaseInterfaceInputSpec):
+    in_file = File(desc='input file',exists=True,mandatory=True)
+    out_file = File(desc='output file')
+
+    suffix = traits.Str(
+        '_crop', usedefault=True,
+        desc='suffix for out_file to use if no out_file provided')
+
+    x_min = traits.Int(0, usedefault=True)
+    x_max = traits.Int(None, usedefault=True)
+    y_min = traits.Int(0, usedefault=True)
+    y_max = traits.Int(None, usedefault=True)
+    z_min = traits.Int(0, usedefault=True)
+    z_max = traits.Int(None, usedefault=True)
+
+class CropOutputSpec(TraitedSpec):
+    out_file = File(desc='output file')
+
+class Crop(BaseInterface):
+    """ Simple interface to crop a volume using voxel space
+    contrary to afni.Autobox or afni.Resample this keep the oblique matrices
+
+    Examples
+    --------
+    >>> from nipype.interfaces.nipy.preprocess import Crop
+    >>> crop = Crop(x_min=10,x_min=-10,x_max=-10)
+    >>> crop.inputs.in_file = 'anatomical.nii'
+    >>> res = crop.run() # doctest: +SKIP
+
+    """
+    
+    input_spec = CropInputSpec
+    output_spec = CropOutputSpec
+    
+    def _run_interface(self, runtime):
+        in_file = nb.load(self.inputs.in_file)
+        mat = in_file.get_affine().copy()
+        slices = [slice(self.inputs.x_min,self.inputs.x_max),
+                  slice(self.inputs.y_min,self.inputs.y_max),
+                  slice(self.inputs.z_min,self.inputs.z_max),]
+        data = in_file.get_data()[slices]
+        orig_coords = mat.dot([s.start for s in slices]+[1]).ravel()[:3]
+        mat[:3,3] = orig_coords
+        out_file = nb.Nifti1Image(data,mat)
+        out_filename = self._list_outputs()['out_file']
+        nb.save(out_file,out_filename)
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['out_file'] = self.inputs.out_file
+        if not isdefined(outputs['out_file']):
+            outputs['out_file'] = fname_presuffix(
+                self.inputs.in_file,
+                newpath=os.getcwd(),
+                suffix=self.inputs.suffix)
+        outputs['out_file'] = os.path.abspath(outputs['out_file'])
+        return outputs
+    
