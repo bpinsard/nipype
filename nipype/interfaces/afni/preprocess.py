@@ -753,36 +753,36 @@ class Fourier(AFNICommand):
 
 
 class BandpassInputSpec(AFNICommandInputSpec):
-    in_file = File(desc='input file to 3dBandpass',
+    in_file = File(
+        desc='input file to 3dBandpass',
         argstr='%s',
         position=-1,
         mandatory=True,
         exists=True)
-    out_file = File(desc='output file from 3dBandpass',
-         argstr='-prefix %s',
-         position=1 ,
-         genfile=True)
-    lowpass = traits.Float(desc='lowpass',
+    out_file = File(
+        '%s_bp',
+        desc='output file from 3dBandpass',
+        argstr='-prefix %s',
+        position=1 ,
+        name_source='in_file',
+        genfile=True,
+        usedefault=True)
+    lowpass = traits.Float(
+        desc='lowpass',
         argstr='%f',
         position=-2,
         mandatory=True)
-    highpass = traits.Float(desc='highpass',
+    highpass = traits.Float(
+        desc='highpass',
         argstr='%f',
         position=-3,
         mandatory=True)
-    other = traits.Str(desc='other options',
-        argstr='%s')
-    mask = File(desc='mask file',
+    mask = File(
+        desc='mask file',
         position=2,
         argstr='-mask %s',
         exists=True)
-    suffix = traits.Str('_bandpass', desc="out_file suffix", usedefault=True)
-    
-class BandpassOutputSpec(AFNICommandOutputSpec):
-    out_file = File(desc='band-pass filtered file',
-        exists=True)
-
-
+  
 class Bandpass(AFNICommand):
     """Program to lowpass and/or highpass each voxel time series in a
     dataset, offering more/different options than Fourier
@@ -805,22 +805,8 @@ class Bandpass(AFNICommand):
 
     _cmd = '3dBandpass'
     input_spec = BandpassInputSpec
-    output_spec = BandpassOutputSpec
+    output_spec = AFNICommandOutputSpec
 
-
-    def _list_outputs(self):
-        outputs = self.output_spec().get()
-
-        if not isdefined(self.inputs.out_file):
-            outputs['out_file'] = self._gen_fname(self.inputs.in_file,
-                                                  suffix=self.inputs.suffix)
-        else:
-            outputs['out_file'] = os.path.abspath(self.inputs.out_file)
-        return outputs
-
-    def _gen_filename(self, name):
-        if name == 'out_file':
-            return self._list_outputs()[name]
 
 class ZCutUpInputSpec(AFNICommandInputSpec):
     in_file = File(desc='input file to 3dZcutup',
@@ -868,10 +854,12 @@ class AllineateInputSpec(AFNICommandInputSpec):
         argstr='-base %s',
         desc="""file to be used as reference, the first volume will be used
 if not given the reference will be the first volume of in_file.""")
-    out_file = File(desc='output file from 3dAllineate',
-         argstr='-prefix %s',
-         position=-2,
-         genfile=True)
+    out_file = File(
+        desc='output file from 3dAllineate',
+        argstr='-prefix %s',
+        position=-2,
+        name_source='%s_allineate',
+        genfile=True)
     suffix = traits.Str('_allineate', desc="out_file suffix", usedefault=True)
 
     out_param_file = File(
@@ -1047,12 +1035,8 @@ if not given the reference will be the first volume of in_file.""")
         desc='To fix non-linear warp dependency along directions.')
 
 class AllineateOutputSpec(TraitedSpec):
-    out_file = File("%s_allineate", desc='output image file name',
-        argstr='-prefix %s', name_source="in_file", usedefault=True)
-    matrix = File(desc='matrix to align input file',
-        argstr='-1dmatrix_apply %s',
-        position=-3,
-        exists=True)
+    out_file = File(desc='output image file name')
+    matrix = File(desc='matrix to align input file')
 
 class Allineate(AFNICommand):
     """Program to align one dataset (the 'source') to a base dataset
@@ -1533,8 +1517,10 @@ class BlurInMaskInputSpec(AFNICommandInputSpec):
         mandatory=True,
         exists=True)
     out_file = File(
+        '%s_blur',
         desc='output to the file',
         argstr='-prefix %s',
+        name_source='in_file',
         position=-1,
         genfile=True)
     mask = File(
