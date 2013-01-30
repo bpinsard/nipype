@@ -263,6 +263,9 @@ class CropInputSpec(NipyBaseInterfaceInputSpec):
     z_min = traits.Int(0, usedefault=True)
     z_max = traits.Either(None,traits.Int, usedefault=True)
 
+    padding = traits.Int(0,usedefault=True,
+                         desc='add n voxels of padding in each direction',)
+
 class CropOutputSpec(TraitedSpec):
     out_file = File(desc='output file')
 
@@ -285,9 +288,21 @@ class Crop(NipyBaseInterface):
     def _run_interface(self, runtime):
         in_file = nb.load(self.inputs.in_file)
         mat = in_file.get_affine().copy()
-        slices = [slice(self.inputs.x_min,self.inputs.x_max),
-                  slice(self.inputs.y_min,self.inputs.y_max),
-                  slice(self.inputs.z_min,self.inputs.z_max),]
+        pad = self.inputs.padding
+        x_max,y_max,z_max=self.inputs.x_max,self.inputs.y_max,self.inputs.z_max
+        if pad!=0:
+            if x_max > 0: x_max = min(x_max+pad,in_file.shape[0]-1)
+            else : x_max = min(x_max+pad,0)
+            if x_max == 0 : x_max = None
+            if y_max > 0: y_max = min(y_max+pad,in_file.shape[1]-1)
+            else : y_max = min(y_max+pad,0)
+            if y_max == 0 : y_max = None
+            if z_max > 0: z_max = min(z_max+pad,in_file.shape[2]-1)
+            else : z_max = min(z_max+pad,0)
+            if z_max == 0 : z_max = None
+        slices = [slice(max(self.inputs.x_min-pad,0),x_max),
+                  slice(max(self.inputs.y_min-pad,0),y_max),
+                  slice(max(self.inputs.z_min-pad,0),z_max),]
         data = in_file.get_data()[slices]
         orig_coords = mat.dot([s.start for s in slices]+[1]).ravel()[:3]
         mat[:3,3] = orig_coords
