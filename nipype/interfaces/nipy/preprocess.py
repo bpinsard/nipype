@@ -332,7 +332,7 @@ class SliceMotionCorrection(BaseInterface):
         outputs = self._list_outputs()
         realigned.to_filename(outputs['out_file'])
         params = np.array([t.param for t in self.whole_run_alg.transforms])
-        np.savetxt(outputs['param_file'],params)
+        np.savetxt(outputs['motion_parameters'],params)
         return runtime
 
     def _list_outputs(self):
