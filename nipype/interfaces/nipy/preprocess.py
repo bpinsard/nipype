@@ -252,3 +252,70 @@ class Trim(BaseInterface):
                 suffix=self.inputs.suffix)
         outputs['out_file'] = os.path.abspath(outputs['out_file'])
         return outputs
+
+
+class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
+    
+    in_file = File(
+        exists=True,
+        mandatory=True,
+        desc='fmri run file')
+    white_matter_file = File(
+        exists=True,
+        mandatory=True,
+        desc='white matter segmentation file, will be thresholded at 0.5')
+    exclude_points_mask  = File(
+        exists=True,
+        desc='mask to exclude region to be sampled, as for trunk due to pulsatility')
+    fieldmap_file = File(
+        exists=True,
+        desc='fieldmap file coregistered to t1 space for concurrent unwarping')
+    unwarp_direction = traits.Range(-3,3
+        desc='specifies direction of warping (default 1)')
+    echo_spacing = traits.Float(
+        desc='effective echo spacing or dwelling time of the fmri acquisition in sec, TODO: find it in in_file if dcmstack...')
+    
+    output_voxel_size = traits.Tuple([traits.Float()]*3,
+        desc = 'resample realigned file at a specific voxel size')
+
+class SliceMotionCorrectionOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True)
+
+    
+class SliceMotionCorrection(BaseInterface):
+    
+
+    input_spec = TrimInputSpec
+    output_spec = TrimOutputSpec
+
+    def _run_interface(self, runtime):
+        import nipy.algorithms.registration.slice_motion as sm
+        import nipy.algorithms.registration.groupwise_registration as gr
+        nii = nb.load(self.inputs.in_file)
+        data = nii.get_data()
+        wm = nb.load(self.inputs.white_matter_file)
+        exclude_mask=None
+        if isdefined(self.inputs.exclude_points_mask):
+            exclude_mask = nb.load(self.inputs.exclude_points_mask)
+        fmap = None
+        if isdefined(self.inputs.fieldmap_file):
+            fmap = nb.load(fmap)
+        im4d = fr.Image4D(nii.get_data()[...,0],nii.get_affine(),3)
+        first_frame_alg = sm.SliceMotionAlgorithm(
+            im4d,wmseg,exclude_mask,fmap,
+            self.inputs.pe_dir,self.inputs.echo_spacing)
+        first_frame_alg.estimate_motion()
+
+        im4d = fr.Image4D(nii.get_data(),nii.get_affine(),3)
+        whole_run_alg = sm.SliceMotionAlgorithm(
+            im4d,wmseg,exclude_mask,fmap,
+            self.inputs.pe_dir,self.inputs.echo_spacing,
+            transforms=[t.copy() for t in first_frame_alg.transforms])
+        whole_run_alg.estimate_motion()
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        
+        return outputs
