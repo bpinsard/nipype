@@ -270,32 +270,35 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
     fieldmap_file = File(
         exists=True,
         desc='fieldmap file coregistered to t1 space for concurrent unwarping')
-    unwarp_direction = traits.Range(-3,3
+    unwarp_direction = traits.Range(-3,3,
         desc='specifies direction of warping (default 1)')
     echo_spacing = traits.Float(
         desc='effective echo spacing or dwelling time of the fmri acquisition in sec, TODO: find it in in_file if dcmstack...')
     
-    output_voxel_size = traits.Tuple([traits.Float()]*3,
+    output_voxel_size = traits.Tuple(*([traits.Float()]*3),
         desc = 'resample realigned file at a specific voxel size')
 
-     nsamples_per_slicegroup_first_frame = traits.Int(
+    nsamples_per_slicegroup_first_frame = traits.Int(
          20000,
          usedefault=True,
          desc='number of sample per slice to estimate first frame realignement')
-     nsamples_per_slicegroup = traits.Int(
+    nsamples_per_slicegroup = traits.Int(
          2000,
          usedefault = True,
          desc='number of samples per slice to estimate whole run realignement')
-     suffix = traits.Str('_mc')
+    suffix = traits.Str('_mc')
+
+    out_file=File()
+    out_parameters_file=File()
 
 class SliceMotionCorrectionOutputSpec(TraitedSpec):
-    out_file = File(
-        exists=True)
+    out_file = File(exists=True)
+    motion_parameters = File(exists=True)
     
 class SliceMotionCorrection(BaseInterface):
     
-    input_spec = TrimInputSpec
-    output_spec = TrimOutputSpec
+    input_spec = SliceMotionCorrectionInputSpec
+    output_spec = SliceMotionCorrectionOutputSpec
 
     def _run_interface(self, runtime):
         import nipy.algorithms.registration.slice_motion as sm
@@ -308,26 +311,28 @@ class SliceMotionCorrection(BaseInterface):
             exclude_mask = nb.load(self.inputs.exclude_points_mask)
         fmap = None
         if isdefined(self.inputs.fieldmap_file):
-            fmap = nb.load(fmap)
-        im4d = fr.Image4D(nii.get_data()[...,0],nii.get_affine(),3)
-        first_frame_alg = sm.SliceMotionAlgorithm(
-            im4d,wmseg,exclude_mask,fmap,
-            self.inputs.pe_dir,self.inputs.echo_spacing,
+            fmap = nb.load(self.inputs.fieldmap_file)
+        im4d = gr.Image4d(nii.get_data()[...,0],nii.get_affine(),3)
+        self.first_frame_alg = sm.RealignSliceAlgorithm(
+            im4d,wm,exclude_mask,fmap,
+            self.inputs.unwarp_direction,self.inputs.echo_spacing,
             nsamples_per_slicegroup=self.inputs.nsamples_per_slicegroup_first_frame)
-        first_frame_alg.estimate_motion()
+        self.first_frame_alg.estimate_motion()
 
-        im4d = fr.Image4D(nii.get_data(),nii.get_affine(),3)
-        whole_run_alg = sm.SliceMotionAlgorithm(
-            im4d,wmseg,exclude_mask,fmap,
-            self.inputs.pe_dir,self.inputs.echo_spacing,
-            transforms=[t.copy() for t in first_frame_alg.transforms],
+        im4d = gr.Image4d(nii.get_data(),nii.get_affine(),3)
+        self.whole_run_alg = sm.RealignSliceAlgorithm(
+            im4d,wm,exclude_mask,fmap,
+            self.inputs.unwarp_direction,self.inputs.echo_spacing,
+            transforms=[t.copy() for t in self.first_frame_alg.transforms],
             nsamples_per_slicegroup = self.inputs.nsamples_per_slicegroup)
-        whole_run_alg.estimate_motion()
+        self.whole_run_alg.estimate_motion()
         
-        realigned = whole_run_alg.resample_full_data(
+        realigned = self.whole_run_alg.resample_full_data(
             self.inputs.output_voxel_size)
-        out_file = self._list_outputs()['out_file']
-        realigned.to_filename(out_file)
+        outputs = self._list_outputs()
+        realigned.to_filename(outputs['out_file'])
+        params = np.array([t.param for t in self.whole_run_alg.transforms])
+        np.savetxt(outputs['param_file'],params)
         return runtime
 
     def _list_outputs(self):
@@ -338,5 +343,12 @@ class SliceMotionCorrection(BaseInterface):
                 self.inputs.in_file,
                 newpath=os.getcwd(),
                 suffix=self.inputs.suffix)
-        outputs['out_file'] = os.path.abspath(outputs['out_file'])        
+        outputs['out_file'] = os.path.abspath(outputs['out_file'])
+        outputs['motion_parameters'] = self.inputs.out_parameters_file
+        if not isdefined(outputs['motion_parameters']):
+            outputs['motion_parameters'] = fname_presuffix(
+                self.inputs.in_file,
+                newpath=os.getcwd(),
+                use_ext = False,
+                suffix=self.inputs.suffix + '.txt')
         return outputs
