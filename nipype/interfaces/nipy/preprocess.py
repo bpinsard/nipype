@@ -278,14 +278,22 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
     output_voxel_size = traits.Tuple([traits.Float()]*3,
         desc = 'resample realigned file at a specific voxel size')
 
+     nsamples_per_slicegroup_first_frame = traits.Int(
+         20000,
+         usedefault=True,
+         desc='number of sample per slice to estimate first frame realignement')
+     nsamples_per_slicegroup = traits.Int(
+         2000,
+         usedefault = True,
+         desc='number of samples per slice to estimate whole run realignement')
+     suffix = traits.Str('_mc')
+
 class SliceMotionCorrectionOutputSpec(TraitedSpec):
     out_file = File(
         exists=True)
-
     
 class SliceMotionCorrection(BaseInterface):
     
-
     input_spec = TrimInputSpec
     output_spec = TrimOutputSpec
 
@@ -304,18 +312,31 @@ class SliceMotionCorrection(BaseInterface):
         im4d = fr.Image4D(nii.get_data()[...,0],nii.get_affine(),3)
         first_frame_alg = sm.SliceMotionAlgorithm(
             im4d,wmseg,exclude_mask,fmap,
-            self.inputs.pe_dir,self.inputs.echo_spacing)
+            self.inputs.pe_dir,self.inputs.echo_spacing,
+            nsamples_per_slicegroup=self.inputs.nsamples_per_slicegroup_first_frame)
         first_frame_alg.estimate_motion()
 
         im4d = fr.Image4D(nii.get_data(),nii.get_affine(),3)
         whole_run_alg = sm.SliceMotionAlgorithm(
             im4d,wmseg,exclude_mask,fmap,
             self.inputs.pe_dir,self.inputs.echo_spacing,
-            transforms=[t.copy() for t in first_frame_alg.transforms])
+            transforms=[t.copy() for t in first_frame_alg.transforms],
+            nsamples_per_slicegroup = self.inputs.nsamples_per_slicegroup)
         whole_run_alg.estimate_motion()
+        
+        realigned = whole_run_alg.resample_full_data(
+            self.inputs.output_voxel_size)
+        out_file = self._list_outputs()['out_file']
+        realigned.to_filename(out_file)
         return runtime
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
-        
+        outputs['out_file'] = self.inputs.out_file
+        if not isdefined(outputs['out_file']):
+            outputs['out_file'] = fname_presuffix(
+                self.inputs.in_file,
+                newpath=os.getcwd(),
+                suffix=self.inputs.suffix)
+        outputs['out_file'] = os.path.abspath(outputs['out_file'])        
         return outputs
