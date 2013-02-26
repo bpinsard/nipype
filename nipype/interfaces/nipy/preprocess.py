@@ -236,24 +236,26 @@ class RegressOutMotion(BaseInterface):
 
 
     def _run_interface(self, runtime):
-        nii = nb.load(self.inputs.in_file)
-        motion = np.loadtxt(self.inputs.motion)
-        motion = preproc.motion_parameter_standardize(motion,self.inputs.motion_source)
-        mask = nb.load(self.inputs.mask).get_data()>0
-        cdata, _, betamaps = preproc.regress_out_motion_parameters(
-            nii,motion,mask,
-            regressors_type = self.inputs.regressors_type,
-            regressors_transform = self.inputs.regressors_transform,
-            slicing_axis = self.inputs.slicing_axis,
-            global_signal = self.inputs.global_signal
-            )
-        outnii = nb.Nifti1Image(cdata,nii.get_affine(),nii.get_header().copy())
-        outnii.set_data_dtype(np.float32)
-        nb.save(outnii, self._list_outputs()['out_file'])
-        
-        betanii = nb.Nifti1Image(betamaps,nii.get_affine())
-        nb.save(betanii, self._list_outputs()['beta_maps'])
-        del nii, motion, cdata, outnii
+        try:
+            nii = nb.load(self.inputs.in_file)
+            motion = np.loadtxt(self.inputs.motion)
+            motion = preproc.motion_parameter_standardize(motion,self.inputs.motion_source)
+            mask = nb.load(self.inputs.mask).get_data()>0
+            cdata, _, betamaps = preproc.regress_out_motion_parameters(
+                nii,motion,mask,
+                regressors_type = self.inputs.regressors_type,
+                regressors_transform = self.inputs.regressors_transform,
+                slicing_axis = self.inputs.slicing_axis,
+                global_signal = self.inputs.global_signal
+                )
+            outnii = nb.Nifti1Image(cdata,nii.get_affine(),nii.get_header().copy())
+            outnii.set_data_dtype(np.float32)
+            nb.save(outnii, self._list_outputs()['out_file'])
+            
+            betanii = nb.Nifti1Image(betamaps,nii.get_affine())
+            nb.save(betanii, self._list_outputs()['beta_maps'])
+        finally:
+            del nii, motion, cdata, outnii
         return runtime
         
     def _list_outputs(self):
