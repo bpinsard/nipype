@@ -300,8 +300,7 @@ ex: np.median, a custom pca component selection function.""")
 If greater than the number of possible combinations, the exact resampling will be performed.""")
     
     sampling_interval = traits.Float(2,desc="TR of the data in sec")
-    
-    
+
 class GetTimeSeriesOutputSpec(TraitedSpec):
     timeseries = File(desc = """The timeseries file as a compressed umpy (.npz) file with fields : TODO""")
     
@@ -395,6 +394,11 @@ class CorrelationAnalysisInputSpec(BaseInterfaceInputSpec):
     timeseries = File(
         exists = True,
         desc = 'Timeseries file produced by GetTimeSeries interface.')
+
+    time_range = traits.Tuple(
+        (0,None), *([traits.Trait(None,None,traits.Int())]*2),
+        usedefault=True,
+        desc='range of timeseries to use to compute correlation')
     
     bootstrap_estimation = traits.Bool(
         False, usedefault = True,
@@ -424,6 +428,7 @@ class CorrelationAnalysis(BaseInterface):
     def _run_interface(self,runtime):
         tsfile = loadpkl(self.inputs.timeseries)
         ts = np.array([tsfile['timeseries'][roi] for roi in tsfile['labels']])
+        ts = ts[:,slice(*self.inputs.time_range)]
         if self.inputs.bootstrap_estimation:
             std,lb,ub,samples = bootstrap.generic_bootstrap(
                 ts, np.corrcoef,
@@ -431,7 +436,7 @@ class CorrelationAnalysis(BaseInterface):
             pval = std
             corr = samples.mean(0)
             nnan = np.count_nonzero(np.isnan(samples))
-            print nnan ,'nan in correlations'
+#            print nnan ,'nan in correlations'
             partialcorr = None
             partialpval = None
             if nnan == 0:
