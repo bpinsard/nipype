@@ -254,6 +254,8 @@ class RegressOutMotion(BaseInterface):
             
             betanii = nb.Nifti1Image(betamaps,nii.get_affine())
             nb.save(betanii, self._list_outputs()['beta_maps'])
+        except Exception as e:
+            print "RegressOutMotion failed", e
         finally:
             del nii, motion, cdata, outnii
         return runtime
