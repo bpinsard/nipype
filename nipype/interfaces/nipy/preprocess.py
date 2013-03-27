@@ -270,23 +270,36 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
     fieldmap_file = File(
         exists=True,
         desc='fieldmap file coregistered to t1 space for concurrent unwarping')
+    mask_file = File(
+        exists=True,
+        desc='brain mask')
+
     unwarp_direction = traits.Range(-3,3,
         desc='specifies direction of warping (default 1)')
     echo_spacing = traits.Float(
         desc='effective echo spacing or dwelling time of the fmri acquisition in sec, TODO: find it in in_file if dcmstack...')
+
+    echo_time = traits.Float(
+        desc='echo time of the fmri acquisition in sec')
     
     output_voxel_size = traits.Tuple(*([traits.Float()]*3),
         desc = 'resample realigned file at a specific voxel size')
 
-    nsamples_per_slicegroup_first_frame = traits.Int(
+    nsamples_first_frame = traits.Int(
          20000,
          usedefault=True,
          desc='number of sample per slice to estimate first frame realignement')
     nsamples_per_slicegroup = traits.Int(
-         2000,
+         5000,
          usedefault = True,
          desc='number of samples per slice to estimate whole run realignement')
     suffix = traits.Str('_mc')
+
+    slice_order = traits.List(
+        traits.Int(),
+        desc='slice acquisition order')
+
+    tr = traits.Float(desc='Repetition time')
 
     out_file=File()
     out_parameters_file=File()
@@ -302,7 +315,6 @@ class SliceMotionCorrection(BaseInterface):
 
     def _run_interface(self, runtime):
         import nipy.algorithms.registration.slice_motion as sm
-        import nipy.algorithms.registration.groupwise_registration as gr
         nii = nb.load(self.inputs.in_file)
         data = nii.get_data()
         wm = nb.load(self.inputs.white_matter_file)
@@ -310,29 +322,57 @@ class SliceMotionCorrection(BaseInterface):
         if isdefined(self.inputs.exclude_points_mask):
             exclude_mask = nb.load(self.inputs.exclude_points_mask)
         fmap = None
+        tr = self.inputs.tr
+        echo_time = self.inputs.echo_time
+        if not isdefined(tr):
+            tr = nii.get_header().get_zooms()[3]
+            if nii.get_header().get_xyzt_units()[-1] == 'msec':
+                tr *= 1e-3
         if isdefined(self.inputs.fieldmap_file):
             fmap = nb.load(self.inputs.fieldmap_file)
-        im4d = gr.Image4d(nii.get_data()[...,0],nii.get_affine(),3)
-        self.first_frame_alg = sm.RealignSliceAlgorithm(
-            im4d,wm,exclude_mask,fmap,
-            self.inputs.unwarp_direction,self.inputs.echo_spacing,
-            nsamples_per_slicegroup=self.inputs.nsamples_per_slicegroup_first_frame)
-        self.first_frame_alg.estimate_motion()
+        if isdefined(self.inputs.mask_file):
+            mask = nb.load(self.inputs.mask_file)
 
-        im4d = gr.Image4d(nii.get_data(),nii.get_affine(),3)
+        im4d = sm.SliceImage4d(nii.get_data()[...,:1],nii.get_affine(),
+                               tr=tr,
+                               slice_order=self.inputs.slice_order)
+        self.first_frame_alg = sm.RealignSliceAlgorithm(
+            im4d,wm,exclude_mask,fmap,mask=mask,
+            pe_dir=self.inputs.unwarp_direction,
+            echo_spacing=self.inputs.echo_spacing,
+            echo_time = echo_time,
+            nsamples_per_slicegroup=self.inputs.nsamples_first_frame)
+        self.first_frame_alg.estimate_motion()
+        """
+        im4d = gr.Image4d(nii.get_data(),nii.get_affine(),
+                          tr = tr,
+                          slice_order=self.inputs.slice_order)
         self.whole_run_alg = sm.RealignSliceAlgorithm(
             im4d,wm,exclude_mask,fmap,
-            self.inputs.unwarp_direction,self.inputs.echo_spacing,
+            pe_dir=self.inputs.unwarp_direction,
+            echo_spacing=self.inputs.echo_spacing,
+            echo_time = echo_time,
             transforms=[t.copy() for t in self.first_frame_alg.transforms],
             nsamples_per_slicegroup = self.inputs.nsamples_per_slicegroup)
         self.whole_run_alg.estimate_motion()
         
         realigned = self.whole_run_alg.resample_full_data(
             self.inputs.output_voxel_size)
+            """
+        
+        output_voxel_size = self.inputs.output_voxel_size
+        if not isdefined(output_voxel_size):
+            output_voxel_size = wm.get_header().get_zooms()[:3]
+        realigned = self.first_frame_alg.resample_full_data(output_voxel_size)
+
         outputs = self._list_outputs()
         realigned.to_filename(outputs['out_file'])
-        params = np.array([t.param for t in self.whole_run_alg.transforms])
+#        params = np.array([t.param for t in self.whole_run_alg.transforms])
+        params = np.array([t.param for t in self.first_frame_alg.transforms])
         np.savetxt(outputs['motion_parameters'],params)
+        del self.first_frame_alg
+        del realigned
+#        del self.whole_run_alg
         return runtime
 
     def _list_outputs(self):
