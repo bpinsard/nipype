@@ -343,7 +343,7 @@ class SliceMotionCorrection(BaseInterface):
             echo_time = echo_time,
             nsamples_per_slicegroup=self.inputs.nsamples_first_frame)
         self.first_frame_alg.estimate_motion()
-        """
+
         im4d = gr.Image4d(nii.get_data(),nii.get_affine(),
                           tr = tr,
                           slice_order=self.inputs.slice_order)
@@ -358,7 +358,6 @@ class SliceMotionCorrection(BaseInterface):
         
         realigned = self.whole_run_alg.resample_full_data(
             self.inputs.output_voxel_size)
-            """
         
         output_voxel_size = self.inputs.output_voxel_size
         if not isdefined(output_voxel_size):
@@ -367,12 +366,12 @@ class SliceMotionCorrection(BaseInterface):
 
         outputs = self._list_outputs()
         realigned.to_filename(outputs['out_file'])
-#        params = np.array([t.param for t in self.whole_run_alg.transforms])
-        params = np.array([t.param for t in self.first_frame_alg.transforms])
+        params = np.array([t.param for t in self.whole_run_alg.transforms])
+#        params = np.array([t.param for t in self.first_frame_alg.transforms])
         np.savetxt(outputs['motion_parameters'],params)
         del self.first_frame_alg
         del realigned
-#        del self.whole_run_alg
+        del self.whole_run_alg
         return runtime
 
     def _list_outputs(self):
