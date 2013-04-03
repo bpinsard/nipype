@@ -344,7 +344,7 @@ class SliceMotionCorrection(BaseInterface):
             nsamples_per_slicegroup=self.inputs.nsamples_first_frame)
         self.first_frame_alg.estimate_motion()
 
-        im4d = gr.Image4d(nii.get_data(),nii.get_affine(),
+        im4d = sm.SliceImage4d(nii.get_data(),nii.get_affine(),
                           tr = tr,
                           slice_order=self.inputs.slice_order)
         self.whole_run_alg = sm.RealignSliceAlgorithm(
