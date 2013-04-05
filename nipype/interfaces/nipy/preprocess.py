@@ -348,7 +348,7 @@ class SliceMotionCorrection(BaseInterface):
                           tr = tr,
                           slice_order=self.inputs.slice_order)
         self.whole_run_alg = sm.RealignSliceAlgorithm(
-            im4d,wm,exclude_mask,fmap,
+            im4d,wm,exclude_mask,fmap,mask=mask,
             pe_dir=self.inputs.unwarp_direction,
             echo_spacing=self.inputs.echo_spacing,
             echo_time = echo_time,
@@ -362,7 +362,7 @@ class SliceMotionCorrection(BaseInterface):
         output_voxel_size = self.inputs.output_voxel_size
         if not isdefined(output_voxel_size):
             output_voxel_size = wm.get_header().get_zooms()[:3]
-        realigned = self.first_frame_alg.resample_full_data(output_voxel_size)
+#        realigned = self.first_frame_alg.resample_full_data(output_voxel_size)
 
         outputs = self._list_outputs()
         realigned.to_filename(outputs['out_file'])
