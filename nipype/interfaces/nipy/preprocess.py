@@ -253,7 +253,6 @@ class Trim(BaseInterface):
         outputs['out_file'] = os.path.abspath(outputs['out_file'])
         return outputs
 
-
 class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
     
     in_file = File(
@@ -307,6 +306,9 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
 class SliceMotionCorrectionOutputSpec(TraitedSpec):
     out_file = File(exists=True)
     motion_parameters = File(exists=True)
+
+    all_data = File(exists=True)
+    coords = File(exists=True)
     
 class SliceMotionCorrection(BaseInterface):
     
@@ -366,6 +368,10 @@ class SliceMotionCorrection(BaseInterface):
 
         outputs = self._list_outputs()
         realigned.to_filename(outputs['out_file'])
+        np.save(outputs['coords'],np.concatenate(
+                (self.whole_run_alg.bnd_coords[np.newaxis],
+                 self.whole_run_alg.class_coords),0))
+        np.save(outputs['all_data'],self.whole_run_alg._all_data)
         params = np.array([t.param for t in self.whole_run_alg.transforms])
 #        params = np.array([t.param for t in self.first_frame_alg.transforms])
         np.savetxt(outputs['motion_parameters'],params)
@@ -390,4 +396,15 @@ class SliceMotionCorrection(BaseInterface):
                 newpath=os.getcwd(),
                 use_ext = False,
                 suffix=self.inputs.suffix + '.txt')
+        outputs['coords'] = fname_presuffix(
+            self.inputs.in_file,
+            newpath=os.getcwd(),
+            use_ext = False,
+            suffix='_coords.npy')
+        outputs['all_data'] = fname_presuffix(
+            self.inputs.in_file,
+            newpath=os.getcwd(),
+            use_ext = False,
+            suffix='_costs.npy')
+
         return outputs
