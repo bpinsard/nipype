@@ -389,7 +389,7 @@ class SliceMotionCorrection(BaseInterface):
                 newpath=os.getcwd(),
                 suffix=self.inputs.suffix)
         outputs['out_file'] = os.path.abspath(outputs['out_file'])
-        outputs['motion_parameters'] = self.inputs.out_parameters_file
+        outputs['motion_parameters'] = os.path.abspath(self.inputs.out_parameters_file)
         if not isdefined(outputs['motion_parameters']):
             outputs['motion_parameters'] = fname_presuffix(
                 self.inputs.in_file,
