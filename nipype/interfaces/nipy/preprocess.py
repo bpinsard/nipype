@@ -273,7 +273,7 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
         exists=True,
         desc='brain mask')
 
-    unwarp_direction = traits.Range(-3,3,1,
+    unwarp_direction = traits.Range(-3,3,1,usedefault=True,
         desc='specifies direction of warping (default 1)')
     echo_spacing = traits.Float(
         desc='effective echo spacing or dwelling time of the fmri acquisition in sec, TODO: find it in in_file if dcmstack...')
