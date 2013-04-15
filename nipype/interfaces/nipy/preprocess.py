@@ -276,9 +276,11 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
     unwarp_direction = traits.Range(-3,3,1,usedefault=True,
         desc='specifies direction of warping (default 1)')
     echo_spacing = traits.Float(
+        0.0006, usedefault=True,
         desc='effective echo spacing or dwelling time of the fmri acquisition in sec, TODO: find it in in_file if dcmstack...')
 
     echo_time = traits.Float(
+        0.30, usedefault=True,
         desc='echo time of the fmri acquisition in sec')
     
     output_voxel_size = traits.Tuple(*([traits.Float()]*3),
