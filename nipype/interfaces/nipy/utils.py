@@ -9,7 +9,7 @@
 import warnings
 
 import nibabel as nb
-
+import numpy as np
 from ...utils.misc import package_check
 
 try:
@@ -18,7 +18,8 @@ except Exception, e:
     warnings.warn('nipy not installed')
 else:
     from nipy.algorithms.registration.histogram_registration import HistogramRegistration
-    from nipy.algorithms.registration.affine import Affine
+    import nipy.algorithms.utils.preprocess as preproc
+    from nipy.algorithms.registration.affine import Affine, to_matrix44
 
 from ..base import (TraitedSpec, BaseInterface, traits,
                     BaseInterfaceInputSpec, File, isdefined)
@@ -99,3 +100,62 @@ class Similarity(BaseInterface):
         outputs = self._outputs().get()
         outputs['similarity'] = self._similarity
         return outputs
+
+
+
+class MotionCorrectionEvaluationInputSpec(BaseInterfaceInputSpec):
+    in_file = traits.File(
+        mandatory = True,
+        desc = 'motion corrected file')
+    mask = traits.File(desc='brain mask')
+    motion = traits.File(
+        mandatory = True,
+        desc = 'motion parameters file')
+    motion_source = traits.Enum(
+        'spm', 'fsl', 'slice_motion', 'afni',
+        mandatory = True,
+        desc = 'software that produced motion estimates')
+
+class MotionCorrectionEvaluationOutputSpec(TraitedSpec):
+    pass 
+
+class MotionCorrectionEvaluation(BaseInterface):
+
+    
+    input_spec = MotionCorrectionEvaluationInputSpec
+    output_spec = MotionCorrectionEvaluationOutputSpec
+
+    def _run_interface(self, runtime):
+        nii = nb.load(self.inputs.in_file)
+        affine = nii.get_affine()
+        if isdefined(self.inputs.mask):
+            mask = nb.load(self.inputs.mask).get_data() > 0
+        else:
+            mask = np.ones(nii.shape[:3],dtype=np.bool)
+        motion = np.loadtxt(self.inputs.motion)
+        if self.inputs.motion_source == 'slice_motion':
+            motion[:,3:6] *= 0.01
+        motion[:] = preproc.motion_parameter_standardize(
+            motion, self.inputs.motion_source)
+        indices = np.empty((3,np.count_nonzero(mask)),dtype=np.int32)
+        indices[:] = np.nonzero(mask)
+        motion_mats = np.array([to_matrix44(m) for m in motion])
+        voxels_motion=np.empty((nii.shape[-1],indices.shape[-1],3),np.float32)
+        for t,mat in enumerate(motion_mats):
+            voxels_motion[t]=nb.affines.apply_affine(mat.dot(affine),indices.T)
+        
+        voxels_motion_diff = np.diff(voxels_motion, axis=0)
+        voxels_motion_diff_drms = np.sqrt((voxels_motion_diff**2).sum(-1))
+        data_diff = np.diff(nii.get_data()[mask].reshape(-1,nii.shape[-1]),1,-1)
+        self.voxels_motion = voxels_motion
+        self.voxels_motion_diff=voxels_motion_diff
+        self.data_diff=data_diff
+        
+        
+        
+
+        #del voxels_motion, voxels_motion_diff, motion, mask, nii, data_diff
+        return runtime
+
+
+    

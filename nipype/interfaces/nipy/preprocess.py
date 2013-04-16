@@ -374,7 +374,7 @@ class SliceMotionCorrection(BaseInterface):
                 (self.whole_run_alg.bnd_coords[np.newaxis],
                  self.whole_run_alg.class_coords),0))
         np.save(outputs['all_data'],self.whole_run_alg._all_data)
-        params = np.array([t.param for t in self.whole_run_alg.transforms])
+        params = np.array([t.param*t.precond for t in self.whole_run_alg.transforms])
 #        params = np.array([t.param for t in self.first_frame_alg.transforms])
         np.savetxt(outputs['motion_parameters'],params)
         del self.first_frame_alg
