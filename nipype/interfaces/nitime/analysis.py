@@ -476,8 +476,10 @@ class HomogeneityAnalysisInputSpec(BaseInterfaceInputSpec):
     timeseries = File(
         exists = True,
         desc = 'Timeseries file produced by GetTimeSeries interface.')
-    
-
+    time_range = traits.Tuple(
+        (0,None), *([traits.Trait(None,None,traits.Int())]*2),
+        usedefault=True,
+        desc='range of timeseries to use to compute correlation')
 
 class HomogeneityAnalysisOutputSpec(TraitedSpec):
     kendall_W = File(
@@ -486,7 +488,6 @@ class HomogeneityAnalysisOutputSpec(TraitedSpec):
     corr = File(
         exists = True,
         desc = 'Correlation stats in each region of interest')
-
 
 class HomogeneityAnalysis(BaseInterface):
     input_spec = HomogeneityAnalysisInputSpec
@@ -497,8 +498,9 @@ class HomogeneityAnalysis(BaseInterface):
         kcc = dict()
         mean_corr = dict()
         min_corr = dict()
+        trange = slice(*self.inputs.time_range)
         for roi in tsfile['labels']:
-            ts = tsfile['timeseries'][roi]
+            ts = tsfile['timeseries'][roi][trange]
             if ts.shape[0] > 1:
                 #normalize
                 ts -= ts.mean(1)[:,np.newaxis]
