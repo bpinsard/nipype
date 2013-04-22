@@ -9,8 +9,10 @@
 import warnings
 
 import nibabel as nb
+import os
 
 from ...utils.misc import package_check
+from ...utils.filemanip import split_filename, fname_presuffix
 
 try:
     package_check('nipy')
@@ -94,4 +96,82 @@ class Similarity(BaseInterface):
     def _list_outputs(self):
         outputs = self._outputs().get()
         outputs['similarity'] = self._similarity
+        return outputs
+
+
+class ROIsSlicerInputSpec(BaseInterfaceInputSpec):
+
+    in_file = traits.File(desc='background file',exists=True,mandatory=True)
+    
+    overlays = traits.List(
+        traits.Tuple(traits.File(exists=True),traits.File(exists=True)),
+        desc='list of tuple of ROIs and label files')
+    
+    slices = traits.Tuple(
+        traits.Either(None,traits.Int),
+        traits.Either(None,traits.Int),
+        traits.Either(None,traits.Int),
+        desc = 'slices to extract')
+    
+class ROIsSlicerOutputSpec(TraitedSpec):
+
+    out_file = traits.File(desc='slices image file')
+
+
+class ROIsSlicer(BaseInterface):
+
+    input_spec = ROIsSlicerInputSpec
+    output_spec = ROIsSlicerOutputSpec
+
+    
+    def _run_interface(self, runtime):
+        import matplotlib as mpl
+        import numpy as np
+        back = nb.load(self.inputs.in_file)
+        sl = slice(*self.inputs.slices[:3])
+        bg = back.get_data()[:,:,sl]
+
+        nslices = bg.shape[-1]
+        per_row = int(np.ceil(np.sqrt(nslices)))
+        n_rows = nslices/per_row
+        shape = bg.shape
+        bg_flat = np.zeros((n_rows*shape[1],per_row*shape[0]))
+        for r in range(n_rows):
+            for c in range(per_row):
+                if r*per_row+c < nslices:
+                    bg_flat[r*shape[1]:(r+1)*shape[1],
+                            c*shape[0]:(c+1)*shape[0]]=bg[:,::-1,r*per_row+c].T
+        fig = mpl.figure.Figure()
+        ax = fig.add_subplot(111)
+        ax.set_axis_off()
+        ax.imshow(bg_flat, interpolation='nearest', cmap=mpl.cm.gray)
+        rois_flat = np.empty(bg_flat.shape)
+        rois_flat.fill(np.nan)
+        idx = 0
+        rois = np.empty(bg.shape)
+        rois.fill(np.nan)
+        for niif,labels in self.inputs.overlays:
+            rois_nii = nb.load(niif)
+            nrois = np.nanmax(rois_nii.get_data())
+            mask = rois_nii.get_data()[:,:,sl]>0
+            rois[mask] = rois_nii.get_data()[:,:,sl][mask] + idx
+            idx += nrois
+        for r in range(n_rows):
+            for c in range(per_row):
+                if r*per_row+c < nslices:
+                    rois_flat[
+                        r*shape[1]:(r+1)*shape[1],
+                        c*shape[0]:(c+1)*shape[0]] = rois[:,::-1,r*per_row+c].T
+        ax.imshow(rois_flat,interpolation='nearest',cmap=mpl.cm.hsv,alpha=.8)
+        canvas = mpl.backends.backend_agg.FigureCanvasAgg(fig)
+        canvas.print_figure(self._list_outputs()['out_file'],dpi=80)
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        outputs['out_file'] = fname_presuffix(
+            self.inputs.in_file,
+            newpath=os.getcwd(),
+            suffix='.png',
+            use_ext=False)
         return outputs
