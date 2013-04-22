@@ -141,8 +141,8 @@ class ROIsSlicer(BaseInterface):
                 if r*per_row+c < nslices:
                     bg_flat[r*shape[1]:(r+1)*shape[1],
                             c*shape[0]:(c+1)*shape[0]]=bg[:,::-1,r*per_row+c].T
-        fig = mpl.figure.Figure()
-        ax = fig.add_subplot(111)
+        fig = mpl.figure.Figure(frameon=False)
+        ax = fig.add_subplot(111,frame_on=False)
         ax.set_axis_off()
         ax.imshow(bg_flat, interpolation='nearest', cmap=mpl.cm.gray)
         rois_flat = np.empty(bg_flat.shape)
@@ -164,7 +164,10 @@ class ROIsSlicer(BaseInterface):
                         c*shape[0]:(c+1)*shape[0]] = rois[:,::-1,r*per_row+c].T
         ax.imshow(rois_flat,interpolation='nearest',cmap=mpl.cm.hsv,alpha=.8)
         canvas = mpl.backends.backend_agg.FigureCanvasAgg(fig)
-        canvas.print_figure(self._list_outputs()['out_file'],dpi=80)
+        extent = ax.get_window_extent().transformed(
+            fig.dpi_scale_trans.inverted())
+        canvas.print_figure(self._list_outputs()['out_file'],
+                            dpi=80,bbox_inches=extent)
         return runtime
 
     def _list_outputs(self):
