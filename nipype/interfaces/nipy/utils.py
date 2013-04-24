@@ -168,6 +168,7 @@ class ROIsSlicer(BaseInterface):
             fig.dpi_scale_trans.inverted())
         canvas.print_figure(self._list_outputs()['out_file'],
                             dpi=80,bbox_inches=extent)
+        del canvas,extent,ax,fig,bg,bg_flat,rois,rois_flat,mask
         return runtime
 
     def _list_outputs(self):
