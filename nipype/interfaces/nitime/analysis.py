@@ -370,13 +370,15 @@ class GetTimeSeries(BaseInterface):
                 timeseries[label] = ts
                 pvalues[label] = pval
                 labels_list.append(label)
+                del ts
         out_data = dict(timeseries = timeseries,
                         pvalues = pvalues,
                         labels = labels_list)
         fname = self._list_outputs()['timeseries']
         savepkl(fname,out_data)
         
-        del run_nii, run_data, rois_nii, rois_data
+        del run_nii, run_data, rois_nii, rois_data, timeseries, pvalues, \
+            out_data, labels_list
         return runtime
 
         
@@ -518,13 +520,16 @@ class HomogeneityAnalysis(BaseInterface):
                 corr=np.corrcoef(ts)[np.tri(ts.shape[0],k=-1,dtype=bool)]
                 mean_corr[roi]=corr.mean()
                 min_corr[roi]=corr.min()
+                del y,k
             else:
                 kcc[roi]=1
                 mean_corr[roi]=1
+            del ts
 
         savepkl(self._list_outputs()['kendall_W'], dict(kcc=kcc))
         savepkl(self._list_outputs()['corr'], dict(mean_corr = mean_corr,
                                                    min_corr = min_corr))
+        del kcc,mean_corr,min_corr,tsfile
         return runtime
 
     
