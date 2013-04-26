@@ -39,6 +39,22 @@ class NipyBaseInterfaceInputSpec(BaseInterfaceInputSpec):
 
 class NipyBaseInterface(BaseInterface):
 
+
+    def __init__(self, **inputs):
+        super(NipyBaseInterface, self).__init__(**inputs)
+        self.inputs.on_trait_change(self._output_update, 'outputtype')
+        
+        if self._outputtype is None:
+            self._outputtype = Info.outputtype()
+
+        if not isdefined(self.inputs.outputtype):
+            self.inputs.outputtype = self._outputtype
+        else:
+            self._output_update()
+
+    def _output_update(self):
+        self._outputtype = self.inputs.outputtype
+
     @classmethod 
     def set_default_output_type(cls, outputtype):
         """Set the default output type for nipy classes.
