@@ -192,7 +192,7 @@ class FmriRealign4d(BaseInterface):
         return outputs
 
 
-class TrimInputSpec(BaseInterfaceInputSpec):
+class TrimInputSpec(NipyBaseInterfaceInputSpec):
     in_file = File(
         exists=True, mandatory=True,
         desc="EPI image to trim")
@@ -202,14 +202,15 @@ class TrimInputSpec(BaseInterfaceInputSpec):
     end_index = traits.Int(
         0, usedefault=True,
         desc='last volume indexed as in python (and 0 for last)')
-    out_file = File('%s_trim', desc='output filename', source_name='in_file')
-
+    out_file = File('%s_trim', desc='output filename',
+                    overload_extension=True,
+                    name_source='in_file')
 
 class TrimOutputSpec(TraitedSpec):
     out_file = File(exists=True)
 
 
-class Trim(BaseInterface):
+class Trim(NipyBaseInterface):
     """ Simple interface to trim a few volumes from a 4d fmri nifti file
 
     Examples
@@ -226,7 +227,6 @@ class Trim(BaseInterface):
     output_spec = TrimOutputSpec
 
     def _run_interface(self, runtime):
-        out_file = self._list_outputs()['out_file']
         nii = nb.load(self.inputs.in_file)
         if self.inputs.end_index == 0:
             s = slice(self.inputs.begin_index, nii.shape[3])
@@ -236,19 +236,10 @@ class Trim(BaseInterface):
             nii.get_data()[..., s],
             nii.get_affine(),
             nii.get_header())
+        out_file = self._list_outputs()['out_file']
         nb.save(nii2, out_file)
         return runtime
 
-    def _list_outputs(self):
-        outputs = self.output_spec().get()
-        outputs['out_file'] = self.inputs.out_file
-        if not isdefined(outputs['out_file']):
-            outputs['out_file'] = fname_presuffix(
-                self.inputs.in_file,
-                newpath=os.getcwd(),
-                suffix=self.inputs.suffix)
-        outputs['out_file'] = os.path.abspath(outputs['out_file'])
-        return outputs
 
 class CropInputSpec(NipyBaseInterfaceInputSpec):
     in_file = File(desc='input file', exists=True, mandatory=True,)
