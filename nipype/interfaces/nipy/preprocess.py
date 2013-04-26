@@ -232,8 +232,11 @@ class Trim(NipyBaseInterface):
             s = slice(self.inputs.begin_index, nii.shape[3])
         else:
             s = slice(self.inputs.begin_index, self.inputs.end_index)
+        newdata = nii.get_data()[..., s]
+        if len(newdata.shape)>3 and newdata.shape[-1]==1:
+            newdata = newdata[...,0]
         nii2 = nb.Nifti1Image(
-            nii.get_data()[..., s],
+            newdata,
             nii.get_affine(),
             nii.get_header())
         out_file = self._list_outputs()['out_file']
