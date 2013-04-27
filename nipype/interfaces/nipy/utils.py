@@ -29,8 +29,8 @@ class SimilarityInputSpec(BaseInterfaceInputSpec):
 
     volume1 = File(exists=True, desc="3D volume", mandatory=True)
     volume2 = File(exists=True, desc="3D volume", mandatory=True)
-    mask1 = File(exists=True, desc="3D volume", mandatory=True)
-    mask2 = File(exists=True, desc="3D volume", mandatory=True)
+    mask1 = File(exists=True, desc="3D volume")
+    mask2 = File(exists=True, desc="3D volume")
     metric = traits.Either(traits.Enum('cc', 'cr', 'crl1', 'mi', 'nmi', 'slr'),
                           traits.Callable(),
                          desc="""str or callable
@@ -74,24 +74,20 @@ class Similarity(BaseInterface):
         vol2_nii = nb.load(self.inputs.volume2)
 
         if isdefined(self.inputs.mask1):
-            mask1_nii = nb.load(self.inputs.mask1)
-            mask1_nii = nb.Nifti1Image(nb.load(self.inputs.mask1).get_data() == 1, mask1_nii.get_affine(),
-                                       mask1_nii.get_header())
+            mask1 = nb.load(self.inputs.mask1).get_data() == 1
         else:
-            mask1_nii = None
+            mask1 = None
 
         if isdefined(self.inputs.mask2):
-            mask2_nii = nb.load(self.inputs.mask2)
-            mask2_nii = nb.Nifti1Image(nb.load(self.inputs.mask2).get_data() == 1, mask2_nii.get_affine(),
-                                       mask2_nii.get_header())
+            mask2 = nb.load(self.inputs.mask2).get_data() == 1
         else:
-            mask2_nii = None
+            mask2 = None
 
         histreg = HistogramRegistration(from_img = vol1_nii,
                                         to_img = vol2_nii,
                                         similarity=self.inputs.metric,
-                                        from_mask = mask1_nii,
-                                        to_mask = mask2_nii)
+                                        from_mask = mask1,
+                                        to_mask = mask2)
         self._similarity = histreg.eval(Affine())
 
         return runtime
@@ -100,7 +96,6 @@ class Similarity(BaseInterface):
         outputs = self._outputs().get()
         outputs['similarity'] = self._similarity
         return outputs
-
 
 
 class MotionCorrectionEvaluationInputSpec(BaseInterfaceInputSpec):
@@ -156,6 +151,3 @@ class MotionCorrectionEvaluation(BaseInterface):
 
         #del voxels_motion, voxels_motion_diff, motion, mask, nii, data_diff
         return runtime
-
-
-    
