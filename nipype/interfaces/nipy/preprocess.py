@@ -273,6 +273,11 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
         exists=True,
         desc='brain mask')
 
+    strategy = traits.Enum(
+        'volume','intensity_heuristic',
+        usedefault=True,
+        desc = 'how to split the run for motion estimate')
+
     unwarp_direction = traits.Range(-3,3,1,usedefault=True,
         desc='specifies direction of warping (default 1)')
     echo_spacing = traits.Float(
@@ -340,6 +345,7 @@ class SliceMotionCorrection(BaseInterface):
         im4d = sm.SliceImage4d(nii.get_data()[...,:1],nii.get_affine(),
                                tr=tr,
                                slice_order=self.inputs.slice_order)
+        # estimate a first transform for 1st volume
         self.first_frame_alg = sm.RealignSliceAlgorithm(
             im4d,wm,exclude_mask,fmap,mask=mask,
             pe_dir=self.inputs.unwarp_direction,
@@ -348,17 +354,21 @@ class SliceMotionCorrection(BaseInterface):
             nsamples_per_slicegroup=self.inputs.nsamples_first_frame)
         self.first_frame_alg.estimate_motion()
 
+
         im4d = sm.SliceImage4d(nii.get_data(),nii.get_affine(),
                           tr = tr,
                           slice_order=self.inputs.slice_order)
-        self.whole_run_alg = sm.RealignSliceAlgorithm(
-            im4d,wm,exclude_mask,fmap,mask=mask,
-            pe_dir=self.inputs.unwarp_direction,
-            echo_spacing=self.inputs.echo_spacing,
-            echo_time = echo_time,
-            transforms=[t.copy() for t in self.first_frame_alg.transforms],
-            nsamples_per_slicegroup = self.inputs.nsamples_per_slicegroup)
-        self.whole_run_alg.estimate_motion()
+        if self.inputs.strategy=='volume':
+            self.whole_run_alg = sm.RealignSliceAlgorithm(
+                im4d,wm,exclude_mask,fmap,mask=mask,
+                pe_dir=self.inputs.unwarp_direction,
+                echo_spacing=self.inputs.echo_spacing,
+                echo_time = echo_time,
+                transforms=[t.copy() for t in self.first_frame_alg.transforms],
+                nsamples_per_slicegroup = self.inputs.nsamples_per_slicegroup)
+            self.whole_run_alg.estimate_motion()
+        else:
+            sm.
         
         realigned = self.whole_run_alg.resample_full_data(
             self.inputs.output_voxel_size)
