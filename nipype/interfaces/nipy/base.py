@@ -8,7 +8,7 @@ from ..base import (
 class Info(object):
     """Handle afni output type and version information.
     """
-    __outputtype = 'NIFTI'
+    __outputtype = 'NIFTI_GZ'
     ftypes = {'NIFTI': '.nii',
               'NIFTI_GZ': '.nii.gz'}
 
@@ -32,6 +32,10 @@ class Info(object):
         except KeyError:
             msg = 'Invalid NIPYOUTPUTTYPE: ', outputtype
             raise KeyError(msg)
+
+    @classmethod
+    def outputtype(cls):
+        return 'NIFTI_GZ'
 
 class NipyBaseInterfaceInputSpec(BaseInterfaceInputSpec):
     outputtype = traits.Enum('NIFTI', Info.ftypes.keys(),
