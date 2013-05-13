@@ -8,7 +8,7 @@ from ..base import (
 class Info(object):
     """Handle afni output type and version information.
     """
-    __outputtype = 'AFNI'
+    __outputtype = 'NIFTI'
     ftypes = {'NIFTI': '.nii',
               'NIFTI_GZ': '.nii.gz'}
 
@@ -39,6 +39,8 @@ class NipyBaseInterfaceInputSpec(BaseInterfaceInputSpec):
 
 class NipyBaseInterface(BaseInterface):
 
+    input_spec = NipyBaseInterfaceInputSpec
+    _outputtype = None
 
     def __init__(self, **inputs):
         super(NipyBaseInterface, self).__init__(**inputs)
