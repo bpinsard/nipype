@@ -464,6 +464,7 @@ class CorrelationAnalysis(BaseInterface):
                         pval = pval,
                         partialpval = partialpval)
         savepkl(fname, out_data)
+        del corr,partialcorr,pval,partialpval
         return runtime
 
     def _list_outputs(self):
@@ -520,7 +521,7 @@ class HomogeneityAnalysis(BaseInterface):
                 corr=np.corrcoef(ts)[np.tri(ts.shape[0],k=-1,dtype=bool)]
                 mean_corr[roi]=corr.mean()
                 min_corr[roi]=corr.min()
-                del y,k
+                del y,k,corr
             else:
                 kcc[roi]=1
                 mean_corr[roi]=1
