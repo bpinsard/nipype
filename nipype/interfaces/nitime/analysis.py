@@ -289,7 +289,8 @@ class GetTimeSeriesInputSpec(BaseInterfaceInputSpec):
     aggregating_function = traits.Function(
         desc = """Function to apply to voxel timeseries to get ROIs timeseries.
 (default: np.mean) 
-ex: np.median, a custom pca component selection function.""")
+ex: np.median, a custom pca component selection function.""",
+        nohash=True)
     
     bootstrap_estimation = traits.Bool(
         False, usedefault = True,
