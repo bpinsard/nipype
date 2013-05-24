@@ -76,11 +76,12 @@ class To3D(AFNICommand):
     >>> from nipype.interfaces import afni
     >>> To3D = afni.To3D()
     >>> To3D.inputs.datatype = 'float'
-    >>> To3D.inputs.infolder = 'dicomdir'
+    >>> To3D.inputs.in_folder = '.'
+    >>> To3D.inputs.out_file = 'dicomdir'
     >>> To3D.inputs.filetype = "anat"
     >>> To3D.inputs.outputtype = "NIFTI"
-    >>> To3D.cmdline
-    'to3d -datum float -anat -prefix dicomdir.nii dicomdir/*.dcm'
+    >>> To3D.cmdline #doctest: +ELLIPSIS
+    'to3d -datum float -anat -prefix .../dicomdir.nii ./*.dcm'
     >>> res = To3D.run() #doctest: +SKIP
 
    """
@@ -149,8 +150,8 @@ class TShift(AFNICommand):
     >>> tshift.inputs.in_file = 'functional.nii'
     >>> tshift.inputs.tpattern = 'alt+z'
     >>> tshift.inputs.tzero = 0.0
-    >>> tshift.cmdline
-    '3dTshift -prefix functional_tshift+orig.BRIK -tpattern alt+z -tzero 0.0 functional.nii'
+    >>> tshift.cmdline #doctest: +ELLIPSIS
+    '3dTshift -prefix .../functional_tshift+orig.BRIK -tpattern alt+z -tzero 0.0 functional.nii'
     >>> res = tshift.run()   # doctest: +SKIP
 
     """
@@ -538,8 +539,8 @@ class Automask(AFNICommand):
     >>> automask.inputs.in_file = 'functional.nii'
     >>> automask.inputs.dilate = 1
     >>> automask.inputs.outputtype = "NIFTI"
-    >>> automask.cmdline
-    '3dAutomask -apply_prefix functional_masked.nii -dilate 1 -prefix functional_mask.nii functional.nii'
+    >>> automask.cmdline #doctest: +ELLIPSIS
+    '3dAutomask -apply_prefix .../functional_masked.nii -dilate 1 -prefix .../functional_mask.nii functional.nii'
     >>> res = automask.run() # doctest: +SKIP
 
     """
@@ -644,8 +645,8 @@ class Volreg(AFNICommand):
     >>> volreg.inputs.args = '-Fourier -twopass'
     >>> volreg.inputs.zpad = 4
     >>> volreg.inputs.outputtype = "NIFTI"
-    >>> volreg.cmdline
-    '3dvolreg -Fourier -twopass -1Dfile functional.1D -prefix functional_volreg.nii -zpad 4 functional.nii'
+    >>> volreg.cmdline #doctest: +ELLIPSIS
+    '3dvolreg -Fourier -twopass -1Dfile .../functional.1D -prefix .../functional_volreg.nii -zpad 4 functional.nii'
     >>> res = volreg.run() # doctest: +SKIP
 
     """
@@ -1234,7 +1235,7 @@ class Allineate(AFNICommand):
     >>> allineate = afni.Allineate()
     >>> allineate.inputs.in_file = 'functional.nii'
     >>> allineate.inputs.out_file= 'functional_allineate.nii'
-    >>> allineate.inputs.matrix= 'cmatrix.mat'
+    >>> allineate.inputs.in_matrix= 'cmatrix.mat'
     >>> res = allineate.run() # doctest: +SKIP
 
     """
@@ -1295,8 +1296,8 @@ class Maskave(AFNICommand):
     >>> maskave.inputs.in_file = 'functional.nii'
     >>> maskave.inputs.mask= 'seed_mask.nii'
     >>> maskave.inputs.quiet= True
-    >>> maskave.cmdline
-    '3dmaskave -mask seed_mask.nii -quiet functional.nii > functional_maskave.1D'
+    >>> maskave.cmdline #doctest: +ELLIPSIS
+    '3dmaskave -mask seed_mask.nii -quiet functional.nii > .../functional_maskave.1D'
     >>> res = maskave.run() # doctest: +SKIP
 
     """
@@ -1664,8 +1665,8 @@ class Calc(AFNICommand):
     >>> calc.inputs.expr='a*b'
     >>> calc.inputs.out_file =  'functional_calc.nii.gz'
     >>> calc.inputs.outputtype = "NIFTI"
-    >>> calc.cmdline
-    '3dcalc -a functional.nii  -b functional2.nii -expr "a*b" -prefix functional_calc.nii.gz'
+    >>> calc.cmdline #doctest: +ELLIPSIS
+    '3dcalc -a functional.nii  -b functional2.nii -expr "a*b" -prefix .../functional_calc.nii'
 
     """
 
@@ -1846,7 +1847,7 @@ class TCorrMap(AFNICommand):
     ========
 
     >>> from nipype.interfaces import afni as afni
-    >>> tcm = afni.TcorrMap()
+    >>> tcm = afni.TCorrMap()
     >>> tcm.inputs.in_file = 'functional.nii'
     >>> tcm.inputs.mask = 'mask.nii'
     >>> tcm.mean_file = '%s_meancorr.nii'
