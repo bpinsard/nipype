@@ -115,6 +115,8 @@ class MotionCorrectionEvaluationOutputSpec(TraitedSpec):
     
     correlation = traits.Float()
     pvalue = traits.Float()
+    beta_means = traits.List(traits.Float())
+    beta_stds = traits.List(traits.Float())
 
 class MotionCorrectionEvaluation(BaseInterface):
 
@@ -156,10 +158,18 @@ class MotionCorrectionEvaluation(BaseInterface):
         
         import scipy.stats
         _,_,self.correlation,self.pvalue,_ = scipy.stats.linregress(
-            np.sqrt((n.voxels_motion_diff**2).sum(-1).T.ravel()),
-            np.abs(n.data_diff.ravel()))
-        
-        del self.voxels_motion, self.voxels_motion_diff, motion, mask, nii
+            np.sqrt((self.voxels_motion_diff**2).sum(-1).T.ravel()),
+            np.abs(self.data_diff.ravel()))
+
+        reg_pinv = np.linalg.pinv(
+            np.hstack((np.diff(self.motion,1,0),
+                       np.ones((self.motion.shape[0]-1,1)))))
+        betas = reg_pinv.dot(self.data_diff.T)
+        self.betas_means = betas[:6].mean(1)
+        self.betas_stds = betas[:6].std(1)
+
+        del betas,reg_pinv
+        del self.voxels_motion, self.voxels_motion_diff, mask, nii
         del self.data_diff,self.motion,self.motion_mats
         return runtime
 
@@ -167,4 +177,6 @@ class MotionCorrectionEvaluation(BaseInterface):
         outputs = self._outputs().get()
         outputs['correlation'] = self.correlation
         outputs['pvalue'] = self.pvalue
+        outputs['beta_means'] = self.betas_means.tolist()
+        outputs['beta_stds'] = self.betas_stds.tolist()
         return outputs
