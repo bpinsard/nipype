@@ -371,8 +371,8 @@ class SliceMotionCorrection(BaseInterface):
                 transforms=[t.copy() for t in self.first_frame_alg.transforms],
                 nsamples_per_slicegroup = self.inputs.nsamples_per_slicegroup)
             self.whole_run_alg.estimate_motion()
-        else:
-            sm.
+#        else:
+            #sm.
         
         realigned = self.whole_run_alg.resample_full_data(
             self.inputs.output_voxel_size)

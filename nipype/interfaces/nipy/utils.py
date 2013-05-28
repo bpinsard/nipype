@@ -112,7 +112,9 @@ class MotionCorrectionEvaluationInputSpec(BaseInterfaceInputSpec):
         desc = 'software that produced motion estimates')
 
 class MotionCorrectionEvaluationOutputSpec(TraitedSpec):
-    pass 
+    
+    correlation = traits.Float()
+    pvalue = traits.Float()
 
 class MotionCorrectionEvaluation(BaseInterface):
 
@@ -127,27 +129,42 @@ class MotionCorrectionEvaluation(BaseInterface):
             mask = nb.load(self.inputs.mask).get_data() > 0
         else:
             mask = np.ones(nii.shape[:3],dtype=np.bool)
-        motion = np.loadtxt(self.inputs.motion)
+        self.motion = np.loadtxt(self.inputs.motion)
         if self.inputs.motion_source == 'slice_motion':
-            motion[:,3:6] *= 0.01
-        motion[:] = preproc.motion_parameter_standardize(
-            motion, self.inputs.motion_source)
+            self.motion[:,3:6] *= 0.01
+        self.motion[:] = preproc.motion_parameter_standardize(
+            self.motion, self.inputs.motion_source)
         indices = np.empty((3,np.count_nonzero(mask)),dtype=np.int32)
         indices[:] = np.nonzero(mask)
-        motion_mats = np.array([to_matrix44(m) for m in motion])
+        import os 
+        if self.inputs.motion_source=='fsl' and \
+                os.path.isdir(self.inputs.motion[:-4]+'.mat'):
+            import glob
+            self.motion_mats = np.array([np.loadtxt(f) for f in sorted(glob.glob(self.inputs.motion[:-4]+'.mat/MAT*'))])
+        else:
+            self.motion_mats = np.array([to_matrix44(m) for m in self.motion])
         voxels_motion=np.empty((nii.shape[-1],indices.shape[-1],3),np.float32)
-        for t,mat in enumerate(motion_mats):
+        for t,mat in enumerate(self.motion_mats):
             voxels_motion[t]=nb.affines.apply_affine(mat.dot(affine),indices.T)
         
         voxels_motion_diff = np.diff(voxels_motion, axis=0)
         voxels_motion_diff_drms = np.sqrt((voxels_motion_diff**2).sum(-1))
-        data_diff = np.diff(nii.get_data()[mask].reshape(-1,nii.shape[-1]),1,-1)
+        data_diff=np.diff(nii.get_data()[mask].reshape(-1,nii.shape[-1]),1,-1)
         self.voxels_motion = voxels_motion
         self.voxels_motion_diff=voxels_motion_diff
         self.data_diff=data_diff
         
+        import scipy.stats
+        _,_,self.correlation,self.pvalue,_ = scipy.stats.linregress(
+            np.sqrt((n.voxels_motion_diff**2).sum(-1).T.ravel()),
+            np.abs(n.data_diff.ravel()))
         
-        
-
-        #del voxels_motion, voxels_motion_diff, motion, mask, nii, data_diff
+        del self.voxels_motion, self.voxels_motion_diff, motion, mask, nii
+        del self.data_diff,self.motion,self.motion_mats
         return runtime
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        outputs['correlation'] = self.correlation
+        outputs['pvalue'] = self.pvalue
+        return outputs
