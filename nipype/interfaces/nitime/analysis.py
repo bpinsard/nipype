@@ -701,3 +701,116 @@ class SeedCorrelationAnalysis(BaseInterface):
         outputs = self.output_spec().get()
         outputs['seed_correlation_maps'] = self.map_fnames
         return outputs
+
+
+class CorrelationDistributionAnalysisInputSpec(BaseInterfaceInputSpec):
+    in_file = File(exists=True,mandatory=True)
+    rois_files = InputMultiPath(
+        traits.Either(traits.List(File(exists=True)), File(exists=True)),
+        desc = "ROIs integer files describing regions of interest from which to extract timeseries.")
+    rois_labels_files = InputMultiPath(
+        traits.Either(traits.List(File(exists=True)), File(exists=True)),
+        desc = "text files with ROIs labels")
+    mask = File(desc = "A mask file to restrain the ROIs.")
+    mask_threshold = traits.Float(
+        0, usedefault=True,
+        desc = "The default threshold to binarize mask image to create mask. Can be useful to create mask from probability image.")
+    distribution = File(
+        exists=True,mandatory=True,
+        desc = 'a distribution of correlation file from 3dTcorrMap')
+
+class CorrelationDistributionAnalysisOutputSpec(TraitedSpec):
+    correlation_distances = File()
+
+class CorrelationDistributionAnalysis(BaseInterface):
+
+    input_spec = CorrelationDistributionAnalysisInputSpec
+    output_spec = CorrelationDistributionAnalysisOutputSpec
+    
+    def _run_interface(self,runtime):
+
+        run_nii = nb.load(self.inputs.in_file)
+        run_data = run_nii.get_data()
+        rois_nii = [nb.load(rois_file) for rois_file in self.inputs.rois_files]
+        mask_nii = nb.load(self.inputs.mask)
+        mask_data = mask_nii.get_data() > self.inputs.mask_threshold
+        rois_data = [nii.get_data()*mask_data for nii in rois_nii]
+        
+        if self.inputs.rois_labels_files:
+            rois_labels = [[l.strip('\n') for l in open(labels_file).readlines()] for labels_file in self.inputs.rois_labels_files]
+        else:
+            rois_labels = [[]]*len(rois_data)
+
+        gdist = nb.load(self.inputs.distribution)
+
+        timeseries = dict()
+        global_distributions = dict()
+        labels_list = []
+
+        for rois,labels in zip(rois_data,rois_labels):
+            if labels == []:
+                labels = range(1,rois.max()+1)
+            for roi,label in enumerate(labels):
+                if label in labels_list:
+                    raise ValueError("Duplicate ROIs label "+label)
+                labels_list.append(label)
+                ts = np.array(run_data[ rois == roi+1 ])
+                ts[:] = (ts - ts.mean(1)[:,np.newaxis])/ts.std(1)[:,np.newaxis]
+                timeseries[label] = ts
+                global_distributions[label] = np.squeeze(gdist.get_data()[rois == roi+1])
+        #del rois_data
+
+        kl_div = np.zeros((len(timeseries),)*2)
+        kl_div_brain = np.zeros(kl_div.shape)
+        kl_div_asym = np.zeros(kl_div.shape)
+        nbins = gdist.shape[-1]
+        nt = run_nii.shape[-1]
+        brain_dist = gdist.get_data()[mask_data].sum(0)/float(gdist.get_data()[mask_data].sum())
+
+        for i in range(len(labels_list)):
+            l1 = labels_list[i]
+            for j in range(len(labels_list)):
+                l2 = labels_list[j]
+                if j>= i:
+                    corrs = timeseries[l1].dot(timeseries[l2].T)/nt
+                    distrib = np.histogram(corrs.ravel(),nbins,[-1,1])[0]
+                    distrib = distrib/float(distrib.sum())
+                    d1 = global_distributions[l1].astype(np.float)
+                    d2 = global_distributions[l2].astype(np.float)
+                    d1[d1==0],d2[d2==0] = np.nan,np.nan
+                    if j > i:
+                        gdistribs = np.vstack((d1,d2))
+                        gdistrib = np.nansum(gdistribs,0)/np.nansum(gdistribs)
+                        d1 = np.nansum(d1,0)/np.nansum(d1)
+                        d2 = np.nansum(d2,0)/np.nansum(d2)
+                        kl_div_asym[i,j]=np.nansum(np.log(distrib/d1)*distrib)
+                        kl_div_asym[j,i]=np.nansum(np.log(distrib/d2)*distrib)
+
+                    else:
+                        gdistrib = np.nansum(d1,0)/np.nansum(d1)
+                        kl_div_asym[i,j] = np.nansum(np.log(distrib/gdistrib)*distrib)
+                    kl_div[i,j] = np.nansum(np.log(distrib/gdistrib)*distrib)
+                    kl_div_brain[i,j] = np.nansum(np.log(distrib/brain_dist)*distrib)
+                    if j > i:
+                        kl_div[j,i] = kl_div[i,j]
+                        kl_div_brain[j,i] = kl_div_brain[i,j]
+
+        fname = self._list_outputs()['correlation_distances']
+        res = dict(kl_divergence=kl_div,
+                   kl_divergence_brain=kl_div_brain,
+                   kl_divergence_asym=kl_div_asym)
+        savepkl(fname,res)
+        self.timeseries = timeseries
+        self.global_distributions = global_distributions
+        del res, nii, timeseries,global_distributions
+        del kl_div,kl_div_asym,kl_div_brain
+        return runtime
+
+    
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['correlation_distances'] = fname_presuffix(self.inputs.in_file,
+                                                suffix='_cordist',
+                                                newpath = os.getcwd(),
+                                                use_ext=False) + '.pklz'
+        return outputs
