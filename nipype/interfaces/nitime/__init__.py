@@ -9,4 +9,5 @@ from .analysis import (CoherenceAnalyzerInputSpec,
                        CorrelationAnalysis,
                        HomogeneityAnalysis,
                        IntegrationAnalysis,
+                       CorrelationDistributionAnalysis,
                        SeedCorrelationAnalysis)
