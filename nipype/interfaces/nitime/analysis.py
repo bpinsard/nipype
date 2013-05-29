@@ -769,31 +769,34 @@ class CorrelationDistributionAnalysis(BaseInterface):
 
         for i in range(len(labels_list)):
             l1 = labels_list[i]
-            for j in range(len(labels_list)):
+            for j in range(i,len(labels_list)):
                 l2 = labels_list[j]
-                if j>= i:
-                    corrs = timeseries[l1].dot(timeseries[l2].T)/nt
+                corrs = timeseries[l1].dot(timeseries[l2].T)/nt
+                d1 = global_distributions[l1].astype(np.float)
+                d2 = global_distributions[l2].astype(np.float)
+                d1[d1==0],d2[d2==0] = np.nan,np.nan
+                if j > i:
                     distrib = np.histogram(corrs.ravel(),nbins,[-1,1])[0]
                     distrib = distrib/float(distrib.sum())
-                    d1 = global_distributions[l1].astype(np.float)
-                    d2 = global_distributions[l2].astype(np.float)
-                    d1[d1==0],d2[d2==0] = np.nan,np.nan
-                    if j > i:
-                        gdistribs = np.vstack((d1,d2))
-                        gdistrib = np.nansum(gdistribs,0)/np.nansum(gdistribs)
-                        d1 = np.nansum(d1,0)/np.nansum(d1)
-                        d2 = np.nansum(d2,0)/np.nansum(d2)
-                        kl_div_asym[i,j]=np.nansum(np.log(distrib/d1)*distrib)
-                        kl_div_asym[j,i]=np.nansum(np.log(distrib/d2)*distrib)
-
-                    else:
-                        gdistrib = np.nansum(d1,0)/np.nansum(d1)
-                        kl_div_asym[i,j] = np.nansum(np.log(distrib/gdistrib)*distrib)
-                    kl_div[i,j] = np.nansum(np.log(distrib/gdistrib)*distrib)
-                    kl_div_brain[i,j] = np.nansum(np.log(distrib/brain_dist)*distrib)
-                    if j > i:
-                        kl_div[j,i] = kl_div[i,j]
-                        kl_div_brain[j,i] = kl_div_brain[i,j]
+                    gdistribs = np.vstack((d1,d2))
+                    gdistrib = np.nansum(gdistribs,0)/np.nansum(gdistribs)
+                    d1 = np.nansum(d1,0)/np.nansum(d1)
+                    d2 = np.nansum(d2,0)/np.nansum(d2)
+                    kl_div_asym[i,j]=np.nansum(np.log(distrib/d1)*distrib)
+                    kl_div_asym[j,i]=np.nansum(np.log(distrib/d2)*distrib)
+                    
+                else:
+                    distrib = np.histogram(
+                        corrs[np.tri(corrs.shape[0],k=-1,dtype=np.bool)],
+                        nbins,[-1,1])[0]
+                    distrib = distrib/float(distrib.sum())
+                    gdistrib = np.nansum(d1,0)/np.nansum(d1)
+                    kl_div_asym[i,j] = np.nansum(np.log(distrib/gdistrib)*distrib)
+                kl_div[i,j] = np.nansum(np.log(distrib/gdistrib)*distrib)
+                kl_div_brain[i,j] = np.nansum(np.log(distrib/brain_dist)*distrib)
+                if j > i:
+                    kl_div[j,i] = kl_div[i,j]
+                    kl_div_brain[j,i] = kl_div_brain[i,j]
 
         fname = self._list_outputs()['correlation_distances']
         res = dict(kl_divergence=kl_div,
