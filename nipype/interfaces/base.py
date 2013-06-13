@@ -1392,7 +1392,7 @@ class CommandLine(BaseInterface):
                 continue
             value = getattr(self.inputs, name)
             if not isdefined(value):
-                if spec.genfile or spec.source_name:
+                if spec.genfile or spec.name_source:
                     value = self._gen_filename(name)
                 else:
                     continue
