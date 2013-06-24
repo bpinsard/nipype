@@ -444,11 +444,16 @@ class CorrelationAnalysis(BaseInterface):
             partialpval = None
             if nnan == 0:
                 try:
-                    samples_part = np.array([corr_to_partialcorr(s) for s in samples])
+                    samples_part = np.empty(samples.shape)
+                    for i,s in enumerate(samples):
+                        samples_part[i]=corr_to_partialcorr(s)
                     partialcorr = samples_part.mean(0)
                     partialpval = samples_part.std(0)
-                except ValueError:                
+                except ValueError:
                     pass
+                finally:
+                    del samples_part
+            del samples
         else:
             corr = np.corrcoef(ts)
             try:
