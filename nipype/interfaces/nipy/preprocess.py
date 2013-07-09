@@ -266,7 +266,7 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
     white_matter_file = File(
         exists=True,
         mandatory=True,
-        desc='white matter segmentation file, will be thresholded at 0.5')
+        desc='white matter segmentation surface or volume file( will be thresholded at 0.5)')
     exclude_points_mask  = File(
         exists=True,
         desc='mask to exclude region to be sampled, as for trunk due to pulsatility')
@@ -298,12 +298,23 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
     nsamples_first_frame = traits.Int(
          20000,
          usedefault=True,
-         desc='number of sample per slice to estimate first frame realignement')
+         desc='number of sample per slice for first frame realignement')
     nsamples_per_slicegroup = traits.Int(
          5000,
          usedefault = True,
-         desc='number of samples per slice to estimate whole run realignement')
+         desc='number of samples per slice for whole run realignement')
     suffix = traits.Str('_mc')
+
+    subsampling = traits.Int(
+        1, usedefault=True,
+        desc='subsample points on the surface or volume (stupid way)')
+
+    surface_sample_distance = traits.Float(
+        1.5, usedefault=True,
+        desc='distance from surface to sample points')
+
+    surface_ref = traits.File(
+        desc='volume defining surface space (eg. freesurfer volume)')
 
     slice_order = traits.List(
         traits.Int(),
@@ -330,30 +341,51 @@ class SliceMotionCorrection(BaseInterface):
         import nipy.algorithms.registration.slice_motion as sm
         nii = nb.load(self.inputs.in_file)
         data = nii.get_data()
-        wm = nb.load(self.inputs.white_matter_file)
-        exclude_mask=None
-        if isdefined(self.inputs.exclude_points_mask):
-            exclude_mask = nb.load(self.inputs.exclude_points_mask)
-        fmap = None
+        mask, surf_ref, fmap = None, None, None
+        if isdefined(self.inputs.mask_file):
+            mask = nb.load(self.inputs.mask_file)
+            surf_ref = mask
+        if isdefined(self.inputs.surface_ref):
+            surf_ref = nb.load(self.inputs.surface_ref)
+        if isdefined(self.inputs.fieldmap_file):
+            fmap = nb.load(self.inputs.fieldmap_file)
+
+        try:
+            wm = nb.load(self.inputs.white_matter_file)
+            exclude_mask=None
+            if isdefined(self.inputs.exclude_points_mask):
+                exclude_mask = nb.load(self.inputs.exclude_points_mask)
+            bnd_coords,class_coords = sm.extract_boundaries(
+                wm, self.inputs.surface_sample_distance,
+                subsample=self.inputs.subsampling,exclude=exclude_mask,
+                threshold=.5,margin=.25):
+        except:
+            from nibabel.freesurfer import read_geometry
+            wm_coords,wm_faces = read_geometry(self.inputs.white_matter_file)
+            ras2vox=np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
+            wm_coords = nb.affines.apply_affine(
+                surf_ref.get_affine().dot(ras2vox),wm_coords)
+            class_coords = sm.surface_to_samples(
+                wm_coords2,wm_faces,
+                self.inputs.surface_sample_distance)
+            if self.inputs.subsampling > 1:
+                wm_coords = wm_coords[::self.inputs.subsampling]
+                class_coords = class_coords[:,::self.inputs.subsampling]
+            
         tr = self.inputs.tr
         echo_time = self.inputs.echo_time
         if not isdefined(tr):
             tr = nii.get_header().get_zooms()[3]
             if nii.get_header().get_xyzt_units()[-1] == 'msec':
                 tr *= 1e-3
-        if isdefined(self.inputs.fieldmap_file):
-            fmap = nb.load(self.inputs.fieldmap_file)
-        if isdefined(self.inputs.mask_file):
-            mask = nb.load(self.inputs.mask_file)
 
-        im4d = sm.SliceImage4d(nii.get_data()[...,:1],nii.get_affine(),
-                               tr=tr,
-                               slice_order=self.inputs.slice_order)
+        im4d = sm.SliceImage4d(nii.get_data()[...,:1], nii.get_affine(),
+                               tr=tr, slice_order=self.inputs.slice_order)
         # estimate a first transform for 1st volume
         self.first_frame_alg = sm.RealignSliceAlgorithm(
-            im4d,wm,exclude_mask,fmap,mask=mask,
-            pe_dir=self.inputs.unwarp_direction,
-            echo_spacing=self.inputs.echo_spacing,
+            im4d,wm_coords,class_coords,mask, mask,
+            pe_dir = self.inputs.unwarp_direction,
+            echo_spacing = self.inputs.echo_spacing,
             echo_time = echo_time,
             nsamples_per_slicegroup=self.inputs.nsamples_first_frame)
         self.first_frame_alg.estimate_motion()
@@ -364,7 +396,7 @@ class SliceMotionCorrection(BaseInterface):
                           slice_order=self.inputs.slice_order)
         if self.inputs.strategy=='volume':
             self.whole_run_alg = sm.RealignSliceAlgorithm(
-                im4d,wm,exclude_mask,fmap,mask=mask,
+                im4d,wm_coords,class_coords,mask, mask,
                 pe_dir=self.inputs.unwarp_direction,
                 echo_spacing=self.inputs.echo_spacing,
                 echo_time = echo_time,
