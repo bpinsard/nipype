@@ -6,7 +6,7 @@ from cPickle import dumps, loads
 import numpy as np
 import nibabel as nb
 
-from nipype.utils.filemanip import (filename_to_list, copyfile, split_filename)
+from nipype.utils.filemanip import (filename_to_list, copyfile, split_filename,loadpkl)
 from nipype.interfaces.base import (traits, TraitedSpec, DynamicTraitedSpec, File,
                                     Undefined, isdefined, OutputMultiPath,
     InputMultiPath, BaseInterface, BaseInterfaceInputSpec)
@@ -444,3 +444,24 @@ class AssertEqual(BaseInterface):
         assert_equal(data1, data2)
 
         return runtime
+
+
+class LoadResultsInputSpec(BaseInterfaceInputSpec):
+    result_file = traits.File(
+        mandatory=True,
+        exists=True,
+        desc='the results file to be loaded')
+
+class LoadResults(BaseInterface):
+    input_spec = LoadResultsInputSpec
+    output_spec = DynamicTraitedSpec
+    
+    def _run_interface(self, runtime):
+        self._outs = loadpkl(self.inputs.result_file).outputs.get()
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        for k,v in self._outs.items():
+            outputs[k]=v
+        return outputs
