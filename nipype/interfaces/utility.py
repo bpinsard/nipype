@@ -452,10 +452,23 @@ class LoadResultsInputSpec(BaseInterfaceInputSpec):
         exists=True,
         desc='the results file to be loaded')
 
-class LoadResults(BaseInterface):
+class LoadResults(IOBase):
     input_spec = LoadResultsInputSpec
     output_spec = DynamicTraitedSpec
     
+    def __init__(self,source_interface,**inputs):
+        super(LoadResults, self).__init__(**inputs)
+                
+        self._out_traits = source_interface.output_spec.class_trait_names(transient=None)
+
+    def _add_output_traits(self, base):
+        undefined_traits = {}
+        for name in self._out_traits:
+            base.add_trait(name,traits.Any)
+            undefined_traits[name] = Undefined
+        base.trait_set(trait_change_notify=False, **undefined_traits)
+        return base
+
     def _run_interface(self, runtime):
         self._outs = loadpkl(self.inputs.result_file).outputs.get()
         return runtime
