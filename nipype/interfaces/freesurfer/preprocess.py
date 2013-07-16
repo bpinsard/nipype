@@ -1244,7 +1244,6 @@ class TkregisterInputSpec(FSTraitedSpec):
    identity = traits.Bool(argstr='--identity',
                           desc='use identity as registration matrix')
    subject_id = traits.Str(argstr='--s %s', desc='set subject id')
-   subject_dir = Directory(argstr='--sd %s', desc='use dir as SUBJECTS_DIR')
    nofix = traits.Bool(argstr='--nofix',
                        desc='don\'t fix old tkregister matrices')
    float2int = traits.Str(argstr='--float2int %s',
