@@ -325,6 +325,8 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
     out_file=File()
     out_parameters_file=File()
 
+    ftol = traits.Float(1e-4, usedefault=True, desc='optimizer tolerance')
+
 class SliceMotionCorrectionOutputSpec(TraitedSpec):
     out_file = File(exists=True)
     motion_parameters = File(exists=True)
@@ -385,7 +387,7 @@ class SliceMotionCorrection(BaseInterface):
             im4d,wm_coords,class_coords,surf_ref,fmap,mask,
             pe_dir = self.inputs.unwarp_direction,
             echo_spacing = self.inputs.echo_spacing,
-            echo_time = echo_time,
+            echo_time = echo_time, ftol=self.inputs.ftol,
             nsamples_per_slicegroup=self.inputs.nsamples_first_frame)
         self.first_frame_alg.estimate_motion()
 
@@ -398,7 +400,7 @@ class SliceMotionCorrection(BaseInterface):
                 im4d,wm_coords,class_coords,surf_ref,fmap,mask,
                 pe_dir=self.inputs.unwarp_direction,
                 echo_spacing=self.inputs.echo_spacing,
-                echo_time = echo_time,
+                echo_time = echo_time,ftol=self.inputs.ftol,
                 transforms=[t.copy() for t in self.first_frame_alg.transforms],
                 nsamples_per_slicegroup = self.inputs.nsamples_per_slicegroup)
             self.whole_run_alg.estimate_motion()
