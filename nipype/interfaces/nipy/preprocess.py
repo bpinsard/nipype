@@ -331,7 +331,6 @@ class SliceMotionCorrectionOutputSpec(TraitedSpec):
 
     all_data = File(exists=True)
     coords = File(exists=True)
-    
 class SliceMotionCorrection(BaseInterface):
     
     input_spec = SliceMotionCorrectionInputSpec
@@ -358,7 +357,7 @@ class SliceMotionCorrection(BaseInterface):
             bnd_coords,class_coords = sm.extract_boundaries(
                 wm, self.inputs.surface_sample_distance,
                 subsample=self.inputs.subsampling,exclude=exclude_mask,
-                threshold=.5,margin=.25):
+                threshold=.5,margin=.25)
         except:
             from nibabel.freesurfer import read_geometry
             wm_coords,wm_faces = read_geometry(self.inputs.white_matter_file)
@@ -366,7 +365,7 @@ class SliceMotionCorrection(BaseInterface):
             wm_coords = nb.affines.apply_affine(
                 surf_ref.get_affine().dot(ras2vox),wm_coords)
             class_coords = sm.surface_to_samples(
-                wm_coords2,wm_faces,
+                wm_coords,wm_faces,
                 self.inputs.surface_sample_distance)
             if self.inputs.subsampling > 1:
                 wm_coords = wm_coords[::self.inputs.subsampling]
@@ -383,7 +382,7 @@ class SliceMotionCorrection(BaseInterface):
                                tr=tr, slice_order=self.inputs.slice_order)
         # estimate a first transform for 1st volume
         self.first_frame_alg = sm.RealignSliceAlgorithm(
-            im4d,wm_coords,class_coords,mask, mask,
+            im4d,wm_coords,class_coords,surf_ref,fmap,mask,
             pe_dir = self.inputs.unwarp_direction,
             echo_spacing = self.inputs.echo_spacing,
             echo_time = echo_time,
@@ -396,7 +395,7 @@ class SliceMotionCorrection(BaseInterface):
                           slice_order=self.inputs.slice_order)
         if self.inputs.strategy=='volume':
             self.whole_run_alg = sm.RealignSliceAlgorithm(
-                im4d,wm_coords,class_coords,mask, mask,
+                im4d,wm_coords,class_coords,surf_ref,fmap,mask,
                 pe_dir=self.inputs.unwarp_direction,
                 echo_spacing=self.inputs.echo_spacing,
                 echo_time = echo_time,
