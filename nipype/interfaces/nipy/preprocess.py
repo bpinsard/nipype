@@ -322,6 +322,8 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
 
     tr = traits.Float(desc='Repetition time')
 
+    resampling_ref = traits.File('volume defining resampling space')
+
     out_file=File()
     out_parameters_file=File()
 
@@ -384,7 +386,7 @@ class SliceMotionCorrection(BaseInterface):
                                tr=tr, slice_order=self.inputs.slice_order)
         # estimate a first transform for 1st volume
         self.first_frame_alg = sm.RealignSliceAlgorithm(
-            im4d,wm_coords,class_coords,surf_ref,fmap,mask,
+            im4d,wm_coords,class_coords,mask,fmap,mask,
             pe_dir = self.inputs.unwarp_direction,
             echo_spacing = self.inputs.echo_spacing,
             echo_time = echo_time, ftol=self.inputs.ftol,
@@ -397,7 +399,7 @@ class SliceMotionCorrection(BaseInterface):
                           slice_order=self.inputs.slice_order)
         if self.inputs.strategy=='volume':
             self.whole_run_alg = sm.RealignSliceAlgorithm(
-                im4d,wm_coords,class_coords,surf_ref,fmap,mask,
+                im4d,wm_coords,class_coords,mask,fmap,mask,
                 pe_dir=self.inputs.unwarp_direction,
                 echo_spacing=self.inputs.echo_spacing,
                 echo_time = echo_time,ftol=self.inputs.ftol,
@@ -407,13 +409,14 @@ class SliceMotionCorrection(BaseInterface):
 #        else:
             #sm.
         
-        realigned = self.whole_run_alg.resample_full_data(
-            self.inputs.output_voxel_size)
-        
         output_voxel_size = self.inputs.output_voxel_size
-        if not isdefined(output_voxel_size):
-            output_voxel_size = wm.get_header().get_zooms()[:3]
-#        realigned = self.first_frame_alg.resample_full_data(output_voxel_size)
+        resamp_ref = None
+        if isdefined(self.inputs.resampling_ref):
+            resamp_ref = nb.load(self.inputs.resampling_ref)
+        realigned = self.whole_run_alg.resample_full_data(
+            voxsize=self.inputs.output_voxel_size,reference=resamp_ref)
+#        realigned = self.first_frame_alg.resample_full_data(
+#            voxsize=self.inputs.output_voxel_size,reference=resamp_ref)
 
         outputs = self._list_outputs()
         realigned.to_filename(outputs['out_file'])
@@ -421,8 +424,8 @@ class SliceMotionCorrection(BaseInterface):
                 (self.whole_run_alg.bnd_coords[np.newaxis],
                  self.whole_run_alg.class_coords),0))
         np.save(outputs['all_data'],self.whole_run_alg._all_data)
-        params = np.array([t.param*t.precond[:6] for t in self.whole_run_alg.transforms])
-#        params = np.array([t.param for t in self.first_frame_alg.transforms])
+#        params = np.array([t.param*t.precond[:6] for t in self.whole_run_alg.transforms])
+        params = np.array([t.param*t.precond[:6] for t in self.first_frame_alg.transforms])
         np.savetxt(outputs['motion_parameters'],params)
         del self.first_frame_alg
         del realigned
@@ -455,5 +458,4 @@ class SliceMotionCorrection(BaseInterface):
             newpath=os.getcwd(),
             use_ext = False,
             suffix='_costs.npy')
-
         return outputs
