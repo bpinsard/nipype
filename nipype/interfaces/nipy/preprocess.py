@@ -276,25 +276,14 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
     mask_file = File(
         exists=True,
         desc='brain mask')
+    surface_ref = traits.File(
+        desc='volume defining surface space (eg. freesurfer volume)')
 
+    #algorithm parameters
     strategy = traits.Enum(
         'volume','intensity_heuristic',
         usedefault=True,
         desc = 'how to split the run for motion estimate')
-
-    unwarp_direction = traits.Range(-3,3,1,usedefault=True,
-        desc='specifies direction of warping (default 1)')
-    echo_spacing = traits.Float(
-        0.0006, usedefault=True,
-        desc='effective echo spacing or dwelling time of the fmri acquisition in sec, TODO: find it in in_file if dcmstack...')
-
-    echo_time = traits.Float(
-        0.30, usedefault=True,
-        desc='echo time of the fmri acquisition in sec')
-    
-    output_voxel_size = traits.Tuple(*([traits.Float()]*3),
-        desc = 'resample realigned file at a specific voxel size')
-
     nsamples_first_frame = traits.Int(
          20000,
          usedefault=True,
@@ -303,31 +292,53 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
          5000,
          usedefault = True,
          desc='number of samples per slice for whole run realignement')
-    suffix = traits.Str('_mc')
-
     subsampling = traits.Int(
         1, usedefault=True,
         desc='subsample points on the surface or volume (stupid way)')
-
     surface_sample_distance = traits.Float(
         1.5, usedefault=True,
         desc='distance from surface to sample points')
+    ftol = traits.Float(1e-4, usedefault=True, desc='optimizer tolerance')
 
-    surface_ref = traits.File(
-        desc='volume defining surface space (eg. freesurfer volume)')
 
-    slice_order = traits.List(
+    # options for excluding sample points using estimated sigloss
+    sigloss_threshold = traits.Float(
+        0,usedefault=True,
+        desc="""exclude sampling points with signal lower than threshold""")
+
+    # epi acquisition parameters
+    epi_echo_spacing = traits.Float(
+        0.0006, usedefault=True,
+        desc='effective echo spacing or dwelling time of the epi acquisition in sec, TODO: find it in in_file if dcmstack...')
+
+    epi_echo_time = traits.Float(
+        0.03, usedefault=True,
+        desc='echo time of the epi acquisition in sec')
+
+    epi_tr = traits.Float(desc='Repetition time')
+
+    epi_slicing_axis = traits.Range(
+        0, 2, 2,
+        usedefault=True, mandatory=True,
+        desc='slicing axis in epi file space')
+    epi_phase_direction = traits.Range(-3,3,1,usedefault=True,
+        desc='specifies direction of warping (default 1)')
+
+    epi_slice_order = traits.List(
         traits.Int(),
         desc='slice acquisition order')
 
-    tr = traits.Float(desc='Repetition time')
-
-    resampling_ref = traits.File('volume defining resampling space')
-
-    out_file=File()
-    out_parameters_file=File()
-
-    ftol = traits.Float(1e-4, usedefault=True, desc='optimizer tolerance')
+    #resampled output parameters
+    output_voxel_size = traits.Tuple(*([traits.Float()]*3),
+        desc = 'resample realigned file at a specific voxel size')
+    out_file=File(
+        '%s_smc', usedefault=True,
+        desc='motion corrected resampled output filename')
+    out_parameters_file=File(
+        '%s_params.txt', mandatory=True, usedefault=True,
+        desc='motion parameters output filename')
+    resampling_ref = traits.File(
+        desc='volume defining resampling space')
 
 class SliceMotionCorrectionOutputSpec(TraitedSpec):
     out_file = File(exists=True)
@@ -375,33 +386,43 @@ class SliceMotionCorrection(BaseInterface):
                 wm_coords = wm_coords[::self.inputs.subsampling]
                 class_coords = class_coords[:,::self.inputs.subsampling]
             
-        tr = self.inputs.tr
-        echo_time = self.inputs.echo_time
+        tr = self.inputs.epi_tr
+        echo_time = self.inputs.epi_echo_time
         if not isdefined(tr):
             tr = nii.get_header().get_zooms()[3]
             if nii.get_header().get_xyzt_units()[-1] == 'msec':
                 tr *= 1e-3
 
         im4d = sm.SliceImage4d(nii.get_data()[...,:1], nii.get_affine(),
-                               tr=tr, slice_order=self.inputs.slice_order)
+                               tr=tr, slice_order=self.inputs.epi_slice_order)
         # estimate a first transform for 1st volume
         self.first_frame_alg = sm.RealignSliceAlgorithm(
             im4d,wm_coords,class_coords,mask,fmap,mask,
-            pe_dir = self.inputs.unwarp_direction,
-            echo_spacing = self.inputs.echo_spacing,
+            pe_dir = self.inputs.epi_phase_direction,
+            echo_spacing = self.inputs.epi_echo_spacing,
             echo_time = echo_time, ftol=self.inputs.ftol,
             nsamples_per_slicegroup=self.inputs.nsamples_first_frame)
         self.first_frame_alg.estimate_motion()
 
 
+        if self.inputs.sigloss_threshold>0:
+            reg = self.first_frame_alg.transforms[0].as_affine()
+            sigloss = sm.compute_sigloss(
+                fmap, mask,reg, nii.get_affine(), wm_coords,
+                self.inputs.epi_echo_time, self.inputs.epi_slicing_axis)
+            sigloss_subset = sigloss > self.inputs.sigloss_threshold
+            print '%f percent of voxels kept after sigloss'%(np.count_nonzero(sigloss_subset)/float(sigloss_subset.size))
+            wm_coords = wm_coords[sigloss_subset]
+            class_coords = class_coords[:,sigloss_subset]
+
+        del im4d
         im4d = sm.SliceImage4d(nii.get_data(),nii.get_affine(),
-                          tr = tr,
-                          slice_order=self.inputs.slice_order)
+                          tr = tr, slice_order=self.inputs.epi_slice_order)
         if self.inputs.strategy=='volume':
             self.whole_run_alg = sm.RealignSliceAlgorithm(
                 im4d,wm_coords,class_coords,mask,fmap,mask,
-                pe_dir=self.inputs.unwarp_direction,
-                echo_spacing=self.inputs.echo_spacing,
+                pe_dir=self.inputs.epi_phase_direction,
+                echo_spacing=self.inputs.epi_echo_spacing,
                 echo_time = echo_time,ftol=self.inputs.ftol,
                 transforms=[t.copy() for t in self.first_frame_alg.transforms],
                 nsamples_per_slicegroup = self.inputs.nsamples_per_slicegroup)
@@ -459,3 +480,65 @@ class SliceMotionCorrection(BaseInterface):
             use_ext = False,
             suffix='_costs.npy')
         return outputs
+
+
+class SiglossInputSpec(BaseInterfaceInputSpec):
+    
+    fieldmap_file = File(
+        desc='preprocessed fieldmap file',
+        exists=True, mandatory=True)
+    mask_file = File(
+        exists=True, mandatory=True,
+        desc='mask for fieldmap')
+    echo_time = traits.Float(desc='echo time in sec', mandatory=True)
+    epi_file = File(
+        exists=True,
+        desc='file defining epi acquisition space')
+    epi_registration = File(
+        exists=True,
+        desc='a registration matrix between epi and fieldmap')
+    epi_slicing_axis = traits.Range(
+        0, 2, 2,
+        usedefault=True, mandatory=True,
+        desc='slicing axis in epi file space')
+    out_file = File(
+        '%s_sigloss', usedefault=True, name_source='fieldmap_file',
+        desc='output file name')
+
+class SiglossOutputSpec(TraitedSpec):
+    out_file = File(desc='signal loss file')
+
+class Sigloss(BaseInterface):
+
+    """
+    compute EPI signal loss using a fieldmap which can be in another sampling
+    and orientation than the original EPI file.
+    There is still some border problem, sigloss not being estimated on the 
+    border of the mask, should extrapolate
+    """
+
+    input_spec = SiglossInputSpec
+    output_spec = SiglossOutputSpec
+
+
+    def _run_interface(self,runtime):
+        fmap = nb.load(self.inputs.fieldmap_file)
+        mask = nb.load(self.inputs.mask_file).get_data()>0
+        reg, epimat = np.eye(4),np.eye(4)
+        if isdefined(self.inputs.epi_registration):
+            rparams = np.loadtxt(self.inputs.epi_registration)
+            if rparams.shape == (4,4): #regular flirt matrix
+                regp[:] = rparams
+            if rparams.shape[-1]==6: #motion parameters
+                from nipy.algorithms.registration.affine import to_matrix44
+                reg = to_matrix44(rparams[0])
+        if isdefined(self.inputs.epi_file):
+            epimat = nb.load(self.inputs.epi_file).get_affine()
+        pts = nb.apply_affine(fmap.get_affine(),np.array(np.where(mask)).T)
+        sigloss = np.zeros(fmap.shape, fmap.get_data_dtype())
+        sigloss[mask] = compute_sigloss(
+            fmap, mask, reg, epimat, pts,
+            self.inputs.echo_time, self.inputs.slicing_axis, order=0)
+        out_fname = self._list_outputs()['out_file']
+        nb.save(nb.Nifti1Image(sigloss,fmap.get_affine()),out_fname)
+        return runtime
