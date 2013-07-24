@@ -23,6 +23,7 @@ except Exception, e:
 else:
     from nipy.labs.mask import compute_mask
     from nipy.algorithms.registration import FmriRealign4d as FR4d
+    from nipy.algorithms.registration.affines import to_matrix44
     from nipy import save_image, load_image
 
 from ..base import (TraitedSpec, BaseInterface, traits,
@@ -257,12 +258,43 @@ class Trim(BaseInterface):
         outputs['out_file'] = os.path.abspath(outputs['out_file'])
         return outputs
 
-class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
-    
+class SliceInterpolationBaseInputSpec(BaseInterfaceInputSpec):
     in_file = File(
         exists=True,
         mandatory=True,
         desc='fmri run file')
+    fieldmap_file = File(
+        exists=True,
+        desc='fieldmap file coregistered to t1 space for concurrent unwarping')
+    mask_file = File(
+        exists=True,
+        desc='brain mask')    
+
+    # epi acquisition parameters
+    epi_echo_spacing = traits.Float(
+        0.0006, usedefault=True,
+        desc='effective echo spacing or dwelling time of the epi acquisition in sec, TODO: find it in in_file if dcmstack...')
+
+    epi_echo_time = traits.Float(
+        0.03, usedefault=True,
+        desc='echo time of the epi acquisition in sec')
+
+    epi_tr = traits.Float(desc='Repetition time')
+
+    epi_slicing_axis = traits.Range(
+        0, 2, 2,
+        usedefault=True, mandatory=True,
+        desc='slicing axis in epi file space')
+    epi_phase_direction = traits.Range(-3,3,1,usedefault=True,
+        desc='specifies direction of warping (default 1)')
+
+    epi_slice_order = traits.List(
+        traits.Int(),
+        desc='slice acquisition order')
+
+
+class SliceMotionCorrectionInputSpec(SliceInterpolationBaseInputSpec):
+    
     white_matter_file = File(
         exists=True,
         mandatory=True,
@@ -270,12 +302,6 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
     exclude_points_mask  = File(
         exists=True,
         desc='mask to exclude region to be sampled, as for trunk due to pulsatility')
-    fieldmap_file = File(
-        exists=True,
-        desc='fieldmap file coregistered to t1 space for concurrent unwarping')
-    mask_file = File(
-        exists=True,
-        desc='brain mask')
     surface_ref = traits.File(
         desc='volume defining surface space (eg. freesurfer volume)')
 
@@ -300,42 +326,22 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
         desc='distance from surface to sample points')
     ftol = traits.Float(1e-4, usedefault=True, desc='optimizer tolerance')
 
-
     # options for excluding sample points using estimated sigloss
     sigloss_threshold = traits.Float(
         0,usedefault=True,
         desc="""exclude sampling points with signal lower than threshold""")
 
-    # epi acquisition parameters
-    epi_echo_spacing = traits.Float(
-        0.0006, usedefault=True,
-        desc='effective echo spacing or dwelling time of the epi acquisition in sec, TODO: find it in in_file if dcmstack...')
-
-    epi_echo_time = traits.Float(
-        0.03, usedefault=True,
-        desc='echo time of the epi acquisition in sec')
-
-    epi_tr = traits.Float(desc='Repetition time')
-
-    epi_slicing_axis = traits.Range(
-        0, 2, 2,
-        usedefault=True, mandatory=True,
-        desc='slicing axis in epi file space')
-    epi_phase_direction = traits.Range(-3,3,1,usedefault=True,
-        desc='specifies direction of warping (default 1)')
-
-    epi_slice_order = traits.List(
-        traits.Int(),
-        desc='slice acquisition order')
-
     #resampled output parameters
     output_voxel_size = traits.Tuple(*([traits.Float()]*3),
         desc = 'resample realigned file at a specific voxel size')
     out_file=File(
-        '%s_smc', usedefault=True,
+        '%s_smc', usedefault=True, name_source='in_file',
         desc='motion corrected resampled output filename')
-    out_parameters_file=File(
-        '%s_params.txt', mandatory=True, usedefault=True,
+    motions_parameters=File(
+        '%s_params.txt', mandatory=True, usedefault=True,name_source='in_file',
+        desc='motion parameters output filename')
+    matrices=File(
+        '%s_mats.npy', usedefault=True, name_source='in_file',
         desc='motion parameters output filename')
     resampling_ref = traits.File(
         desc='volume defining resampling space')
@@ -343,6 +349,11 @@ class SliceMotionCorrectionInputSpec(BaseInterfaceInputSpec):
 class SliceMotionCorrectionOutputSpec(TraitedSpec):
     out_file = File(exists=True)
     motion_parameters = File(exists=True)
+    matrices = File(exists=True)
+    slice_groups = traits.List(
+        traits.Tuple(trait.Tuple(traits.Int,traits.Int),
+                     trait.Tuple(traits.Int,traits.Int)),
+        desc='slice groups : list of ((#frame,#slice),(#frame,#slice))')
 
     all_data = File(exists=True)
     coords = File(exists=True)
@@ -393,12 +404,12 @@ class SliceMotionCorrection(BaseInterface):
             if nii.get_header().get_xyzt_units()[-1] == 'msec':
                 tr *= 1e-3
 
-        im4d = sm.SliceImage4d(nii.get_data()[...,:1], nii.get_affine(),
-                               tr=tr, slice_order=self.inputs.epi_slice_order)
-        # estimate a first transform for 1st volume
         self.first_frame_alg = sm.RealignSliceAlgorithm(
-            im4d,wm_coords,class_coords,mask,fmap,mask,
-            pe_dir = self.inputs.epi_phase_direction,
+            nii,wm_coords,class_coords,
+            [((0,0),(0,nii.shape[self.inputs.slicing_axis]))],None,fmap,mask,
+            phase_encoding_dir = self.inputs.epi_phase_direction,
+            repetition_time=tr, 
+            slice_order = self.inputs.epi_slice_order,
             echo_spacing = self.inputs.epi_echo_spacing,
             echo_time = echo_time, ftol=self.inputs.ftol,
             nsamples_per_slicegroup=self.inputs.nsamples_first_frame)
@@ -415,40 +426,48 @@ class SliceMotionCorrection(BaseInterface):
             wm_coords = wm_coords[sigloss_subset]
             class_coords = class_coords[:,sigloss_subset]
 
-        del im4d
-        im4d = sm.SliceImage4d(nii.get_data(),nii.get_affine(),
-                          tr = tr, slice_order=self.inputs.epi_slice_order)
         if self.inputs.strategy=='volume':
             self.whole_run_alg = sm.RealignSliceAlgorithm(
-                im4d,wm_coords,class_coords,mask,fmap,mask,
-                pe_dir=self.inputs.epi_phase_direction,
-                echo_spacing=self.inputs.epi_echo_spacing,
-                echo_time = echo_time,ftol=self.inputs.ftol,
-                transforms=[t.copy() for t in self.first_frame_alg.transforms],
-                nsamples_per_slicegroup = self.inputs.nsamples_per_slicegroup)
-            self.whole_run_alg.estimate_motion()
+                nii,wm_coords,class_coords,
+                None, self.first_frame_alg.transforms,fmap,mask,
+                phase_encoding_dir = self.inputs.epi_phase_direction,
+                repetition_time=tr, 
+                slice_order = self.inputs.epi_slice_order,
+                echo_spacing = self.inputs.epi_echo_spacing,
+                echo_time = echo_time, ftol=self.inputs.ftol,
+                nsamples_per_slicegroup=self.inputs.nsamples_per_slicegroup)
 #        else:
             #sm.
+        del self.first_frame_alg
+        self.whole_run_alg.estimate_motion()
+        self._slice_groups = self.whole_run_alg.slice_groups
+
+        outputs = self._list_outputs()
+
+        params = np.array([t.param*t.precond[:6] for t in self.whole_run_alg.transforms])
+        np.savetxt(outputs['motion_parameters'],params)
+        if isdefined(outputs['matrices']):
+            matrices = np.array([t.as_affine() \
+                                     for t in self.whole_run_alg.transforms])
+            np.save(outputs['matrices'],matrices)
+
         
-        output_voxel_size = self.inputs.output_voxel_size
-        resamp_ref = None
-        if isdefined(self.inputs.resampling_ref):
-            resamp_ref = nb.load(self.inputs.resampling_ref)
-        realigned = self.whole_run_alg.resample_full_data(
-            voxsize=self.inputs.output_voxel_size,reference=resamp_ref)
+        if isdefined(outputs['out_file']):
+            output_voxel_size = self.inputs.output_voxel_size
+            resamp_ref = None
+            if isdefined(self.inputs.resampling_ref):
+                resamp_ref = nb.load(self.inputs.resampling_ref)
+            realigned = self.whole_run_alg.resample_full_data(
+                voxsize=self.inputs.output_voxel_size,reference=resamp_ref)
 #        realigned = self.first_frame_alg.resample_full_data(
 #            voxsize=self.inputs.output_voxel_size,reference=resamp_ref)
 
-        outputs = self._list_outputs()
-        realigned.to_filename(outputs['out_file'])
+            realigned.to_filename(outputs['out_file'])
         np.save(outputs['coords'],np.concatenate(
                 (self.whole_run_alg.bnd_coords[np.newaxis],
                  self.whole_run_alg.class_coords),0))
         np.save(outputs['all_data'],self.whole_run_alg._all_data)
-        params = np.array([t.param*t.precond[:6] for t in self.whole_run_alg.transforms])
 #        params = np.array([t.param*t.precond[:6] for t in self.first_frame_alg.transforms])
-        np.savetxt(outputs['motion_parameters'],params)
-        del self.first_frame_alg
         del realigned
         del self.whole_run_alg
         return runtime
@@ -479,6 +498,8 @@ class SliceMotionCorrection(BaseInterface):
             newpath=os.getcwd(),
             use_ext = False,
             suffix='_costs.npy')
+        if hasattr(self,'_slice_groups'):
+            outputs['slice_groups'] = self._slice_groups
         return outputs
 
 
@@ -542,3 +563,106 @@ class Sigloss(BaseInterface):
         out_fname = self._list_outputs()['out_file']
         nb.save(nb.Nifti1Image(sigloss,fmap.get_affine()),out_fname)
         return runtime
+
+
+class ExtractCiftiInputSpec(SliceInterpolationBaseInputSpec):
+    slice_groups = traits.List(
+        traits.Tuple(*([trait.Tuple(*([traits.Int(min=0)]*2))]*2)),
+        desc="""slice groups : list of ((#frame,#slice),(#frame,#slice)),
+                if not provided volumes will be used or 
+                if single registration provided same transform will be applied
+                for all""")
+    motion_parameters = File(
+        exists=True,
+        desc='motion parameters in world space as text file')
+    registration = File(
+        exists=True,
+        desc="""single registration matrix in text file""")
+    surface_files = traits.List(
+        traits.Tuple(traits.Str,traits.File(exists=True)), 
+        desc='surface from which to extract signal')
+    rois = traits.List(
+        traits.Tuple(File(),File(),traits.List(traits.Int)), exists=True,
+        desc="""triplets of volume/label/ids rois from which to extract signal
+                if ids is [], all rois will be sampled""")
+    surface_ref = traits.File(
+        desc='volume defining surface space (eg. freesurfer volume)')
+    interpolation = traits.Range(
+        0,5,3, usedefault=True,
+        desc='level of interpolation: see scipy map_coordinate')
+    out_file = File(
+        '%s_ts', name_source='in_file',
+        desc='sampled signal output file, cifti? hdf5?')
+    volume_voxel_size = traits.Tuple(*([traits.Float()]*3),
+        desc = 'voxel size of volume rois')
+
+class ExtractCiftiOutputSpec(TraitedSpec):
+    out_file = File(exists=True)
+
+class ExtractCifti(BaseInterface):
+
+    input_spec = ExtractCiftiInputSpec
+    output_spec = ExtractCiftiOutputSpec
+    
+    def _run_interface(self,runtime):
+        epi = nb.load(self.inputs.in_file)        
+        
+        transforms=[]
+        reg = np.eye(4) #identity
+        if isdefined(self.inputs.registration):
+            reg = np.loadtxt(self.inputs.registration)
+        if isdefined(self.inputs.motion_parameters):
+            motion = np.loadtxt(self.inputs.motion_parameters)
+            for p in motion:
+                transforms.append(sm.Rigid(reg.dot(to_matrix44(t))))
+        else:
+            transforms.append(sm.Rigid(reg))
+
+        slice_groups = self.inputs.slice_groups
+        if not isdefined(slice_groups) or len(slice_groups)==0:
+            nslices = epi.shape[self.inputs.slicing_axis]
+            if len(transforms)==epi.shape[-1]:
+                slice_groups=[((t,0),(t,)) for t in epi.shape[-1]]
+            else:
+                slice_groups=[((0,0),(epi.shape[-1],nslices))]
+
+        if isdefined(self.inputs.mask_file):
+            mask = nb.load(self.inputs.mask_file)
+        if isdefined(self.inputs.fieldmap_file):
+            fieldmap = nb.load(self.inputs.fieldmap)
+
+        tr = self.inputs.epi_tr
+        if not isdefined(tr):
+            tr = nii.get_header().get_zooms()[3]
+            if nii.get_header().get_xyzt_units()[-1] == 'msec':
+                tr *= 1e-3
+
+        sm.EPIInterpolation(
+            epi, slice_groups, transforms, fieldmap, mask,
+            phase_encoding_dir = self.inputs.phase_encoding_dir,
+            repetition_time = tr,
+            echo_time = self.inputs.epi_echo_time, 
+            echo_spacing = self.inputs.epi_echo_spacing,
+            slice_order = self.inputs.epi_slice_order,
+            slice_axis = self.inputs.epi_slicing_axis)
+
+        surfaces = []
+        ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
+        surf_ref = nb.load(self.inputs.surface_ref)
+        surf2wld = surf_ref.get_affine().dot(ras2vox)
+        del surf_ref
+        for f in self.inputs.surface_files:
+            verts, tri = nb.freesurfer.read_geometry(f)
+            surfaces.append(nb.affines.apply_affine(surf2wld,verts),tri)
+        for vf,lf,ids in self.inputs.rois:
+            rois = nb.load(vf)
+            # suppose freesurfer labels file
+            clut = np.loadtxt(lf,np.object,comments='#',
+                       converters={0:int,1:str,2:int,3:int,4:int,5:int})
+            founds_ids = np.unique(rois.get_data())
+            founds_ids = founds_ids[founds_ids > 0]
+            if len(ids>0):
+                founds_ids = np.array([i for i in founds_ids if i in ids])
+            
+        return runtime
+    
