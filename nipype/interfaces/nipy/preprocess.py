@@ -23,7 +23,8 @@ except Exception, e:
 else:
     from nipy.labs.mask import compute_mask
     from nipy.algorithms.registration import FmriRealign4d as FR4d
-    from nipy.algorithms.registration.affines import to_matrix44
+    from nipy.algorithms.registration.affine import to_matrix44
+    import nipy.algorithms.registration.slice_motion as sm
     from nipy import save_image, load_image
 
 from ..base import (TraitedSpec, BaseInterface, traits,
@@ -288,8 +289,8 @@ class SliceInterpolationBaseInputSpec(BaseInterfaceInputSpec):
     epi_phase_direction = traits.Range(-3,3,1,usedefault=True,
         desc='specifies direction of warping (default 1)')
 
-    epi_slice_order = traits.List(
-        traits.Int(),
+    epi_slice_order = traits.Either(
+        traits.List(traits.Int()), traits.Enum('ascending','descending'),
         desc='slice acquisition order')
 
 
@@ -351,8 +352,7 @@ class SliceMotionCorrectionOutputSpec(TraitedSpec):
     motion_parameters = File(exists=True)
     matrices = File(exists=True)
     slice_groups = traits.List(
-        traits.Tuple(trait.Tuple(traits.Int,traits.Int),
-                     trait.Tuple(traits.Int,traits.Int)),
+        traits.Tuple(*([traits.Tuple(*([traits.Int(min=0)]*2))]*2)),
         desc='slice groups : list of ((#frame,#slice),(#frame,#slice))')
 
     all_data = File(exists=True)
@@ -363,7 +363,6 @@ class SliceMotionCorrection(BaseInterface):
     output_spec = SliceMotionCorrectionOutputSpec
 
     def _run_interface(self, runtime):
-        import nipy.algorithms.registration.slice_motion as sm
         nii = nb.load(self.inputs.in_file)
         data = nii.get_data()
         mask, surf_ref, fmap = None, None, None
@@ -567,7 +566,7 @@ class Sigloss(BaseInterface):
 
 class ExtractCiftiInputSpec(SliceInterpolationBaseInputSpec):
     slice_groups = traits.List(
-        traits.Tuple(*([trait.Tuple(*([traits.Int(min=0)]*2))]*2)),
+        traits.Tuple(*([traits.Tuple(*([traits.Int(min=0)]*2))]*2)),
         desc="""slice groups : list of ((#frame,#slice),(#frame,#slice)),
                 if not provided volumes will be used or 
                 if single registration provided same transform will be applied
@@ -578,7 +577,7 @@ class ExtractCiftiInputSpec(SliceInterpolationBaseInputSpec):
     registration = File(
         exists=True,
         desc="""single registration matrix in text file""")
-    surface_files = traits.List(
+    surfaces = traits.List(
         traits.Tuple(traits.Str,traits.File(exists=True),
                      traits.File(exists=True)), 
         desc='label,surface,thickness(opt) tuples')
@@ -624,7 +623,7 @@ class ExtractCifti(BaseInterface):
 
         slice_groups = self.inputs.slice_groups
         if not isdefined(slice_groups) or len(slice_groups)==0:
-            nslices = epi.shape[self.inputs.slicing_axis]
+            nslices = epi.shape[self.inputs.epi_slicing_axis]
             if len(transforms)==epi.shape[-1]:
                 slice_groups=[((t,0),(t,)) for t in epi.shape[-1]]
             else:
@@ -633,17 +632,17 @@ class ExtractCifti(BaseInterface):
         if isdefined(self.inputs.mask_file):
             mask = nb.load(self.inputs.mask_file)
         if isdefined(self.inputs.fieldmap_file):
-            fieldmap = nb.load(self.inputs.fieldmap)
+            fieldmap = nb.load(self.inputs.fieldmap_file)
 
         tr = self.inputs.epi_tr
         if not isdefined(tr):
-            tr = nii.get_header().get_zooms()[3]
-            if nii.get_header().get_xyzt_units()[-1] == 'msec':
+            tr = epi.get_header().get_zooms()[3]
+            if epi.get_header().get_xyzt_units()[-1] == 'msec':
                 tr *= 1e-3
 
         itpl = sm.EPIInterpolation(
             epi, slice_groups, transforms, fieldmap, mask,
-            phase_encoding_dir = self.inputs.phase_encoding_dir,
+            phase_encoding_dir = self.inputs.epi_phase_direction,
             repetition_time = tr,
             echo_time = self.inputs.epi_echo_time, 
             echo_spacing = self.inputs.epi_echo_spacing,
@@ -653,7 +652,8 @@ class ExtractCifti(BaseInterface):
         surfaces,rois = self._extract_coords()
 
         outputs = self._list_outputs()
-        nvols = nii.shape[-1]
+        nvols = epi.shape[-1]
+        import h5py
         f = h5py.File(outputs['out_file'], "w")
         surf_group = f.create_group('surfaces')
         proj_frac = self.inputs.projection_fraction
@@ -664,40 +664,38 @@ class ExtractCifti(BaseInterface):
         for roi_lbl, coords in rois:
             rois_group.create_dataset(
                 roi_lbl, itpl.resample_coords(coords))
-
         f.close()
+        return runtime
 
 
     def _extract_coords(self):
-        surface, rois = dict(), dict()
+        surfaces, rois = dict(), dict()
         ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
         surf_ref = nb.load(self.inputs.surface_ref)
         surf2wld = surf_ref.get_affine().dot(ras2vox)
         del surf_ref
-        for surf_lab,surf_file,thick_file in self.inputs.surface_files:
+        for surf_lab,surf_file,thick_file in self.inputs.surfaces:
             verts, tri = nb.freesurfer.read_geometry(surf_file)
             thick = nb.freesurfer.read_morph_data(thick_file)
             verts[:] = nb.affines.apply_affine(surf2wld,verts)
             surfaces[surf_lab] = (verts,tri,thick)
-        for vf,lf,ids in self.inputs.rois:
-            rois_file = nb.load(vf)
-            # suppose freesurfer labels file
-            clut = np.loadtxt(lf,np.object,comments='#',
-                       converters={0:int,1:str,2:int,3:int,4:int,5:int})
-            clut = dict([(c[0],c[1:]) for c in clut])
-            founds_ids = np.unique(rois_file.get_data())
-            founds_ids = founds_ids[founds_ids > 0]
-            for i in ids:
-                if i in founds_ids and i in clut.keys():
-                    coords = nb.apply_affine(
-                        rois_file.get_affine(),
-                        np.array(np.where(rois_file.get_data()==i)).T)
-                    rois[clut[i]] = coords
-            del rois_file, clut, founds_ids
+        if isdefined(self.inputs.rois):
+            for vf,lf,ids in self.inputs.rois:
+                rois_file = nb.load(vf)
+                # suppose freesurfer labels file
+                clut = np.loadtxt(
+                    lf,np.object,comments='#',
+                    converters={0:int,1:str,2:int,3:int,4:int,5:int})
+                clut = dict([(c[0],c[1:]) for c in clut])
+                founds_ids = np.unique(rois_file.get_data())
+                founds_ids = founds_ids[founds_ids > 0]
+                for i in ids:
+                    if i in founds_ids and i in clut.keys():
+                        coords = nb.apply_affine(
+                            rois_file.get_affine(),
+                            np.array(np.where(rois_file.get_data()==i)).T)
+                        rois[clut[i]] = coords
+                del rois_file, clut, founds_ids
         return surfaces, rois
-
-
-            
-        return runtime
 
     
