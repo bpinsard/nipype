@@ -579,14 +579,18 @@ class ExtractCiftiInputSpec(SliceInterpolationBaseInputSpec):
         exists=True,
         desc="""single registration matrix in text file""")
     surface_files = traits.List(
-        traits.Tuple(traits.Str,traits.File(exists=True)), 
-        desc='surface from which to extract signal')
+        traits.Tuple(traits.Str,traits.File(exists=True),
+                     traits.File(exists=True)), 
+        desc='label,surface,thickness(opt) tuples')
     rois = traits.List(
         traits.Tuple(File(),File(),traits.List(traits.Int)), exists=True,
         desc="""triplets of volume/label/ids rois from which to extract signal
                 if ids is [], all rois will be sampled""")
     surface_ref = traits.File(
         desc='volume defining surface space (eg. freesurfer volume)')
+    projection_fraction = traits.Float(
+        .5,usedefault=True,
+         desc='sampling at fraction of cortical sheet using thickness')
     interpolation = traits.Range(
         0,5,3, usedefault=True,
         desc='level of interpolation: see scipy map_coordinate')
@@ -637,7 +641,7 @@ class ExtractCifti(BaseInterface):
             if nii.get_header().get_xyzt_units()[-1] == 'msec':
                 tr *= 1e-3
 
-        sm.EPIInterpolation(
+        itpl = sm.EPIInterpolation(
             epi, slice_groups, transforms, fieldmap, mask,
             phase_encoding_dir = self.inputs.phase_encoding_dir,
             repetition_time = tr,
@@ -646,23 +650,54 @@ class ExtractCifti(BaseInterface):
             slice_order = self.inputs.epi_slice_order,
             slice_axis = self.inputs.epi_slicing_axis)
 
-        surfaces = []
+        surfaces,rois = self._extract_coords()
+
+        outputs = self._list_outputs()
+        nvols = nii.shape[-1]
+        f = h5py.File(outputs['out_file'], "w")
+        surf_group = f.create_group('surfaces')
+        proj_frac = self.inputs.projection_fraction
+        for slabel, verts, tri, thick in surfaces.items():
+            dset = surf_group.create_dataset(
+                slabel, itpl.resample_surface(verts, tri, thick, proj_frac))
+        rois_group = f.create_group('rois')
+        for roi_lbl, coords in rois:
+            rois_group.create_dataset(
+                roi_lbl, itpl.resample_coords(coords))
+
+        f.close()
+
+
+    def _extract_coords(self):
+        surface, rois = dict(), dict()
         ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
         surf_ref = nb.load(self.inputs.surface_ref)
         surf2wld = surf_ref.get_affine().dot(ras2vox)
         del surf_ref
-        for f in self.inputs.surface_files:
-            verts, tri = nb.freesurfer.read_geometry(f)
-            surfaces.append(nb.affines.apply_affine(surf2wld,verts),tri)
+        for surf_lab,surf_file,thick_file in self.inputs.surface_files:
+            verts, tri = nb.freesurfer.read_geometry(surf_file)
+            thick = nb.freesurfer.read_morph_data(thick_file)
+            verts[:] = nb.affines.apply_affine(surf2wld,verts)
+            surfaces[surf_lab] = (verts,tri,thick)
         for vf,lf,ids in self.inputs.rois:
-            rois = nb.load(vf)
+            rois_file = nb.load(vf)
             # suppose freesurfer labels file
             clut = np.loadtxt(lf,np.object,comments='#',
                        converters={0:int,1:str,2:int,3:int,4:int,5:int})
-            founds_ids = np.unique(rois.get_data())
+            clut = dict([(c[0],c[1:]) for c in clut])
+            founds_ids = np.unique(rois_file.get_data())
             founds_ids = founds_ids[founds_ids > 0]
-            if len(ids>0):
-                founds_ids = np.array([i for i in founds_ids if i in ids])
+            for i in ids:
+                if i in founds_ids and i in clut.keys():
+                    coords = nb.apply_affine(
+                        rois_file.get_affine(),
+                        np.array(np.where(rois_file.get_data()==i)).T)
+                    rois[clut[i]] = coords
+            del rois_file, clut, founds_ids
+        return surfaces, rois
+
+
             
         return runtime
+
     
