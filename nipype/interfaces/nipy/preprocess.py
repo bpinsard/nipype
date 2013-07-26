@@ -274,7 +274,7 @@ class Crop(NipyBaseInterface):
     Examples
     --------
     >>> from nipype.interfaces.nipy.preprocess import Crop
-    >>> crop = Crop(x_min=10,x_min=-10,x_max=-10)
+    >>> crop = Crop(x_min=10,x_max=-10)
     >>> crop.inputs.in_file = 'anatomical.nii'
     >>> res = crop.run() # doctest: +SKIP
 
