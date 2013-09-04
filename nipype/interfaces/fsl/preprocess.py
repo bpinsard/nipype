@@ -403,6 +403,8 @@ class FLIRTInputSpec(FSLCommandInputSpec):
     in_matrix_file = File(argstr='-init %s', desc='input 4x4 affine matrix')
     apply_xfm = traits.Bool(argstr='-applyxfm', requires=['in_matrix_file'],
                             desc='apply transformation supplied by in_matrix_file')
+    apply_isoxfm = traits.Float(argstr='-applyisoxfm %f', xor=['apply_xfm'],
+                                desc='as applyxfm but forces isotropic resampling')
     datatype = traits.Enum('char', 'short', 'int', 'float', 'double',
                            argstr='-datatype %s',
                            desc='force output data type')
@@ -801,10 +803,10 @@ class FNIRTInputSpec(FSLCommandInputSpec):
     apply_inmask = traits.List(
         traits.Enum(0, 1), argstr='--applyinmask=%s', xor=['skip_inmask'],
               desc='list of iterations to use input mask on (1 to use, 0 to skip)', sep=",")
-    skip_implicit_ref_masking = traits.Bool(argstr='--imprefm 0',
+    skip_implicit_ref_masking = traits.Bool(argstr='--imprefm=0',
                                       desc='skip implicit masking  based on value'
                                             'in --ref image. Default = 0')
-    skip_implicit_in_masking = traits.Bool(argstr='--impinm 0',
+    skip_implicit_in_masking = traits.Bool(argstr='--impinm=0',
                                       desc='skip implicit masking  based on value'
                                            'in --in image. Default = 0')
     refmask_val = traits.Float(argstr='--imprefval=%f',
@@ -834,7 +836,7 @@ class FNIRTInputSpec(FSLCommandInputSpec):
     regularization_lambda = traits.List(traits.Float, argstr='--lambda=%s',
                 desc='Weight of regularisation, default depending on --ssqlambda and --regmod '
                                          'switches. See user documetation.', sep=",")
-    skip_lambda_ssq = traits.Bool(argstr='--ssqlambda 0',
+    skip_lambda_ssq = traits.Bool(argstr='--ssqlambda=0',
                                   desc='If true, lambda is not weighted by current ssq, default false')
     jacobian_range = traits.Tuple(traits.Float, traits.Float,
                                   argstr='--jacrange=%f,%f',

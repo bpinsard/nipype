@@ -1,6 +1,12 @@
 Next release
 ============
 
+* ENH: SelectFiles: a streamlined version of DataGrabber
+* ENH: New interfaces: spm.ResliceToReference
+
+* FIX: Deals properly with 3d files in SPM Realign
+
+* API: 'name' is now a positional argument for Workflow, Node, and MapNode constructors
 
 Release 0.8.0 (May 8, 2013)
 ===========================
