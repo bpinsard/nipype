@@ -470,7 +470,7 @@ class CorrelationAnalysis(BaseInterface):
                         pval = pval,
                         partialpval = partialpval)
         savepkl(fname, out_data)
-        del corr,partialcorr,pval,partialpval
+        del corr,partialcorr,pval,partialpval, out_data
         return runtime
 
     def _list_outputs(self):
