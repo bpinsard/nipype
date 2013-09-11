@@ -9,6 +9,17 @@ from distutils.version import LooseVersion
 import numpy as np
 from textwrap import dedent
 import sys
+import re
+
+def human_order_sorted(l):
+    """Sorts string in human order (i.e. 'stat10' will go after 'stat2')"""
+    def atoi(text):
+        return int(text) if text.isdigit() else text
+
+    def natural_keys(text):
+        return [ atoi(c) for c in re.split('(\d+)', text) ]
+
+    return sorted(l, key=natural_keys)
 
 def trim(docstring, marker=None):
     if not docstring:
@@ -46,21 +57,38 @@ def getsource(function):
     src = dumps(dedent(inspect.getsource(function)))
     return src
 
-def create_function_from_source(function_source):
+def create_function_from_source(function_source, imports=None):
     """Return a function object from a function source
+
+    Parameters
+    ----------
+    function_source : pickled string
+        string in pickled form defining a function
+    imports : list of strings
+        list of import statements in string form that allow the function
+        to be executed in an otherwise empty namespace
     """
     ns = {}
+    import_keys = []
     try:
+        if imports is not None:
+            for statement in imports:
+                exec statement in ns
+            import_keys = ns.keys()
+
         exec loads(function_source) in ns
+
     except Exception, msg:
         msg = str(msg) + '\nError executing function:\n %s\n'%function_source
-        msg += '\n'.join( ["Functions in connection strings have to be standalone.",
-                           "They cannot be declared either interactively or inside",
-                           "another function or inline in the connect string. Any",
-                           "imports should be done inside the function"
+        msg += '\n'.join(["Functions in connection strings have to be standalone.",
+                          "They cannot be declared either interactively or inside",
+                          "another function or inline in the connect string. Any",
+                          "imports should be done inside the function"
                            ])
         raise RuntimeError(msg)
-    funcname = [name for name in ns.keys() if name != '__builtins__'][0]
+    ns_funcs = list(set(ns) - set(import_keys + ['__builtins__']))
+    assert len(ns_funcs) == 1, "Function or inputs are ill-defined"
+    funcname = ns_funcs[0]
     func = ns[funcname]
     return func
 

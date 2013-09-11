@@ -130,7 +130,7 @@ try:
 except Exception, e:
     etype, eval, etr = sys.exc_info()
     traceback = format_exception(etype,eval,etr)
-    if info is None:
+    if info is None or not os.path.exists(info['node'].output_dir()):
         result = None
         resultsfile = os.path.join(batchdir, 'crashdump_%s.pklz')
     else:
@@ -577,7 +577,7 @@ class GraphPluginBase(PluginBase):
                         tmp_value = open(node.plugin_args[keyword]).read()
                     else:
                         tmp_value = node.plugin_args[keyword]
-                        
+
                     if 'overwrite' in node.plugin_args and node.plugin_args['overwrite']:
                         value = tmp_value
                     else:
