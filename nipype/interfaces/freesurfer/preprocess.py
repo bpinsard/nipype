@@ -1231,7 +1231,7 @@ class TkregisterInputSpec(FSTraitedSpec):
    fstarg = traits.Bool(argstr='--fstarg',
                         desc='target is relative to subjectid/mri')
    reg_file = File(argstr='--reg %s', desc='input/output registration file',
-                   name_source = 'mov')
+                   name_source = ['fsl_reg','mov'])
    check_reg = traits.Bool(argstr='--check-reg', 
                            desc='only check, no --reg needed')
    reg_header = traits.Bool(argstr='--regheader',
