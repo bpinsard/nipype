@@ -1247,7 +1247,8 @@ class TkregisterInputSpec(FSTraitedSpec):
    ixfm = File(argstr='--ixfm %s',
                desc='MNI-style inverse registration input matrix')
    xfm = File(argstr='--xfm %s',desc='MNI-style registration input matrix')
-   xfm_out = File(argstr='--xfmout %s',name_source=['reg_file','mov'],
+   xfm_out = File(argstr='--xfmout %s',
+                  name_source=['fsl_reg','reg_file','mov'],
                   desc='MNI-style registration output matrix')
    fsl_reg = File(argstr='--fsl %s',desc='FSL-style registration input matrix')
    fsl_reg_out = File(argstr='--fslregout %s',name_source=['reg_file','mov'],
