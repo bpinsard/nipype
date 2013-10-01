@@ -81,7 +81,7 @@ class To3D(AFNICommand):
     >>> To3D.inputs.filetype = "anat"
     >>> To3D.inputs.outputtype = "NIFTI"
     >>> To3D.cmdline #doctest: +ELLIPSIS
-    'to3d -datum float -anat -prefix .../dicomdir.nii ./*.dcm'
+    'to3d -datum float -anat -prefix dicomdir.nii ./*.dcm'
     >>> res = To3D.run() #doctest: +SKIP
 
    """
@@ -334,9 +334,9 @@ class AutoTcorrelateInputSpec(AFNICommandInputSpec):
     mask_only_targets = traits.Bool(desc="use mask only on targets voxels",
                                     argstr="-mask_only_targets",
                                     xor=['mask_source'])
-                                    
-    mask_source = File(exists=True, 
-                        desc="mask for source voxels", 
+
+    mask_source = File(exists=True,
+                        desc="mask for source voxels",
                         argstr="-mask_source %s",
                         xor=['mask_only_targets'])
 
@@ -361,7 +361,7 @@ class AutoTcorrelate(AFNICommand):
     >>> corr.inputs.mask = 'mask.nii'
     >>> corr.inputs.mask_only_targets = True
     >>> corr.cmdline # doctest: +ELLIPSIS, +NORMALIZE_WHITESPACE
-    '3dAutoTcorrelate -eta2 -mask mask.nii -mask_only_targets -prefix ...my_similarity_matrix.1D -polort -1 functional.nii'
+    '3dAutoTcorrelate -eta2 -mask mask.nii -mask_only_targets -prefix my_similarity_matrix.1D -polort -1 functional.nii'
     >>> res = corr.run() # doctest: +SKIP
     """
     input_spec = AutoTcorrelateInputSpec
@@ -373,9 +373,6 @@ class AutoTcorrelate(AFNICommand):
         if ext.lower() not in [".1d", ".nii.gz", ".nii"]:
             ext = ext + ".1D"
         return os.path.join(path, base + ext)
-
-    def _gen_filename(self, name):
-        return os.path.abspath(super(AutoTcorrelate, self)._gen_filename(name))
 
 
 class TStatInputSpec(AFNICommandInputSpec):
@@ -510,20 +507,12 @@ class AutomaskInputSpec(AFNICommandInputSpec):
     erode = traits.Int(desc='erode the mask inwards',
                        argstr="-erode %s")
 
-    mask_suffix = traits.Str(
-        desc="out_file suffix", depracated=0.8, new_name="out_file")
-    apply_suffix = traits.Str(
-        desc="out_file suffix", depracated=0.8, new_name="brain_file")
-    apply_mask = File(desc="output file from 3dAutomask",
-                      argstr='-apply_prefix %s',
-                      name_source="in_file", depracated=0.8, new_name="brain_file")
-
 
 class AutomaskOutputSpec(TraitedSpec):
     out_file = File(desc='mask file',
                     exists=True)
 
-    brain_file = File(desc='brain file (skull stripped)')
+    brain_file = File(desc='brain file (skull stripped)', exists=True)
 
 
 class Automask(AFNICommand):
@@ -549,46 +538,6 @@ class Automask(AFNICommand):
     _cmd = '3dAutomask'
     input_spec = AutomaskInputSpec
     output_spec = AutomaskOutputSpec
-
-    def _gen_filename(self, name):
-        trait_spec = self.inputs.trait(name)
-        if name == "out_file" and isdefined(self.inputs.mask_suffix):
-            suffix = ''
-            prefix = ''
-            if isdefined(self.inputs.mask_suffix):
-                suffix = self.inputs.suffix
-
-            _, base, _ = split_filename(
-                getattr(self.inputs, trait_spec.name_source))
-            return self._gen_fname(basename=base, prefix=prefix, suffix=suffix, cwd=os.getcwd())
-        elif name == "brain_file" and isdefined(self.inputs.apply_suffix):
-            suffix = ''
-            prefix = ''
-            if isdefined(self.inputs.apply_suffix):
-                suffix = self.inputs.suffix
-
-            _, base, _ = split_filename(
-                getattr(self.inputs, trait_spec.name_source))
-            return self._gen_fname(basename=base, prefix=prefix, suffix=suffix, cwd=os.getcwd())
-        elif name == "apply_mask" and isdefined(self.inputs.apply_suffix):
-            suffix = ''
-            prefix = ''
-            if isdefined(self.inputs.apply_suffix):
-                suffix = self.inputs.suffix
-
-            _, base, _ = split_filename(
-                getattr(self.inputs, trait_spec.name_source))
-            return self._gen_fname(basename=base, prefix=prefix, suffix=suffix, cwd=os.getcwd())
-        elif hasattr(self.inputs, name) and isdefined(getattr(self.inputs, name)):
-            return super(Automask, self)._gen_filename(name)
-        return Undefined
-
-    def _list_outputs(self):
-        outputs = super(Automask, self)._list_outputs()
-        if isdefined(self.inputs.apply_mask):
-            outputs['brain_file'] = os.path.abspath(
-                self._gen_filename('apply_mask'))
-        return outputs
 
 
 class VolregInputSpec(AFNICommandInputSpec):
@@ -1163,6 +1112,7 @@ class MaskaveInputSpec(AFNICommandInputSpec):
                    mandatory=True,
                    exists=True)
     out_file = File("%s_maskave.1D", desc='output image file name',
+                    keep_extension=True,
                     argstr="> %s", name_source="in_file", usedefault=True, position=-1)
     mask = File(desc='matrix to align input file',
                 argstr='-mask %s',
@@ -1558,7 +1508,7 @@ class Calc(AFNICommand):
     >>> calc.inputs.out_file =  'functional_calc.nii.gz'
     >>> calc.inputs.outputtype = "NIFTI"
     >>> calc.cmdline #doctest: +ELLIPSIS
-    '3dcalc -a functional.nii  -b functional2.nii -expr "a*b" -prefix .../functional_calc.nii'
+    '3dcalc -a functional.nii  -b functional2.nii -expr "a*b" -prefix functional_calc.nii'
 
     """
 
@@ -1591,13 +1541,9 @@ class BlurInMaskInputSpec(AFNICommandInputSpec):
         position=1,
         mandatory=True,
         exists=True)
-    out_file = File(
-        '%s_blur',
-        desc='output to the file',
-        argstr='-prefix %s',
-        name_source='in_file',
-        position=-1,
-        genfile=True)
+    out_file = File('%s_blur', desc='output to the file', argstr='-prefix %s',
+                    name_source='in_file', position=-1, genfile=True,
+                    usedefault=True)
     mask = File(
         desc='Mask dataset, if desired.  Blurring will occur only within the mask.  Voxels NOT in the mask will be set to zero in the output.',
         argstr='-mask %s')
@@ -1635,6 +1581,8 @@ class BlurInMask(AFNICommand):
     >>> bim.inputs.in_file = 'functional.nii'
     >>> bim.inputs.mask = 'mask.nii'
     >>> bim.inputs.fwhm = 5.0
+    >>> bim.cmdline #doctest: +ELLIPSIS
+    '3dBlurInMask -input functional.nii -FWHM 5.000000 -mask mask.nii -prefix .../functional_blur+orig.BRIK'
     >>> res = bim.run()   # doctest: +SKIP
 
     """
@@ -1642,19 +1590,6 @@ class BlurInMask(AFNICommand):
     _cmd = '3dBlurInMask'
     input_spec = BlurInMaskInputSpec
     output_spec = AFNICommandOutputSpec
-
-    def _list_outputs(self):
-        outputs = self.output_spec().get()
-        if not isdefined(self.inputs.out_file):
-            outputs['out_file'] = self._gen_fname(self.inputs.in_file,
-                                                  suffix=self.inputs.suffix)
-        else:
-            outputs['out_file'] = os.path.abspath(self.inputs.out_file)
-        return outputs
-
-    def _gen_filename(self, name):
-        if name == 'out_file':
-            return self._list_outputs()[name]
 
 
 class TCorrMapInputSpec(AFNIBaseCommandInputSpec):
@@ -1827,3 +1762,113 @@ class Autobox(AFNICommand):
         if name == 'out_file' and (not isdefined(self.inputs.out_file)):
             return Undefined
         return super(Autobox, self)._gen_filename(name)
+
+class RetroicorInputSpec(AFNICommandInputSpec):
+    in_file = File(desc='input file to 3dretroicor',
+                   argstr='%s',
+                   position=-1,
+                   mandatory=True,
+                   exists=True)
+    out_file = File(desc='output image file name', argstr='-prefix %s', mandatory=True, position=1)
+    card = File(desc='1D cardiac data file for cardiac correction',
+                argstr='-card %s',
+                position=-2,
+                exists=True)
+    resp = File(desc='1D respiratory waveform data for correction',
+                argstr='-resp %s',
+                position=-3,
+                exists=True)
+    threshold = traits.Int(desc='Threshold for detection of R-wave peaks in input (Make sure it is above the background noise level, Try 3/4 or 4/5 times range plus minimum)',
+                           argstr='-threshold %d',
+                           position=-4)
+    order = traits.Int(desc='The order of the correction (2 is typical)',
+                       argstr='-order %s',
+                       position=-5)
+
+    cardphase = File(desc='Filename for 1D cardiac phase output',
+                     argstr='-cardphase %s',
+                     position=-6,
+                     hash_files=False)
+    respphase = File(desc='Filename for 1D resp phase output',
+                     argstr='-respphase %s',
+                     position=-7,
+                     hash_files=False)
+
+
+class Retroicor(AFNICommand):
+    """Performs Retrospective Image Correction for physiological
+    motion effects, using a slightly modified version of the
+    RETROICOR algorithm
+
+    The durations of the physiological inputs are assumed to equal
+    the duration of the dataset. Any constant sampling rate may be
+    used, but 40 Hz seems to be acceptable. This program's cardiac
+    peak detection algorithm is rather simplistic, so you might try
+    using the scanner's cardiac gating output (transform it to a
+    spike wave if necessary).
+
+    This program uses slice timing information embedded in the
+    dataset to estimate the proper cardiac/respiratory phase for
+    each slice. It makes sense to run this program before any
+    program that may destroy the slice timings (e.g. 3dvolreg for
+    motion correction).
+
+    For complete details, see the `3dretroicor Documentation.
+    <http://afni.nimh.nih.gov/pub/dist/doc/program_help/3dretroicor.html>`_
+
+    Examples
+    ========
+    >>> from nipype.interfaces import afni as afni
+    >>> ret = afni.Retroicor()
+    >>> ret.inputs.in_file = 'functional.nii'
+    >>> ret.inputs.card = 'mask.1D'
+    >>> ret.inputs.resp = 'resp.1D'
+    >>> res = ret.run()   # doctest: +SKIP
+    """
+
+    _cmd = '3dretroicor'
+    input_spec = RetroicorInputSpec
+    output_spec = AFNICommandOutputSpec
+
+
+class AFNItoNIFTIInputSpec(AFNICommandInputSpec):
+    in_file = File(desc='input file to 3dAFNItoNIFTI',
+        argstr='%s',
+        position=-1,
+        mandatory=True,
+        exists=True)
+    out_file = File("%s.nii", desc='output image file name',
+                    argstr='-prefix %s', name_source="in_file", usedefault=True)
+    hash_files = False
+
+class AFNItoNIFTI(AFNICommand):
+    """Changes AFNI format files to NIFTI format using 3dAFNItoNIFTI
+
+    see AFNI Documentation: <http://afni.nimh.nih.gov/pub/dist/doc/program_help/3dAFNItoNIFTI.html>
+    this can also convert 2D or 1D data, which you can numpy.squeeze() to remove extra dimensions
+    
+    Examples
+    ========
+
+    >>> from nipype.interfaces import afni as afni
+    >>> a2n = afni.AFNItoNIFTI()
+    >>> a2n.inputs.in_file = 'afni_output.3D'
+    >>> a2n.inputs.out_file =  'afni_output.nii'
+    >>> a2n.cmdline
+    '3dAFNItoNIFTI afni_output.3D'
+
+    """
+
+    _cmd = '3dAFNItoNIFTI'
+    input_spec = AFNItoNIFTIInputSpec
+    output_spec = AFNICommandOutputSpec
+
+    def _overload_extension(self, value):
+        path, base, ext = split_filename(value)
+        if ext.lower() not in [".1d", ".nii.gz", ".1D"]:
+            ext = ext + ".nii"
+        return os.path.join(path, base + ext)
+
+    def _gen_filename(self, name):
+        return os.path.abspath(super(AFNItoNIFTI, self)._gen_filename(name))
+
