@@ -4,11 +4,6 @@ import os
 import nibabel as nb
 import numpy as np
 
-pylab_available = True
-try:
-    import pylab
-except:
-    pylab_available = False
 
 from ...utils.misc import package_check
 
@@ -20,7 +15,7 @@ except Exception, e:
     warnings.warn('nipy not installed')
 else:
     import nipy.modalities.fmri.design_matrix as dm
-    import nipy.labs.glm as GLM
+    import nipy.labs.glm.glm as GLM
 
 if have_nipy:
     try:
@@ -140,13 +135,11 @@ class FitGLM(BaseInterface):
                 design_matrix[:,i] = (design_matrix[:,i]-design_matrix[:,i].mean())/design_matrix[:,i].std()
 
         if self.inputs.plot_design_matrix:
-            if pylab_available:
-                pylab.pcolor(design_matrix)
-                pylab.savefig("design_matrix.pdf")
-                pylab.close()
-                pylab.clf()
-            else:
-                Exception('Pylab not available for saving design matrix image')
+            import pylab
+            pylab.pcolor(design_matrix)
+            pylab.savefig("design_matrix.pdf")
+            pylab.close()
+            pylab.clf()
 
         glm = GLM.glm()
         glm.fit(timeseries.T, design_matrix, method=self.inputs.method, model=self.inputs.model)
