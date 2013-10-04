@@ -442,7 +442,7 @@ class CorrelationAnalysis(BaseInterface):
 #            print nnan ,'nan in correlations'
             partialcorr = None
             partialpval = None
-            if nnan == 0:
+            if nnan == 0 and ts.shape[-1] > ts.shape[0]:
                 try:
                     samples_part = np.empty(samples.shape)
                     for i,s in enumerate(samples):
@@ -456,10 +456,12 @@ class CorrelationAnalysis(BaseInterface):
             del samples
         else:
             corr = np.corrcoef(ts)
-            try:
-                partialcorr = corr_to_partialcorr(corr)
-            except ValueError:
-                partialcorr = None
+            partialcorr = None
+            if ts.shape[-1] > ts.shape[0]:
+                try:
+                    partialcorr = corr_to_partialcorr(corr)
+                except ValueError:
+                    pass
             pval = []
             partialpval = []
         
@@ -470,7 +472,7 @@ class CorrelationAnalysis(BaseInterface):
                         pval = pval,
                         partialpval = partialpval)
         savepkl(fname, out_data)
-        del corr,partialcorr,pval,partialpval, out_data
+        del corr,partialcorr,pval,partialpval,out_data,ts
         return runtime
 
     def _list_outputs(self):
