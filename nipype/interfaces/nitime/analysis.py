@@ -449,7 +449,7 @@ class CorrelationAnalysis(BaseInterface):
                         samples_part[i]=corr_to_partialcorr(s)
                     partialcorr = samples_part.mean(0)
                     partialpval = samples_part.std(0)
-                except ValueError:
+                except ValueError, LinAlgError:
                     pass
                 finally:
                     del samples_part
@@ -460,7 +460,7 @@ class CorrelationAnalysis(BaseInterface):
             if ts.shape[-1] > ts.shape[0]:
                 try:
                     partialcorr = corr_to_partialcorr(corr)
-                except ValueError:
+                except ValueError, LinAlgError:
                     pass
             pval = []
             partialpval = []
