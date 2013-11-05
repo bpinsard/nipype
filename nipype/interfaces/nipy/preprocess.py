@@ -82,7 +82,7 @@ class ComputeMask(BaseInterface):
         
 class FmriRealign4dInputSpec(BaseInterfaceInputSpec):
 
-    in_file = InputMultiPath(exists=True,
+    in_file = InputMultiPath(File(exists=True),
                              mandatory=True,
                              desc="File to realign")
     tr = traits.Float(desc="TR in seconds",
@@ -481,7 +481,7 @@ class Scrubbing(BaseInterface):
 
 class SpaceTimeRealignerInputSpec(BaseInterfaceInputSpec):
 
-    in_file = InputMultiPath(exists=True,
+    in_file = InputMultiPath(File(exists=True),
                              mandatory=True, min_ver='0.4.0.dev',
                              desc="File to realign")
     tr = traits.Float(desc="TR in seconds", requires=['slice_times'])
