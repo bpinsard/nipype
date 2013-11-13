@@ -7,14 +7,15 @@ import gzip,tempfile
 from nipype.utils.filemanip import fname_presuffix, filename_to_list, split_filename
 
 code_path, filename = os.path.split(os.path.abspath(__file__))
-nbw_path=os.environ['NBW_PATH']
-MatlabCommand.set_default_paths([
-    nbw_path+'data_analysis/',
-    nbw_path+'gui/',
-    nbw_path+'sica/',
-    nbw_path+'visu/',
-    code_path+'/overwrite/',
-    code_path])
+if os.environ.has_key('NBW_PATH'):
+    nbw_path=os.environ['NBW_PATH']
+    MatlabCommand.set_default_paths([
+            nbw_path+'data_analysis/',
+            nbw_path+'gui/',
+            nbw_path+'sica/',
+            nbw_path+'visu/',
+            code_path+'/overwrite/',
+            code_path])
 
 class SICABase(BaseInterface):
     def _parse_inputs(self, skip=(), only=()):
