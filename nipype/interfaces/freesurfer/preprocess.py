@@ -1393,8 +1393,7 @@ class TkregisterInputSpec(FSTraitedSpec):
                       desc='FSL-Style registration output matrix')
    freeview = File(argstr='--freeview %s',name_source=['reg_file','mov'],
                    desc='FreeView registration output matrix')
-   vox2vox = File(argstr='--vox2vox %s',desc='vox2vox matrix in ascii',
-                  name_source=['reg_file','mov'],)
+   vox2vox = File(argstr='--vox2vox %s',desc='vox2vox matrix in ascii',)
    lta = File(argstr='--lta %s',desc='Linear Transform Array')
    lta_out = File(argstr='--ltaout %s', desc='Output a Linear Transform Array',
                   name_source=['reg_file','mov'],)
