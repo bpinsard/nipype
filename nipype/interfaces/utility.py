@@ -496,3 +496,10 @@ def repeat(x,n,flatten=False):
     if flatten:
         return flatten(o)
     return o
+
+
+def find_in_same_dir(base,fname):
+    import os, glob
+    bname = os.path.dirname(base)
+    out_fnames = glob.glob(os.path.join(bname,fname))
+    return out_fnames
