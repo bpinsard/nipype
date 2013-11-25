@@ -955,7 +955,7 @@ class ApplyVolTransformInputSpec(FSTraitedSpec):
                           'talairach.m3z computed by reconall), you will need '
                           'to specify the full path to this morph and use the '
                           '--noDefM3zPath flag.'))
-    no_ded_m3z_path = traits.Bool(argstr="--noDefM3zPath",
+    no_def_m3z_path = traits.Bool(argstr="--noDefM3zPath",
                                   requires=['m3z_file'],
                                   desc=('To be used with the m3z flag. '
                                         'Instructs the code not to look for the'
