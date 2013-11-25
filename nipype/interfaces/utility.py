@@ -498,8 +498,10 @@ def repeat(x,n,flatten=False):
     return o
 
 
-def find_in_same_dir(base,fname):
+def find_in_same_dir(base,fname, single=False):
     import os, glob
     bname = os.path.dirname(base)
     out_fnames = glob.glob(os.path.join(bname,fname))
+    if single and len(out_fnames)==1:
+        return out_fnames[0]
     return out_fnames
