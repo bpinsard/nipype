@@ -10,10 +10,14 @@ import os
 import warnings
 
 import nibabel as nb
+import dicom
 import numpy as np
 
+import glob
+
 from ...utils.misc import package_check
-from ...utils.filemanip import split_filename, fname_presuffix
+from ...utils.filemanip import (
+    split_filename, fname_presuffix, filename_to_list)
 
 
 try:
@@ -24,9 +28,26 @@ else:
     import nipy
     from nipy import save_image, load_image
     nipy_version = nipy.__version__
+    from nipy.algorithms.registration.online_preproc import (
+        EPIOnlineRealign, surface_to_samples)
+    
+
+try:
+    package_check('h5py')
+except Exception, e:
+    warnings.warn('h5py not installed')
+else:
+    import h5py
+
+try:
+    package_check('dcmstack')
+except Exception, e:
+    warnings.warn('dcmstack not installed')
+else:
+    from dcmstack.dcmstack import DicomStackOnline
 
 from ..base import (TraitedSpec, BaseInterface, traits,
-                    BaseInterfaceInputSpec, isdefined, File,
+                    BaseInterfaceInputSpec, isdefined, File, Directory,
                     InputMultiPath, OutputMultiPath)
 
 
@@ -387,3 +408,237 @@ class Trim(BaseInterface):
                 suffix=self.inputs.suffix)
         outputs['out_file'] = os.path.abspath(outputs['out_file'])
         return outputs
+
+
+class OnlinePreprocessingInputSpec(BaseInterfaceInputSpec):
+    dicom_files = traits.Either(
+        InputMultiPath(File(exists=True)),
+        InputMultiPath(Directory(exists=True)),
+        InputMultiPath(traits.Str()), #allow glob file pattern
+        mandatory=True)
+
+    out_file_format = traits.Str(
+        mandatory=True,
+        desc='format with placeholder for output filename based on dicom')
+    
+    #realign parameters
+    reference_boundary = traits.File(
+        mandatory = True,
+        exists = True,
+        desc='the surface used for realignment')
+    boundary_sampling_distance = traits.Float(
+        1.5, usedefault = True,
+        desc='distance from reference boundary in mm.')
+    nsamples_per_slab = traits.Int(
+        10000, usedefault=True,
+        desc='number of samples to use during optimization of a slab')
+    min_nsamples_per_slab = traits.Int(
+        1000, usedefault=True,
+        desc='min number of samples to perform a slab realignment')
+    # optimizer
+    optimization_ftol = traits.Float(
+        1e-5, usedefault=True,
+        desc='tolerance of optimizer for convergence')
+
+    # Fieldmap parameters
+    fieldmap = File(
+        desc = 'precomputed fieldmap coregistered with reference space')
+    fieldmap_reg = File(
+        desc = 'fieldmap coregistration matrix')
+    
+    # space definition
+    mask = File()
+    surfaces_volume_reference = traits.File(
+        mandatory = True,
+        exists = True,
+        desc='a volume defining space of surfaces')
+    
+    #EPI parameters
+    phase_encoding_dir = traits.Range(-3,3, desc='phase encoding direction')
+    repetition_time = traits.Float(desc='TR in secs.')
+#    slice_repetition_time = traits.Float(desc='slice TR in secs'
+    echo_time = traits.Float(desc='TE in secs.')
+    echo_spacing = traits.Float(desc='effective echo spacing in secs.')
+    slice_order = traits.List(traits.Int(), desc='slice order'),
+    interleaved = traits.Int(),
+    slice_trigger_times = traits.List(traits.Float()),
+    slice_thickness = traits.Float(),
+    slice_axis = traits.Range(0,2),
+
+    
+    # resampling objects
+    resample_surfaces = traits.List(
+        traits.Tuple(traits.Str, traits.Either(File,traits.Tuple(File,File))),
+        desc='freesurfer surface files from which signal to be extracted')
+    resample_rois = traits.List(
+        traits.Tuple(traits.Str, File, File),
+        desc = 'list of rois NIFTI files from which to extract signal and labels file')
+    
+    store_coords = traits.Bool(
+        True, usedefault=True,
+        desc='store surface and ROIs coordinates in output')
+
+class OnlinePreprocessingOutputSpec(TraitedSpec):
+    out_file = File(desc='hdf5 file containing the timeseries')
+    
+class OnlinePreprocessing(BaseInterface):
+
+    input_spec = OnlinePreprocessingInputSpec
+    output_spec = OnlinePreprocessingOutputSpec
+
+
+    """
+    TODO : 
+    - encode surfaces and ROIs differently
+    - store dicom metadata (TR,TE,...)
+    """
+    
+
+    def _run_interface(self,runtime):
+
+        out_file = h5py.File(self._list_outputs()['out_file'])
+        fmri_group = out_file.create_group('FMRI')
+        #        fmri_group.attrs['RepetitionTime'] = self.inputs.tr
+        
+        surfaces = []
+        rois = []
+
+        ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
+        surf_ref = nb.load(self.inputs.surfaces_volume_reference)
+        surf2world = surf_ref.get_affine().dot(ras2vox)
+        del surf_ref
+
+        coords = fmri_group.create_dataset('COORDINATES',
+                                           (0,3),maxshape = (None,3),
+                                           dtype = np.float)
+        for surf_name, surf_file in self.inputs.resample_surfaces:
+            surf_group = fmri_group.create_group(surf_name)
+            surf_group.attrs['ModelType'] = 'SURFACE'
+            if isinstance(surf_file, tuple):
+                verts, tris = nb.freesurfer.read_geometry(surf_file[0])
+                verts2, _ =  nb.freesurfer.read_geometry(surf_file[1])
+                verts += verts2
+                verts /= 2.
+                del verts2
+            else:
+                verts, tris = nb.freesurfer.read_geometry(surf_file)
+            verts[:] = nb.affines.apply_affine(surf2world, verts)
+            ofst = coords.shape[0]
+            count = verts.shape[0]
+            coords.resize((ofst+count,3))
+            coords[ofst:ofst+count] = verts
+            surf_group.attrs['IndexOffset'] = ofst
+            surf_group.attrs['IndexCount'] = count
+            surf_group.attrs['COORDINATES'] = coords.regionref[ofst:ofst+count]
+            surf_group.create_dataset('TRIANGLES', data=tris)
+            del verts, tris
+            
+        for roiset_name,roiset_file,roiset_labels in self.inputs.resample_rois:
+            rois_nii = nb.load(roiset_file)
+            rois_data = rois_nii.get_data()
+            roiset_labels = dict((k,l) for k,l in np.loadtxt(
+                roiset_labels, dtype=np.object,
+                converters = {0:int,1:str}))
+            rois_group = fmri_group.create_group(roiset_name)
+            rois_group.attrs['ModelType'] = 'VOXELS'
+
+            rois_mask = rois_data > 0
+            order = np.argsort(rois_data[rois_mask])
+            # this allows using ROIs in different sampling
+            rois_coords = nb.affines.apply_affine(
+                rois_nii.get_affine(),
+                np.c_[np.where(rois_mask)][order])
+            ofst = coords.shape[0]
+            count = rois_coords.shape[0]
+            coords.resize((ofst+count,3))
+            coords[ofst:ofst+count] = rois_coords
+            rois = rois_group.create_group('ROIS')
+            counts = dict([(c,np.count_nonzero(rois_data[rois_mask]==c)) for c in roiset_labels.keys()])
+            for roi_idx, roi_count in counts.items():
+                label = roiset_labels[roi_idx]
+                rois.attrs[label] = coords.regionref[ofst:ofst+roi_count]
+                ofst += count
+            
+            del rois_nii, rois_data, rois_mask, order
+        
+        nsamples = coords.shape[0]
+
+        self._list_files()
+        stack = DicomStackOnline()
+        stack.set_source(filenames_to_dicoms(self.dicom_files))
+        stack._init_dataset()
+        
+        if stack._nframes_per_dicom == 1:
+            nvols = len(self.dicom_files)
+        elif stack._nframes_per_dicom == 0:
+            nvols = int(len(self.dicom_files)/stack.nslices)
+        else:
+            nvols = 1
+            
+        data = fmri_group.create_dataset(
+            'DATA', dtype=np.float32,
+            shape=(nsamples,nvols), maxshape=(nsamples,None))
+             
+        boundary_surf = nb.freesurfer.read_geometry(
+            self.inputs.reference_boundary)
+        boundary_surf[0][:] = nb.affines.apply_affine(surf2world,
+                                                      boundary_surf[0])
+        sampling_coords = surface_to_samples(
+            boundary_surf[0], boundary_surf[1], 
+            self.inputs.boundary_sampling_distance)
+        fmap = None
+        if isdefined(self.inputs.fieldmap):
+            fmap = nb.load(self.inputs.fieldmap)
+            fmap_reg = np.eye(4)
+            if isdefined(self.inputs.fieldmap_reg):
+                fmap_reg[:] = np.loadtxt(self.inputs.fieldmap_reg)
+        mask = nb.load(self.inputs.mask)
+
+        algo = EPIOnlineRealign(
+            boundary_surf[0], sampling_coords,
+            fieldmap = fmap, fieldmap_reg=fmap_reg,
+            mask = mask,
+            phase_encoding_dir = self.inputs.phase_encoding_dir,
+            echo_time = self.inputs.echo_time,
+            echo_spacing = self.inputs.echo_spacing,
+            nsamples_per_slab = self.inputs.nsamples_per_slab,
+            ftol = self.inputs.optimization_ftol,
+            slice_thickness = self.inputs.slice_thickness,
+            min_nsamples_per_slab = self.inputs.min_nsamples_per_slab)
+
+        tmp = np.empty(nsamples)
+        
+        t = 0
+        for slab, reg, vol in algo.process(stack, yield_raw=True):
+            print 'frame %d'% t
+            algo.resample_coords(vol, [(slab,reg)], coords, tmp)
+            if data.shape[-1] <= t:
+                data.resize((nsamples,t))
+            data[:,t] = tmp
+            t += 1
+            
+        del st, ref_surf, sampling_coords, tmp, algo
+
+        return runtime
+
+    def _list_files(self):
+        # list files depending on input type
+        df = filename_to_list(self.inputs.dicom_files)
+        self.dicom_files = []
+        for p in df:
+            if os.path.isfile(p):
+                self.dicom_files.append(p)
+            elif os.path.isdir(p):
+                self.dicom_files.extend(glob.glob(
+                        os.path.join(p,'*.dcm')))
+            elif isinstance(p,str):
+                self.dicom_files.extend(glob.glob(p))
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['out_file'] = os.path.abspath('./ts.hdf5')
+        return outputs
+
+def filenames_to_dicoms(fnames):
+    for f in fnames:
+        yield dicom.read_file(f)
