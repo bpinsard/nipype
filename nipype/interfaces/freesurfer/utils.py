@@ -295,13 +295,18 @@ class SurfaceSmooth(FSCommand):
 
 
 class SurfaceTransformInputSpec(FSTraitedSpec):
+    _sources = ['source_file','source_annot_file','source_surface_file']
     source_file = File(exists=True, mandatory=True, argstr="--sval %s",
-                       xor=['source_annot_file'],
+                       xor=_sources,
                        desc="surface file with source values")
     source_annot_file = File(exists=True, mandatory=True,
                              argstr="--sval-annot %s",
-                             xor=['source_file'],
+                             xor=_sources,
                              desc="surface annotation file")
+    source_surface_file = traits.Str(mandatory=True,
+                                     argstr="--sval-xyz %s --tval-xyz",
+                                     xor=_sources,
+                                     desc="source surface file to transform")
     source_subject = traits.String(mandatory=True, argstr="--srcsubject %s",
                                    desc="subject id for source surface")
     hemi = traits.Enum("lh", "rh", argstr="--hemi %s", mandatory=True,
@@ -357,11 +362,19 @@ class SurfaceTransform(FSCommand):
         outputs["out_file"] = self.inputs.out_file
         if not isdefined(outputs["out_file"]):
             source = self.inputs.source_file
+            if not isdefined(source):
+                source = self.inputs.source_annot_file
+            if not isdefined(source):
+                source = self.inputs.source_surface_file
+            
+            if not os.path.isfile(source):
+                source = '%s.%s'%(self.inputs.hemi,source)
             # Some recon-all files don't have a proper extension (e.g. "lh.thickness")
             # so we have to account for that here
-            bad_extensions = [".%s" % e for e in ["area", "mid", "pial", "avg_curv", "curv", "inflated",
-                                                  "jacobian_white", "orig", "nofix", "smoothwm", "crv",
-                                                  "sphere", "sulc", "thickness", "volume", "white"]]
+            bad_extensions = [".%s" % e for e in [
+                    "area", "mid", "pial", "avg_curv", "curv", "inflated",
+                    "jacobian_white", "orig", "nofix", "smoothwm", "crv",
+                    "sphere", "sulc", "thickness", "volume", "white"]]
             use_ext = True
             if split_filename(source)[2] in bad_extensions:
                 source = source + ".stripme"
@@ -370,10 +383,11 @@ class SurfaceTransform(FSCommand):
             if isdefined(self.inputs.target_type):
                 ext = "." + filemap[self.inputs.target_type]
                 use_ext = False
-            outputs["out_file"] = fname_presuffix(source,
-                                                  suffix=".%s%s" % (self.inputs.target_subject, ext),
-                                                  newpath=os.getcwd(),
-                                                  use_ext=use_ext)
+            outputs["out_file"] = fname_presuffix(
+                source,
+                suffix=".%s%s" % (self.inputs.target_subject, ext),
+                newpath=os.getcwd(),
+                use_ext=use_ext)
         else:
             outputs["out_file"] = os.path.abspath(self.inputs.out_file)
         return outputs
@@ -1116,9 +1130,9 @@ class SubjectsDir(BaseInterface):
 
     >>> from nipype.interfaces.freesurfer import SubjectsDir
     >>> sd = SubjectsDir(3)
-    >>> mi.inputs.in1 = '/data/subject1'
-    >>> mi.inputs.in2 = '/data/subject2'
-    >>> mi.inputs.in3 = '/usr/share/freesurfer/subjects/fsaverage6'
+    >>> sd.inputs.subject1 = '/data/subject1'
+    >>> sd.inputs.subject2 = '/data/subject2'
+    >>> sd.inputs.subject3 = '/usr/share/freesurfer/subjects/fsaverage6'
 
     """
     input_spec = SubjectsDirInputSpec
