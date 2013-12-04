@@ -445,6 +445,7 @@ class OnlinePreprocessingInputSpec(BaseInterfaceInputSpec):
         desc = 'precomputed fieldmap coregistered with reference space')
     fieldmap_reg = File(
         desc = 'fieldmap coregistration matrix')
+
     
     # space definition
     mask = File()
@@ -465,6 +466,8 @@ class OnlinePreprocessingInputSpec(BaseInterfaceInputSpec):
     slice_thickness = traits.Float(),
     slice_axis = traits.Range(0,2),
 
+    init_reg = File(
+        desc = 'coarse init epi to t1 registration matrix')
     
     # resampling objects
     resample_surfaces = traits.List(
@@ -508,11 +511,12 @@ class OnlinePreprocessing(BaseInterface):
         surf2world = surf_ref.get_affine().dot(ras2vox)
         del surf_ref
 
+        structs = out_file.create_group('STRUCTURES')
         coords = fmri_group.create_dataset('COORDINATES',
                                            (0,3),maxshape = (None,3),
                                            dtype = np.float)
         for surf_name, surf_file in self.inputs.resample_surfaces:
-            surf_group = fmri_group.create_group(surf_name)
+            surf_group = structs.create_group(surf_name)
             surf_group.attrs['ModelType'] = 'SURFACE'
             if isinstance(surf_file, tuple):
                 verts, tris = nb.freesurfer.read_geometry(surf_file[0])
@@ -539,7 +543,7 @@ class OnlinePreprocessing(BaseInterface):
             roiset_labels = dict((k,l) for k,l in np.loadtxt(
                 roiset_labels, dtype=np.object,
                 converters = {0:int,1:str}))
-            rois_group = fmri_group.create_group(roiset_name)
+            rois_group = structs.create_group(roiset_name)
             rois_group.attrs['ModelType'] = 'VOXELS'
 
             rois_mask = rois_data > 0
@@ -593,6 +597,9 @@ class OnlinePreprocessing(BaseInterface):
             if isdefined(self.inputs.fieldmap_reg):
                 fmap_reg[:] = np.loadtxt(self.inputs.fieldmap_reg)
         mask = nb.load(self.inputs.mask)
+        init_reg = None
+        if isdefined(self.inputs.init_reg):
+            init_reg = np.loadtxt(self.inputs.init_reg)
 
         algo = EPIOnlineRealign(
             boundary_surf[0], sampling_coords,
@@ -604,7 +611,8 @@ class OnlinePreprocessing(BaseInterface):
             nsamples_per_slab = self.inputs.nsamples_per_slab,
             ftol = self.inputs.optimization_ftol,
             slice_thickness = self.inputs.slice_thickness,
-            min_nsamples_per_slab = self.inputs.min_nsamples_per_slab)
+            min_nsamples_per_slab = self.inputs.min_nsamples_per_slab,
+            init_reg = init_reg)
 
         tmp = np.empty(nsamples)
         
@@ -616,9 +624,13 @@ class OnlinePreprocessing(BaseInterface):
                 data.resize((nsamples,t))
             data[:,t] = tmp
             t += 1
-            
-        del st, ref_surf, sampling_coords, tmp, algo
 
+        out_file.close()
+        motion = np.array([t.param*t.precond[:6] for t in algo.transforms])
+        np.savetxt(self._list_outputs()['motion'], motion)
+            
+        del stack, surf_ref, sampling_coords, tmp, algo
+        
         return runtime
 
     def _list_files(self):
@@ -637,6 +649,7 @@ class OnlinePreprocessing(BaseInterface):
     def _list_outputs(self):
         outputs = self.output_spec().get()
         outputs['out_file'] = os.path.abspath('./ts.hdf5')
+        outputs['motion'] = os.path.abspath('./motion')
         return outputs
 
 def filenames_to_dicoms(fnames):
