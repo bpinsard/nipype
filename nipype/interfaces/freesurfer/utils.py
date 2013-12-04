@@ -1075,6 +1075,9 @@ triangles = <decimationLevel> * origTriangles""")
 decimation (default: 1.0)""")
 
 class DecimateOutputSpec(TraitedSpec):
+    out_file = File(desc='decimated file')
+
+class Decimate(CommandLine):
     """
     This program reduces the number of triangles in a surface and outputs 
     the new surface to a file using the GNU Triangulated Surface (GTS) 
@@ -1089,8 +1092,6 @@ class DecimateOutputSpec(TraitedSpec):
     'mris_decimate -d 0.4 lh.pial lh.pial_dec'
 
     """
-
-class Decimate(CommandLine):
 
     _cmd = 'mris_decimate'
     input_spec = DecimateInputSpec
