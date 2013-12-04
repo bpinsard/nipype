@@ -483,6 +483,7 @@ class OnlinePreprocessingInputSpec(BaseInterfaceInputSpec):
 
 class OnlinePreprocessingOutputSpec(TraitedSpec):
     out_file = File(desc='hdf5 file containing the timeseries')
+    motion = File()
     
 class OnlinePreprocessing(BaseInterface):
 
@@ -496,7 +497,6 @@ class OnlinePreprocessing(BaseInterface):
     - store dicom metadata (TR,TE,...)
     """
     
-
     def _run_interface(self,runtime):
 
         out_file = h5py.File(self._list_outputs()['out_file'])
@@ -512,9 +512,9 @@ class OnlinePreprocessing(BaseInterface):
         del surf_ref
 
         structs = out_file.create_group('STRUCTURES')
-        coords = fmri_group.create_dataset('COORDINATES',
-                                           (0,3),maxshape = (None,3),
-                                           dtype = np.float)
+        coords = out_file.create_dataset('COORDINATES',
+                                         (0,3),maxshape = (None,3),
+                                         dtype = np.float)
         for surf_name, surf_file in self.inputs.resample_surfaces:
             surf_group = structs.create_group(surf_name)
             surf_group.attrs['ModelType'] = 'SURFACE'
@@ -629,7 +629,7 @@ class OnlinePreprocessing(BaseInterface):
         motion = np.array([t.param*t.precond[:6] for t in algo.transforms])
         np.savetxt(self._list_outputs()['motion'], motion)
             
-        del stack, surf_ref, sampling_coords, tmp, algo
+        del stack, sampling_coords, tmp, algo
         
         return runtime
 
@@ -649,7 +649,7 @@ class OnlinePreprocessing(BaseInterface):
     def _list_outputs(self):
         outputs = self.output_spec().get()
         outputs['out_file'] = os.path.abspath('./ts.hdf5')
-        outputs['motion'] = os.path.abspath('./motion')
+        outputs['motion'] = os.path.abspath('./motion.txt')
         return outputs
 
 def filenames_to_dicoms(fnames):
