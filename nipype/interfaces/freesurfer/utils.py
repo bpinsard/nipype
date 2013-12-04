@@ -16,7 +16,8 @@ import re
 from nipype.utils.filemanip import fname_presuffix, split_filename
 
 from nipype.interfaces.freesurfer.base import FSCommand, FSTraitedSpec
-from nipype.interfaces.base import TraitedSpec, File, traits, OutputMultiPath, isdefined, CommandLine, CommandLineInputSpec
+from nipype.interfaces.base import TraitedSpec, File, Directory, traits, OutputMultiPath, isdefined, CommandLine, CommandLineInputSpec, DynamicTraitedSpec, BaseInterfaceInputSpec, BaseInterface
+from nipype.interfaces.io import add_traits
 
 filemap = dict(cor='cor', mgh='mgh', mgz='mgz', minc='mnc',
                afni='brik', brik='brik', bshort='bshort',
@@ -1097,4 +1098,52 @@ class Decimate(CommandLine):
     input_spec = DecimateInputSpec
     output_spec = DecimateOutputSpec
 
+class SubjectsDirInputSpec(DynamicTraitedSpec, BaseInterfaceInputSpec):
+    pass
 
+class SubjectsDirOutputSpec(TraitedSpec):
+    subjects_dir = Directory(
+        desc='created subject directory with links to subjects')
+    subjects_dirs_list = traits.List(
+        Directory(),
+        desc='a list of subjects directories')
+
+class SubjectsDir(BaseInterface):
+    """Basic interface that create symlink to subjects folder in different location to provide a fake subjects_dir to some freesurfer commands.
+
+    Examples
+    --------
+
+    >>> from nipype.interfaces.freesurfer import SubjectsDir
+    >>> sd = SubjectsDir(3)
+    >>> mi.inputs.in1 = '/data/subject1'
+    >>> mi.inputs.in2 = '/data/subject2'
+    >>> mi.inputs.in3 = '/usr/share/freesurfer/subjects/fsaverage6'
+
+    """
+    input_spec = SubjectsDirInputSpec
+    output_spec = SubjectsDirOutputSpec
+
+    def __init__(self, n_subjects=0, **inputs):
+        super(SubjectsDir, self).__init__(**inputs)
+        self._n_subjects = n_subjects
+        add_traits(self.inputs, 
+                   ['subject%d' % (i + 1) for i in range(n_subjects)],
+                   Directory)
+
+    def _run_interface(self, runtime):
+        self._subjects_dirs_list = []
+        for idx in xrange(self._n_subjects):
+            value = getattr(self.inputs, 'subject%d' % (idx + 1))
+            if isdefined(value) and os.path.isdir(value):
+                dirname = os.path.join(os.getcwd(),
+                                       os.path.basename(value.strip('/')))
+                os.symlink(value, dirname)
+                self._subjects_dirs_list.append(dirname)
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        outputs['subjects_dir'] = os.getcwd()
+        outputs['subjects_dirs_list'] = self._subjects_dirs_list
+        return outputs
