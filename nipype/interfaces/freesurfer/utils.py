@@ -1053,3 +1053,47 @@ class ExtractMainComponent(CommandLine):
     _cmd='mris_extract_main_component'
     input_spec=ExtractMainComponentInputSpec
     output_spec=ExtractMainComponentOutputSpec
+
+
+class DecimateInputSpec(CommandLineInputSpec):
+    in_file = File(exists=True, mandatory=True,
+                   argstr='%s', position=-2)
+
+    out_file = File(name_template='%s_dec', name_source='in_file',
+                    argstr='%s', position=-1)
+
+    decimation_level = traits.Float(
+        argstr='-d %g',
+        desc="""target decimation level of new surface
+(value between 0<-->1.0, default: 0.5). 
+The resulting surface will have approximately 
+triangles = <decimationLevel> * origTriangles""")
+
+    min_angle = traits.Float(
+        argstr = '-m %g',
+        desc="""The minimum angle in degrees allowed between faces during 
+decimation (default: 1.0)""")
+
+class DecimateOutputSpec(TraitedSpec):
+    """
+    This program reduces the number of triangles in a surface and outputs 
+    the new surface to a file using the GNU Triangulated Surface (GTS) 
+    Library.
+
+    Examples
+    --------
+
+    >>> from nipype.interfaces.freesurfer import Decimate
+    >>> dec = Decimate(in_file='lh.pial', out_file='lh.pial_dec', decimation_level=.4)
+    >>> dec.cmdline
+    'mris_decimate -d 0.4 lh.pial lh.pial_dec'
+
+    """
+
+class Decimate(CommandLine):
+
+    _cmd = 'mris_decimate'
+    input_spec = DecimateInputSpec
+    output_spec = DecimateOutputSpec
+
+
