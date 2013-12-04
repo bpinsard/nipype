@@ -403,9 +403,16 @@ class SurfaceTransform(FSCommand):
                 if not os.path.isfile(source):
                     source = '%s.%s'%(self.inputs.hemi,source)
                 source = source + ".stripme" # surfaces have no extension
+                # ico extension outputs other magic number so ico[1-7] used
+                if self.inputs.target_subject == 'ico':
+                    suffix=".%s%d" % (self.inputs.target_subject,
+                                      self.inputs.target_ico_order)
+                else:
+                    suffix=".%s" % (self.inputs.target_subject)
+                
                 outputs["out_surface_file"] = fname_presuffix(
                     source,
-                    suffix=".%s" % (self.inputs.target_subject),
+                    suffix=suffix,
                     newpath=os.getcwd(),
                     use_ext=False)
             else:
