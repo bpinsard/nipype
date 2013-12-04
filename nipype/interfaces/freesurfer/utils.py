@@ -327,11 +327,18 @@ class SurfaceTransformInputSpec(FSTraitedSpec):
     reshape_factor = traits.Int(argstr="--reshape-factor",
                                 desc="number of slices in reshaped image")
     out_file = File(argstr="--tval %s", genfile=True,
-                    desc="surface file to write")
+                    requires = ['source_file'],
+                    desc="surface data file to write")
+    out_surface_file = File(
+        argstr="--trgsurfval %s", 
+        genfile=True,
+        requires = ['source_surface_file'],
+        desc="surface object file to write")
 
 
 class SurfaceTransformOutputSpec(TraitedSpec):
-    out_file = File(exists=True, desc="transformed surface file")
+    out_file = File(exists=True, desc="transformed surface data file")
+    out_surface_file = File(exists=True, desc="transformed surface file")
 
 
 class SurfaceTransform(FSCommand):
@@ -364,36 +371,49 @@ class SurfaceTransform(FSCommand):
             source = self.inputs.source_file
             if not isdefined(source):
                 source = self.inputs.source_annot_file
-            if not isdefined(source):
-                source = self.inputs.source_surface_file
-            
-            if not os.path.isfile(source):
-                source = '%s.%s'%(self.inputs.hemi,source)
-            # Some recon-all files don't have a proper extension (e.g. "lh.thickness")
-            # so we have to account for that here
-            bad_extensions = [".%s" % e for e in [
-                    "area", "mid", "pial", "avg_curv", "curv", "inflated",
-                    "jacobian_white", "orig", "nofix", "smoothwm", "crv",
-                    "sphere", "sulc", "thickness", "volume", "white"]]
-            use_ext = True
-            if split_filename(source)[2] in bad_extensions:
-                source = source + ".stripme"
-                use_ext = False
-            ext = ""
-            if isdefined(self.inputs.target_type):
-                ext = "." + filemap[self.inputs.target_type]
-                use_ext = False
-            outputs["out_file"] = fname_presuffix(
-                source,
-                suffix=".%s%s" % (self.inputs.target_subject, ext),
-                newpath=os.getcwd(),
-                use_ext=use_ext)
+            if isdefined(source):
+                if not os.path.isfile(source):
+                    source = '%s.%s'%(self.inputs.hemi,source)
+                # Some recon-all files don't have a proper extension (e.g. "lh.thickness")
+                # so we have to account for that here
+                bad_extensions = [".%s" % e for e in [
+                        "area", "mid", "pial", "avg_curv", "curv", "inflated",
+                        "jacobian_white", "orig", "nofix", "smoothwm", "crv",
+                        "sphere", "sulc", "thickness", "volume", "white"]]
+                use_ext = True
+                if split_filename(source)[2] in bad_extensions:
+                    source = source + ".stripme"
+                    use_ext = False
+                ext = ""
+                if isdefined(self.inputs.target_type):
+                    ext = "." + filemap[self.inputs.target_type]
+                    use_ext = False
+                outputs["out_file"] = fname_presuffix(
+                    source,
+                    suffix=".%s%s" % (self.inputs.target_subject, ext),
+                    newpath=os.getcwd(),
+                    use_ext=use_ext)
         else:
             outputs["out_file"] = os.path.abspath(self.inputs.out_file)
+
+        outputs["out_surface_file"] = self.inputs.out_surface_file
+        if isdefined(self.inputs.source_surface_file):
+            if not isdefined(outputs["out_surface_file"]):
+                source = self.inputs.source_surface_file
+                if not os.path.isfile(source):
+                    source = '%s.%s'%(self.inputs.hemi,source)
+                source = source + ".stripme" # surfaces have no extension
+                outputs["out_surface_file"] = fname_presuffix(
+                    source,
+                    suffix=".%s" % (self.inputs.target_subject),
+                    newpath=os.getcwd(),
+                    use_ext=False)
+            else:
+                outputs["out_surface_file"] = os.path.abspath(self.inputs.out_surface_file)
         return outputs
 
     def _gen_filename(self, name):
-        if name == "out_file":
+        if name in ["out_file", "out_surface_file"]:
             return self._list_outputs()[name]
         return None
 
