@@ -1137,7 +1137,7 @@ class SubjectsDir(BaseInterface):
             value = getattr(self.inputs, 'subject%d' % (idx + 1))
             if isdefined(value) and os.path.isdir(value):
                 dirname = os.path.join(os.getcwd(),
-                                       os.path.basename(value.strip('/')))
+                                       os.path.basename(value.rstrip('/')))
                 os.symlink(value, dirname)
                 self._subjects_dirs_list.append(dirname)
         return runtime
