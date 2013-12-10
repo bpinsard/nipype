@@ -518,6 +518,7 @@ class OnlinePreprocessing(BaseInterface):
         for surf_name, surf_file in self.inputs.resample_surfaces:
             surf_group = structs.create_group(surf_name)
             surf_group.attrs['ModelType'] = 'SURFACE'
+            surf_group.attrs['SurfaceFile'] = surf_file
             if isinstance(surf_file, tuple):
                 verts, tris = nb.freesurfer.read_geometry(surf_file[0])
                 verts2, _ =  nb.freesurfer.read_geometry(surf_file[1])
@@ -545,6 +546,7 @@ class OnlinePreprocessing(BaseInterface):
                 converters = {0:int,1:str}))
             rois_group = structs.create_group(roiset_name)
             rois_group.attrs['ModelType'] = 'VOXELS'
+            rois_group.attrs['ROIsFile'] = roiset_file
 
             rois_mask = rois_data > 0
             order = np.argsort(rois_data[rois_mask])
@@ -556,12 +558,19 @@ class OnlinePreprocessing(BaseInterface):
             count = rois_coords.shape[0]
             coords.resize((ofst+count,3))
             coords[ofst:ofst+count] = rois_coords
-            rois = rois_group.create_group('ROIS')
             counts = dict([(c,np.count_nonzero(rois_data[rois_mask]==c)) for c in roiset_labels.keys()])
+            rois = rois_group.create_dataset(
+                'ROIS',(len(counts),),dtype=np.dtype(
+                    [('name', 'S200'),
+                     ('IndexOffset', np.int),('IndexCount', np.int),
+                     ('ref', h5py.special_dtype(ref=h5py.RegionReference))]))
+            i=0
             for roi_idx, roi_count in counts.items():
                 label = roiset_labels[roi_idx]
-                rois.attrs[label] = coords.regionref[ofst:ofst+roi_count]
-                ofst += count
+                rois[i] = (label[:200],ofst,roi_count,
+                           coords.regionref[ofst:ofst+roi_count])
+                ofst += roi_count
+                i+=1
             
             del rois_nii, rois_data, rois_mask, order
         
@@ -590,7 +599,7 @@ class OnlinePreprocessing(BaseInterface):
         sampling_coords = surface_to_samples(
             boundary_surf[0], boundary_surf[1], 
             self.inputs.boundary_sampling_distance)
-        fmap = None
+        fmap, fmap_reg = None, None
         if isdefined(self.inputs.fieldmap):
             fmap = nb.load(self.inputs.fieldmap)
             fmap_reg = np.eye(4)
@@ -614,11 +623,16 @@ class OnlinePreprocessing(BaseInterface):
             min_nsamples_per_slab = self.inputs.min_nsamples_per_slab,
             init_reg = init_reg)
 
+        self.algo=algo
         tmp = np.empty(nsamples)
         
         t = 0
+        self.slabs = []
+        self.mats = []
         for slab, reg, vol in algo.process(stack, yield_raw=True):
             print 'frame %d'% t
+            self.slabs.append(slab)
+            self.mats.append(reg)
             algo.resample_coords(vol, [(slab,reg)], coords, tmp)
             if data.shape[-1] <= t:
                 data.resize((nsamples,t))
@@ -648,7 +662,7 @@ class OnlinePreprocessing(BaseInterface):
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
-        outputs['out_file'] = os.path.abspath('./ts.hdf5')
+        outputs['out_file'] = os.path.abspath('./ts.h5')
         outputs['motion'] = os.path.abspath('./motion.txt')
         return outputs
 
