@@ -655,10 +655,10 @@ class OnlinePreprocessing(BaseInterface):
             if os.path.isfile(p):
                 self.dicom_files.append(p)
             elif os.path.isdir(p):
-                self.dicom_files.extend(glob.glob(
-                        os.path.join(p,'*.dcm')))
+                self.dicom_files.extend(sorted(glob.glob(
+                        os.path.join(p,'*.dcm'))))
             elif isinstance(p,str):
-                self.dicom_files.extend(glob.glob(p))
+                self.dicom_files.extend(sorted(glob.glob(p)))
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
