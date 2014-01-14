@@ -482,8 +482,13 @@ class OnlinePreprocessingInputSpec(BaseInterfaceInputSpec):
         True, usedefault=True,
         desc='store surface and ROIs coordinates in output')
 
+    resampled_first_frame = traits.File(
+        desc = 'output first frame resampled and undistorted in reference space for visual registration check')
+
+
 class OnlinePreprocessingOutputSpec(TraitedSpec):
     out_file = File(desc='hdf5 file containing the timeseries')
+    first_frame = File(desc='resampled first frame in reference space')
     motion = File()
     
 class OnlinePreprocessing(BaseInterface):
@@ -510,7 +515,6 @@ class OnlinePreprocessing(BaseInterface):
         ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
         surf_ref = nb.load(self.inputs.surfaces_volume_reference)
         surf2world = surf_ref.get_affine().dot(ras2vox)
-        del surf_ref
 
         structs = out_file.create_group('STRUCTURES')
         coords = out_file.create_dataset('COORDINATES',
@@ -630,6 +634,7 @@ class OnlinePreprocessing(BaseInterface):
         self.algo=algo
         tmp = np.empty(nsamples)
         
+            
         t = 0
         self.slabs = []
         self.mats = []
@@ -641,13 +646,22 @@ class OnlinePreprocessing(BaseInterface):
             if data.shape[-1] <= t:
                 data.resize((nsamples,t))
             data[:,t] = tmp
+            if t==0 and isdefined(self.inputs.resampled_first_frame):
+                f1 = np.empty(surf_ref.shape)
+                vol_coords = nb.affines.apply_affine(
+                    surf_ref.get_affine(),
+                    np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4))
+                algo.resample_coords(vol, [(slab,reg)], vol_coords, f1)
+                nb.save(nb.Nifti1Image(f1, surf_ref.get_affine()),
+                        self._list_outputs()['first_frame'])
+                del vol_coords, f1
             t += 1
 
         out_file.close()
         motion = np.array([t.param*t.precond[:6] for t in algo.transforms])
         np.savetxt(self._list_outputs()['motion'], motion)
             
-        del stack, sampling_coords, tmp, algo
+        del stack, sampling_coords, tmp, algo, surf_ref
         
         return runtime
 
@@ -668,6 +682,9 @@ class OnlinePreprocessing(BaseInterface):
         outputs = self.output_spec().get()
         outputs['out_file'] = os.path.abspath('./ts.h5')
         outputs['motion'] = os.path.abspath('./motion.txt')
+        if isdefined(self.inputs.resampled_first_frame):
+            outputs['first_frame'] = os.path.abspath(
+                self.inputs.resampled_first_frame)
         return outputs
 
 def filenames_to_dicoms(fnames):
