@@ -30,7 +30,7 @@ else:
     from nipy import save_image, load_image
     nipy_version = nipy.__version__
     from nipy.algorithms.registration.online_preproc import (
-        EPIOnlineRealign, surface_to_samples)
+        EPIOnlineRealign, surface_to_samples, NiftiIterator)
     
 
 try:
@@ -416,7 +416,12 @@ class OnlinePreprocessingInputSpec(BaseInterfaceInputSpec):
         InputMultiPath(File(exists=True)),
         InputMultiPath(Directory(exists=True)),
         InputMultiPath(traits.Str()), #allow glob file pattern
-        mandatory=True)
+        mandatory=True
+        xor=['nifti_files'])
+    
+    nifti_file = File(exists=True,
+                       mandatory=True,
+                       xor=['dicom_files'])
 
     out_file_format = traits.Str(
         mandatory=True,
@@ -584,10 +589,13 @@ class OnlinePreprocessing(BaseInterface):
         
         nsamples = coords.shape[0]
 
-        self._list_files()
-        stack = DicomStackOnline()
-        stack.set_source(filenames_to_dicoms(self.dicom_files))
-        stack._init_dataset()
+        if isdefined(self.inputs.dicom_files):
+            self._list_files()
+            stack = DicomStackOnline()
+            stack.set_source(filenames_to_dicoms(self.dicom_files))
+            stack._init_dataset()
+        elif isdefined(self.inputs.nifti_file):
+            stack = NiftiIterator(nb.load(self.inputs.nifti_file))
         
         if stack._nframes_per_dicom == 1:
             nvols = len(self.dicom_files)
