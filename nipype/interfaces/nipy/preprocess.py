@@ -410,8 +410,7 @@ class Trim(BaseInterface):
         outputs['out_file'] = os.path.abspath(outputs['out_file'])
         return outputs
 
-
-class OnlinePreprocessingInputSpec(BaseInterfaceInputSpec):
+class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
     dicom_files = traits.Either(
         InputMultiPath(File(exists=True)),
         InputMultiPath(Directory(exists=True)),
@@ -422,36 +421,12 @@ class OnlinePreprocessingInputSpec(BaseInterfaceInputSpec):
     nifti_file = File(exists=True,
                        mandatory=True,
                        xor=['dicom_files'])
-
-    out_file_format = traits.Str(
-        mandatory=True,
-        desc='format with placeholder for output filename based on dicom')
     
-    #realign parameters
-    reference_boundary = traits.File(
-        mandatory = True,
-        exists = True,
-        desc='the surface used for realignment')
-    boundary_sampling_distance = traits.Float(
-        1.5, usedefault = True,
-        desc='distance from reference boundary in mm.')
-    nsamples_per_slab = traits.Int(
-        10000, usedefault=True,
-        desc='number of samples to use during optimization of a slab')
-    min_nsamples_per_slab = traits.Int(
-        1000, usedefault=True,
-        desc='min number of samples to perform a slab realignment')
-    # optimizer
-    optimization_ftol = traits.Float(
-        1e-5, usedefault=True,
-        desc='tolerance of optimizer for convergence')
-
     # Fieldmap parameters
     fieldmap = File(
         desc = 'precomputed fieldmap coregistered with reference space')
     fieldmap_reg = File(
         desc = 'fieldmap coregistration matrix')
-
     
     # space definition
     mask = File()
@@ -472,9 +447,6 @@ class OnlinePreprocessingInputSpec(BaseInterfaceInputSpec):
     slice_thickness = traits.Float(),
     slice_axis = traits.Range(0,2),
 
-    init_reg = File(
-        desc = 'coarse init epi to t1 registration matrix')
-    
     # resampling objects
     resample_surfaces = traits.List(
         traits.Tuple(traits.Str, traits.Either(File,traits.Tuple(File,File))),
@@ -487,32 +459,21 @@ class OnlinePreprocessingInputSpec(BaseInterfaceInputSpec):
         True, usedefault=True,
         desc='store surface and ROIs coordinates in output')
 
-    resampled_first_frame = traits.File(
-        desc = 'output first frame resampled and undistorted in reference space for visual registration check')
-
-
-class OnlinePreprocessingOutputSpec(TraitedSpec):
-    out_file = File(desc='hdf5 file containing the timeseries')
-    first_frame = File(desc='resampled first frame in reference space')
-    motion = File()
-    
-class OnlinePreprocessing(BaseInterface):
-
-    input_spec = OnlinePreprocessingInputSpec
-    output_spec = OnlinePreprocessingOutputSpec
-
-
-    """
-    TODO : 
-    - encode surfaces and ROIs differently
-    - store dicom metadata (TR,TE,...)
-    """
-    
-    def _run_interface(self,runtime):
-
+class OnlinePreprocBase(BaseInterface):
+    def _list_files(self):
+        # list files depending on input type
+        df = filename_to_list(self.inputs.dicom_files)
+        self.dicom_files = []
+        for p in df:
+            if os.path.isfile(p):
+                self.dicom_files.append(p)
+            elif os.path.isdir(p):
+                self.dicom_files.extend(sorted(glob.glob(
+                        os.path.join(p,'*.dcm'))))
+            elif isinstance(p,str):
+                self.dicom_files.extend(sorted(glob.glob(p)))
+    def _init_ts_file(self):
         out_file = h5py.File(self._list_outputs()['out_file'])
-        fmri_group = out_file.create_group('FMRI')
-        #        fmri_group.attrs['RepetitionTime'] = self.inputs.tr
         
         surfaces = []
         rois = []
@@ -586,9 +547,9 @@ class OnlinePreprocessing(BaseInterface):
                 i+=1
             
             del rois_nii, rois_data, rois_subset_data, rois_mask, order
-        
-        nsamples = coords.shape[0]
+        return out_file
 
+    def _init_stack(self):
         if isdefined(self.inputs.dicom_files):
             self._list_files()
             stack = DicomStackOnline()
@@ -596,7 +557,69 @@ class OnlinePreprocessing(BaseInterface):
             stack._init_dataset()
         elif isdefined(self.inputs.nifti_file):
             stack = NiftiIterator(nb.load(self.inputs.nifti_file))
+        return stack
+
+class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase):
+
+    out_file_format = traits.Str(
+        mandatory=True,
+        desc='format with placeholder for output filename based on dicom')
+    
+    #realign parameters
+    reference_boundary = traits.File(
+        mandatory = True,
+        exists = True,
+        desc='the surface used for realignment')
+    boundary_sampling_distance = traits.Float(
+        1.5, usedefault = True,
+        desc='distance from reference boundary in mm.')
+    nsamples_per_slab = traits.Int(
+        10000, usedefault=True,
+        desc='number of samples to use during optimization of a slab')
+    min_nsamples_per_slab = traits.Int(
+        1000, usedefault=True,
+        desc='min number of samples to perform a slab realignment')
+    # optimizer
+    optimization_ftol = traits.Float(
+        1e-5, usedefault=True,
+        desc='tolerance of optimizer for convergence')
+    init_reg = File(
+        desc = 'coarse init epi to t1 registration matrix')
+
+    # resampling options
+    resampled_first_frame = traits.File(
+        desc = 'output first frame resampled and undistorted in reference space for visual registration check')
+
+
+class OnlinePreprocessingOutputSpec(TraitedSpec):
+    out_file = File(desc='hdf5 file containing the timeseries')
+    first_frame = File(desc='resampled first frame in reference space')
+    motion = File()
+    
+class OnlinePreprocessing(OnlinePreprocBase):
+
+    input_spec = OnlinePreprocessingInputSpec
+    output_spec = OnlinePreprocessingOutputSpec
+
+
+    """
+    TODO : 
+    - encode surfaces and ROIs differently
+    - store dicom metadata (TR,TE,...)
+    """
+
+    def _run_interface(self,runtime):
+
+        out_file = self._init_ts_file()
+        coords = out_file['COORDINATES']
         
+        nsamples = coords.shape[0]
+        
+        fmri_group = out_file.create_group('FMRI')
+#        fmri_group.attrs['RepetitionTime'] = self.inputs.tr
+
+        stack = self._init_stack()
+
         if stack._nframes_per_dicom == 1:
             nvols = len(self.dicom_files)
         elif stack._nframes_per_dicom == 0:
@@ -673,19 +696,6 @@ class OnlinePreprocessing(BaseInterface):
         
         return runtime
 
-    def _list_files(self):
-        # list files depending on input type
-        df = filename_to_list(self.inputs.dicom_files)
-        self.dicom_files = []
-        for p in df:
-            if os.path.isfile(p):
-                self.dicom_files.append(p)
-            elif os.path.isdir(p):
-                self.dicom_files.extend(sorted(glob.glob(
-                        os.path.join(p,'*.dcm'))))
-            elif isinstance(p,str):
-                self.dicom_files.extend(sorted(glob.glob(p)))
-
     def _list_outputs(self):
         outputs = self.output_spec().get()
         outputs['out_file'] = os.path.abspath('./ts.h5')
@@ -698,3 +708,16 @@ class OnlinePreprocessing(BaseInterface):
 def filenames_to_dicoms(fnames):
     for f in fnames:
         yield dicom.read_file(f)
+
+
+class OnlineFilterInputSpec(OnlinePreprocInputSpecBase):
+    motion = File(exists=True, mandatory=True,
+                  desc='the estimated motion')
+    
+class OnlineFilterOutputSpec(TraitedSpec):
+
+    timeseries = File(desc='resampled filtered timeseries')
+    
+class OnlineFilter(OnlinePreprocBase):
+
+    
