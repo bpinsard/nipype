@@ -617,7 +617,6 @@ class OnlinePreprocessing(OnlinePreprocBase):
         
         fmri_group = out_file.create_group('FMRI')
 #        fmri_group.attrs['RepetitionTime'] = self.inputs.tr
-
         stack = self._init_stack()
 
         if stack._nframes_per_dicom == 1:
@@ -721,3 +720,88 @@ class OnlineFilterOutputSpec(TraitedSpec):
 class OnlineFilter(OnlinePreprocBase):
 
     
+    def _run_interface(self,runtime):
+
+        out_file = self._init_ts_file()
+        coords = out_file['COORDINATES']
+        
+        nsamples = coords.shape[0]
+        
+        fmri_group = out_file.create_group('FMRI')
+
+        import nipy.algorithms.registration.affine as aff
+        motion = np.loadtxt(self.inputs.motion)
+        mats = [aff.to_matrix44(m) for m in motion]
+        
+        def iter_precomp_realign(stack, affines):
+            for frame, affine, data in stack.iter_frame():
+                slab = ((frame,0),(frame,stack.nslices))
+yield slab, affines[frame].dot(affine),data
+
+        stack = self._init_stack()
+
+        if stack._nframes_per_dicom == 1:
+            nvols = len(self.dicom_files)
+        elif stack._nframes_per_dicom == 0:
+            nvols = int(len(self.dicom_files)/stack.nslices)
+        else:
+            nvols = 1
+            
+        stack = iter_precomp_realign(stack,mats)
+
+        data = fmri_group.create_dataset(
+            'DATA_FILTERED', dtype=np.float32,
+            shape=(nsamples,nvols), maxshape=(nsamples,None))
+             
+        fmap, fmap_reg = None, None
+        if isdefined(self.inputs.fieldmap):
+            fmap = nb.load(self.inputs.fieldmap)
+            fmap_reg = np.eye(4)
+            if isdefined(self.inputs.fieldmap_reg):
+                fmap_reg[:] = np.loadtxt(self.inputs.fieldmap_reg)
+        mask = nb.load(self.inputs.mask)
+
+        algo = EPIOnlineRealignFilter(
+            fieldmap = fmap, fieldmap_reg = fmap_reg,
+            mask = mask,
+            phase_encoding_dir = self.inputs.phase_encoding_dir,
+            echo_time = self.inputs.echo_time,
+            echo_spacing = self.inputs.echo_spacing,
+            nsamples_per_slab = self.inputs.nsamples_per_slab,
+            slice_thickness = self.inputs.slice_thickness)
+
+        self.algo = algo
+        tmp = np.empty(nsamples)
+            
+        t = 0
+        self.slabs = []
+        self.mats = []
+        for slab, reg, vol in algo.process(stack, yield_raw=True):
+            print 'frame %d'% t
+            self.slabs.append(slab)
+            self.mats.append(reg)
+            algo.resample_coords(vol, [(slab,reg)], coords, tmp)
+            if data.shape[-1] <= t:
+                data.resize((nsamples,t))
+            data[:,t] = tmp
+            if t==0 and isdefined(self.inputs.resampled_first_frame):
+                f1 = np.empty(surf_ref.shape)
+                vol_coords = nb.affines.apply_affine(
+                    surf_ref.get_affine(),
+                    np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4))
+                algo.resample_coords(vol, [(slab,reg)], vol_coords, f1)
+                nb.save(nb.Nifti1Image(f1, surf_ref.get_affine()),
+                        self._list_outputs()['first_frame'])
+                del vol_coords, f1
+            t += 1
+
+        out_file.close()
+            
+        del stack, sampling_coords, tmp, algo, surf_ref
+        
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['out_file'] = os.path.abspath('./ts.h5')
+        return outputs
