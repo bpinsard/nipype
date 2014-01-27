@@ -715,7 +715,7 @@ class OnlineFilterInputSpec(OnlinePreprocInputSpecBase):
         exists=True,
         mandatory=True,
         desc='the estimated motion')
-    partial_volumes_maps = InputMultiPath(
+    partial_volume_maps = InputMultiPath(
         File(exists=True),
         desc='partial volumes maps to regress out')
     
@@ -770,8 +770,8 @@ class OnlineFilter(OnlinePreprocBase):
         mask = nb.load(self.inputs.mask)
 
 
-        if isdefined(self.inputs.partial_volumes_maps):
-            pvmaps = [nb.load(f) for f in self.inputs.partial_volumes_maps]
+        if isdefined(self.inputs.partial_volume_maps):
+            pvmaps = [nb.load(f) for f in self.inputs.partial_volume_maps]
             pvmaps = nb.Nifti1Image(
                 np.concatenate([m.get_data().reshape((m.shape+(1,)[:4])) for m in pvmaps],3),
                 pvmaps[0].get_affine())
