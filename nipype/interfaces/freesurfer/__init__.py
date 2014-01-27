@@ -6,7 +6,7 @@ from .base import Info, FSCommand
 from .preprocess import (ParseDICOMDir, UnpackSDICOMDir, MRIConvert, Resample,
                          ReconAll, BBRegister, ApplyVolTransform,Smooth,
                          DICOMConvert, RobustRegister, FitMSParams,
-                         SynthesizeFLASH)
+                         SynthesizeFLASH, Tkregister)
 from .model import (MRISPreproc, GLMFit, OneSampleTTest, Binarize, Concatenate,
                     SegStats, Label2Vol, MS_LDA)
 from .utils import (SampleToSurface, SurfaceSmooth, SurfaceTransform, Surface2VolTransform, 
