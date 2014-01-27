@@ -1286,9 +1286,9 @@ class ComputeVolumeFractions(CommandLine):
     --------
 
     >>> from nipype.interfaces.freesurfer import ComputeVolumeFractions
-    >>> pve = ComputeVolumeFractions(in_file='norm.mgz', reg_file='register.dat')
+    >>> pve = ComputeVolumeFractions(in_file='T1.mgz', reg_file='register.dat')
     >>> pve.cmdline
-    'mri_compute_volume_fractions register.dat norm.mgz pve'
+    'mri_compute_volume_fractions register.dat T1.mgz pve'
 
     """
 
