@@ -1252,3 +1252,53 @@ class SubjectsDir(BaseInterface):
         outputs['subjects_dir'] = os.getcwd()
         outputs['subjects_dirs_list'] = self._subjects_dirs_list
         return outputs
+
+
+class ComputeVolumeFractionsInputSpec(CommandLineInputSpec):
+
+    subjects_dir = traits.Str(
+        argstr='-SDIR %s',
+        desc=('freesurfer subjects directory defaults to $SUBJECTS_DIR'))
+
+    reg_file = File(
+        exists=True, mandatory=True,
+        argstr='%s', position=-3)
+
+    in_file = File(
+        exists=True, mandatory=True,
+        argstr='%s', position=-2)
+
+    out_stem = traits.Str(
+        'pve', usedefault=True, argstr='%s', position=-1,
+        desc='the prefix of the generated files')
+
+class ComputeVolumeFractionsOutputSpec(TraitedSpec):
+    partial_volume_maps = OutputMultiPath(
+        File(exists=True),
+        desc='partial volume maps')
+
+class ComputeVolumeFractions(CommandLine):
+    """
+    This program computes the partial volume maps in the space of the 
+    reference image.
+
+    Examples
+    --------
+
+    >>> from nipype.interfaces.freesurfer import ComputeVolumeFractions
+    >>> pve = ComputeVolumeFractions(in_file='norm.mgz', reg_file='register.dat')
+    >>> pve.cmdline
+    'mri_compute_volume_fractions register.dat norm.mgz pve'
+
+    """
+
+    _cmd = 'mri_compute_volume_fractions'
+    input_spec = ComputeVolumeFractionsInputSpec
+    output_spec = ComputeVolumeFractionsOutputSpec
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        outputs['partial_volume_maps'] = [
+            '%s.%s.mgz'%(self.inputs.out_stem, m) for m in ['gm','wm','csf']]
+        return outputs
+

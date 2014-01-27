@@ -12,4 +12,5 @@ from .model import (MRISPreproc, GLMFit, OneSampleTTest, Binarize, Concatenate,
 from .utils import (SampleToSurface, SurfaceSmooth, SurfaceTransform, Surface2VolTransform, 
                     SurfaceSnapshots,ApplyMask, MRIsConvert, MRITessellate,
                     MRIMarchingCubes, SmoothTessellation, MakeAverageSubject,
-                    ExtractMainComponent, Decimate, SubjectsDir)
+                    ExtractMainComponent, Decimate, SubjectsDir,
+                    ComputeVolumeFractions)
