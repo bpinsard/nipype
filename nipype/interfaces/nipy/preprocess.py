@@ -30,7 +30,8 @@ else:
     from nipy import save_image, load_image
     nipy_version = nipy.__version__
     from nipy.algorithms.registration.online_preproc import (
-        EPIOnlineRealign, surface_to_samples, NiftiIterator)
+        EPIOnlineRealign, EPIOnlineRealignFilter,
+        surface_to_samples, NiftiIterator)
     
 
 try:
@@ -415,8 +416,8 @@ class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
         InputMultiPath(File(exists=True)),
         InputMultiPath(Directory(exists=True)),
         InputMultiPath(traits.Str()), #allow glob file pattern
-        mandatory=True
-        xor=['nifti_files'])
+        mandatory=True,
+        xor=['nifti_file'])
     
     nifti_file = File(exists=True,
                        mandatory=True,
@@ -710,8 +711,13 @@ def filenames_to_dicoms(fnames):
 
 
 class OnlineFilterInputSpec(OnlinePreprocInputSpecBase):
-    motion = File(exists=True, mandatory=True,
-                  desc='the estimated motion')
+    motion = File(
+        exists=True,
+        mandatory=True,
+        desc='the estimated motion')
+    partial_volumes_maps = InputMultiPath(
+        File(exists=True),
+        desc='partial volumes maps to regress out')
     
 class OnlineFilterOutputSpec(TraitedSpec):
 
@@ -719,6 +725,8 @@ class OnlineFilterOutputSpec(TraitedSpec):
     
 class OnlineFilter(OnlinePreprocBase):
 
+    input_spec = OnlineFilterInputSpec
+    output_spec = OnlineFilterOutputSpec
     
     def _run_interface(self,runtime):
 
@@ -729,14 +737,14 @@ class OnlineFilter(OnlinePreprocBase):
         
         fmri_group = out_file.create_group('FMRI')
 
-        import nipy.algorithms.registration.affine as aff
+        from nipy.algorithms.registration.affine import to_matrix44
         motion = np.loadtxt(self.inputs.motion)
-        mats = [aff.to_matrix44(m) for m in motion]
+        mats = [to_matrix44(m) for m in motion]
         
         def iter_precomp_realign(stack, affines):
             for frame, affine, data in stack.iter_frame():
                 slab = ((frame,0),(frame,stack.nslices))
-yield slab, affines[frame].dot(affine),data
+                yield slab, affines[frame].dot(affine),data
 
         stack = self._init_stack()
 
@@ -746,8 +754,8 @@ yield slab, affines[frame].dot(affine),data
             nvols = int(len(self.dicom_files)/stack.nslices)
         else:
             nvols = 1
-            
-        stack = iter_precomp_realign(stack,mats)
+        
+        stack = iter_precomp_realign(stack, mats)
 
         data = fmri_group.create_dataset(
             'DATA_FILTERED', dtype=np.float32,
@@ -761,38 +769,32 @@ yield slab, affines[frame].dot(affine),data
                 fmap_reg[:] = np.loadtxt(self.inputs.fieldmap_reg)
         mask = nb.load(self.inputs.mask)
 
+
+        if isdefined(self.inputs.partial_volumes_maps):
+            pvmaps = [nb.load(f) for f in self.inputs.partial_volumes_maps]
+            pvmaps = nb.Nifti1Image(
+                np.concatenate([m.get_data().reshape((m.shape+(1,)[:4])) for m in pvmaps],3),
+                pvmaps[0].get_affine())
+        
+
         algo = EPIOnlineRealignFilter(
             fieldmap = fmap, fieldmap_reg = fmap_reg,
             mask = mask,
             phase_encoding_dir = self.inputs.phase_encoding_dir,
             echo_time = self.inputs.echo_time,
             echo_spacing = self.inputs.echo_spacing,
-            nsamples_per_slab = self.inputs.nsamples_per_slab,
             slice_thickness = self.inputs.slice_thickness)
 
         self.algo = algo
         tmp = np.empty(nsamples)
             
         t = 0
-        self.slabs = []
-        self.mats = []
-        for slab, reg, vol in algo.process(stack, yield_raw=True):
+        for slab, reg, cdata in algo.correct(stack, pvmaps = pvmaps):
             print 'frame %d'% t
-            self.slabs.append(slab)
-            self.mats.append(reg)
-            algo.resample_coords(vol, [(slab,reg)], coords, tmp)
+            algo.resample_coords(cdata, [(slab,reg)], coords, tmp)
             if data.shape[-1] <= t:
                 data.resize((nsamples,t))
             data[:,t] = tmp
-            if t==0 and isdefined(self.inputs.resampled_first_frame):
-                f1 = np.empty(surf_ref.shape)
-                vol_coords = nb.affines.apply_affine(
-                    surf_ref.get_affine(),
-                    np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4))
-                algo.resample_coords(vol, [(slab,reg)], vol_coords, f1)
-                nb.save(nb.Nifti1Image(f1, surf_ref.get_affine()),
-                        self._list_outputs()['first_frame'])
-                del vol_coords, f1
             t += 1
 
         out_file.close()
