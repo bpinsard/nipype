@@ -718,6 +718,10 @@ class OnlineFilterInputSpec(OnlinePreprocInputSpecBase):
     partial_volume_maps = InputMultiPath(
         File(exists=True),
         desc='partial volumes maps to regress out')
+    poly_order = traits.Range(
+        2,0,3, usedefault=True,
+        desc="""the order of the 2d poly to regress out of each slices
+for intensity inhomogeneity bias field correction""")
     
 class OnlineFilterOutputSpec(TraitedSpec):
 
@@ -789,7 +793,10 @@ class OnlineFilter(OnlinePreprocBase):
         tmp = np.empty(nsamples)
             
         t = 0
-        for slab, reg, cdata in algo.correct(stack, pvmaps = pvmaps):
+        for slab, reg, cdata in algo.correct(
+            stack,
+            pvmaps = pvmaps,
+            poly_order=self.inputs.poly_order):
             print 'frame %d'% t
             algo.resample_coords(cdata, [(slab,reg)], coords, tmp)
             if data.shape[-1] <= t:
