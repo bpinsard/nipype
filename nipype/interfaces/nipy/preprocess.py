@@ -809,7 +809,7 @@ class OnlineFilter(OnlinePreprocBase):
 
         out_file.close()
             
-        del stack, sampling_coords, tmp, algo, surf_ref
+        del stack, tmp, algo, surf_ref
         
         return runtime
 
