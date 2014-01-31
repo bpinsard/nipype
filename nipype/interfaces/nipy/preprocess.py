@@ -473,15 +473,16 @@ class OnlinePreprocBase(BaseInterface):
                         os.path.join(p,'*.dcm'))))
             elif isinstance(p,str):
                 self.dicom_files.extend(sorted(glob.glob(p)))
+
+    ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
+
     def _init_ts_file(self):
         out_file = h5py.File(self._list_outputs()['out_file'])
         
         surfaces = []
-        rois = []
-
-        ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
+        rois = []        
         surf_ref = nb.load(self.inputs.surfaces_volume_reference)
-        surf2world = surf_ref.get_affine().dot(ras2vox)
+        surf2world = surf_ref.get_affine().dot(OnlinePreprocBase.ras2vox)
 
         structs = out_file.create_group('STRUCTURES')
         coords = out_file.create_dataset('COORDINATES',
@@ -536,13 +537,13 @@ class OnlinePreprocBase(BaseInterface):
             counts = dict([(c,np.count_nonzero(rois_subset_data[rois_mask]==c)) for c in roiset_labels.keys()])
             rois = rois_group.create_dataset(
                 'ROIS',(len(counts),),dtype=np.dtype(
-                    [('name', 'S200'),
+                    [('name', 'S200'),('label',np.int),
                      ('IndexOffset', np.int),('IndexCount', np.int),
                      ('ref', h5py.special_dtype(ref=h5py.RegionReference))]))
             i=0
             for roi_idx, roi_count in counts.items():
                 label = roiset_labels[roi_idx]
-                rois[i] = (label[:200],ofst,roi_count,
+                rois[i] = (label[:200],label,ofst,roi_count,
                            coords.regionref[ofst:ofst+roi_count])
                 ofst += roi_count
                 i+=1
@@ -630,7 +631,9 @@ class OnlinePreprocessing(OnlinePreprocBase):
         data = fmri_group.create_dataset(
             'DATA', dtype=np.float32,
             shape=(nsamples,nvols), maxshape=(nsamples,None))
-             
+
+        surf_ref = nb.load(self.inputs.surfaces_volume_reference)
+        surf2world = surf_ref.get_affine().dot(OnlinePreprocessing.ras2vox)
         boundary_surf = nb.freesurfer.read_geometry(
             self.inputs.reference_boundary)
         boundary_surf[0][:] = nb.affines.apply_affine(surf2world,
@@ -719,7 +722,7 @@ class OnlineFilterInputSpec(OnlinePreprocInputSpecBase):
         File(exists=True),
         desc='partial volumes maps to regress out')
     poly_order = traits.Range(
-        2,0,3, usedefault=True,
+        0,3,2, usedefault=True,
         desc="""the order of the 2d poly to regress out of each slices
 for intensity inhomogeneity bias field correction""")
     
