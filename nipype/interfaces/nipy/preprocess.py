@@ -543,7 +543,7 @@ class OnlinePreprocBase(BaseInterface):
             i=0
             for roi_idx, roi_count in counts.items():
                 label = roiset_labels[roi_idx]
-                rois[i] = (label[:200],label,ofst,roi_count,
+                rois[i] = (label[:200],roi_idx,ofst,roi_count,
                            coords.regionref[ofst:ofst+roi_count])
                 ofst += roi_count
                 i+=1
