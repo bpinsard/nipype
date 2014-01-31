@@ -728,7 +728,7 @@ for intensity inhomogeneity bias field correction""")
     
 class OnlineFilterOutputSpec(TraitedSpec):
 
-    timeseries = File(desc='resampled filtered timeseries')
+    out_file = File(desc='resampled filtered timeseries')
     
 class OnlineFilter(OnlinePreprocBase):
 
