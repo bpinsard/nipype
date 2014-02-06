@@ -1299,6 +1299,7 @@ class ComputeVolumeFractions(CommandLine):
     def _list_outputs(self):
         outputs = self._outputs().get()
         outputs['partial_volume_maps'] = [
-            '%s.%s.mgz'%(self.inputs.out_stem, m) for m in ['gm','wm','csf']]
+            os.path.abspath('%s.%s.mgz'%(self.inputs.out_stem, m))\
+                for m in ['gm','wm','csf']]
         return outputs
 
