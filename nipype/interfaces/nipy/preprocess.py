@@ -521,20 +521,19 @@ class OnlinePreprocBase(BaseInterface):
             rois_group.attrs['ModelType'] = 'VOXELS'
             rois_group.attrs['ROIsFile'] = roiset_file
 
-            rois_subset_data = np.zeros(rois_data.shape,dtype=np.int)
+            voxs = np.empty((0,3))
+            nvoxs = 0
+            counts = dict()
             for k in roiset_labels.keys():
-                rois_subset_data[rois_data==k]=k
-            rois_mask = rois_subset_data > 0
-            order = np.argsort(rois_subset_data[rois_mask])
+                roi_mask = rois_data==k
+                counts[k] = np.count_nonzero(roi_mask)
+                nvoxs += counts[k]
+                voxs = np.vstack([voxs,np.c_[np.where(roi_mask)]])
             # this allows using ROIs in different sampling
-            rois_coords = nb.affines.apply_affine(
-                rois_nii.get_affine(),
-                np.c_[np.where(rois_subset_data)][order])
             ofst = coords.shape[0]
-            count = rois_coords.shape[0]
-            coords.resize((ofst+count,3))
-            coords[ofst:ofst+count] = rois_coords
-            counts = dict([(c,np.count_nonzero(rois_subset_data[rois_mask]==c)) for c in roiset_labels.keys()])
+            coords.resize((ofst+nvoxs,3))
+            coords[ofst:ofst+nvoxs] = nb.affines.apply_affine(
+                rois_nii.get_affine(), voxs)
             rois = rois_group.create_dataset(
                 'ROIS',(len(counts),),dtype=np.dtype(
                     [('name', 'S200'),('label',np.int),
@@ -548,7 +547,7 @@ class OnlinePreprocBase(BaseInterface):
                 ofst += roi_count
                 i+=1
             
-            del rois_nii, rois_data, rois_subset_data, rois_mask, order
+            del rois_nii, rois_data
         return out_file
 
     def _init_stack(self):
