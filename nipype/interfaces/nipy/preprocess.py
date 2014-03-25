@@ -567,6 +567,9 @@ class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase):
         desc='format with placeholder for output filename based on dicom')
     
     #realign parameters
+    detection_threshold = traits.Float(
+        0.99, usedefault=True,
+        desc='correlation threshold to detect motion')
     reference_boundary = traits.File(
         mandatory = True,
         exists = True,
@@ -658,6 +661,7 @@ class OnlinePreprocessing(OnlinePreprocBase):
             phase_encoding_dir = self.inputs.phase_encoding_dir,
             echo_time = self.inputs.echo_time,
             echo_spacing = self.inputs.echo_spacing,
+            detection_threshold = self.inputs.detection_threshold,
             nsamples_per_slab = self.inputs.nsamples_per_slab,
             ftol = self.inputs.optimization_ftol,
             slice_thickness = self.inputs.slice_thickness,
@@ -666,20 +670,22 @@ class OnlinePreprocessing(OnlinePreprocBase):
 
         self.algo=algo
         tmp = np.empty(nsamples)
-        
             
-        t = 0
+        pslab=((0,0),(0,0))
         self.slabs = []
         self.mats = []
-        for slab, reg, vol in algo.process(stack, yield_raw=True):
-            print 'frame %d'% t
-            self.slabs.append(slab)
-            self.mats.append(reg)
-            algo.resample_coords(vol, [(slab,reg)], coords, tmp)
-            if data.shape[-1] <= t:
-                data.resize((nsamples,t))
-            data[:,t] = tmp
-            if t==0 and isdefined(self.inputs.resampled_first_frame):
+        for fr, slab, reg, vol in algo.process(stack, yield_raw=True):
+            print 'frame %d'% fr
+            #override first slab for resampling
+            slab[0]=((pslab[1][0]+(pslab[1][1]==stack.nslices-1),
+                      (pslab[1][1]+1)%stack.nslices),
+                     (slab[0][1][0],slab[1][1]))
+            algo.resample_coords(vol, [(s,r) for s,r in zip(slab,reg)],
+                                 coords, tmp)
+            if data.shape[-1] <= fr:
+                data.resize((nsamples,fr))
+            data[:,fr] = tmp
+            if fr==0 and isdefined(self.inputs.resampled_first_frame):
                 f1 = np.empty(surf_ref.shape)
                 vol_coords = nb.affines.apply_affine(
                     surf_ref.get_affine(),
@@ -688,10 +694,11 @@ class OnlinePreprocessing(OnlinePreprocBase):
                 nb.save(nb.Nifti1Image(f1, surf_ref.get_affine()),
                         self._list_outputs()['first_frame'])
                 del vol_coords, f1
-            t += 1
 
         out_file.close()
         motion = np.array([t.param*t.precond[:6] for t in algo.transforms])
+        slabs = np.c_[[s[0]+s[1] for s in mc.slabs]]
+        np.savetxt(self._list_outputs()['slabs'], motion)
         np.savetxt(self._list_outputs()['motion'], motion)
             
         del stack, sampling_coords, tmp, algo, surf_ref
@@ -701,6 +708,7 @@ class OnlinePreprocessing(OnlinePreprocBase):
     def _list_outputs(self):
         outputs = self.output_spec().get()
         outputs['out_file'] = os.path.abspath('./ts.h5')
+        outputs['slabs'] = os.path.abspath('./slabs.txt')
         outputs['motion'] = os.path.abspath('./motion.txt')
         if isdefined(self.inputs.resampled_first_frame):
             outputs['first_frame'] = os.path.abspath(
