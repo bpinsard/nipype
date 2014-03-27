@@ -538,12 +538,13 @@ class OnlinePreprocBase(BaseInterface):
                 'ROIS',(len(counts),),dtype=np.dtype(
                     [('name', 'S200'),('label',np.int),
                      ('IndexOffset', np.int),('IndexCount', np.int),
-                     ('ref', h5py.special_dtype(ref=h5py.RegionReference))]))
+                     #('ref', h5py.special_dtype(ref=h5py.RegionReference))
+                     ]))
             i=0
             for roi_idx, roi_count in counts.items():
                 label = roiset_labels[roi_idx]
-                rois[i] = (label[:200],roi_idx,ofst,roi_count,
-                           coords.regionref[ofst:ofst+roi_count])
+                rois[i] = (label[:200],roi_idx,ofst,roi_count,)
+#                           coords.regionref[ofst:ofst+roi_count])
                 ofst += roi_count
                 i+=1
             
