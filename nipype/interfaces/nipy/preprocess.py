@@ -599,6 +599,7 @@ class OnlinePreprocessingOutputSpec(TraitedSpec):
     out_file = File(desc='hdf5 file containing the timeseries')
     first_frame = File(desc='resampled first frame in reference space')
     motion = File()
+    slabs = File()
     
 class OnlinePreprocessing(OnlinePreprocBase):
 
@@ -679,7 +680,7 @@ class OnlinePreprocessing(OnlinePreprocBase):
             #override first slab for resampling
             slab[0]=((pslab[1][0]+(pslab[1][1]==stack.nslices-1),
                       (pslab[1][1]+1)%stack.nslices),
-                     (slab[0][1][0],slab[1][1]))
+                     (slab[0][1][0],slab[0][1][1]))
             algo.resample_coords(vol, [(s,r) for s,r in zip(slab,reg)],
                                  coords, tmp)
             if data.shape[-1] <= fr:
@@ -690,15 +691,16 @@ class OnlinePreprocessing(OnlinePreprocBase):
                 vol_coords = nb.affines.apply_affine(
                     surf_ref.get_affine(),
                     np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4))
-                algo.resample_coords(vol, [(slab,reg)], vol_coords, f1)
+                algo.resample_coords(vol, [(s,r) for s,r in zip(slab,reg)],
+                                     vol_coords, f1)
                 nb.save(nb.Nifti1Image(f1, surf_ref.get_affine()),
                         self._list_outputs()['first_frame'])
                 del vol_coords, f1
 
         out_file.close()
         motion = np.array([t.param*t.precond[:6] for t in algo.transforms])
-        slabs = np.c_[[s[0]+s[1] for s in mc.slabs]]
-        np.savetxt(self._list_outputs()['slabs'], motion)
+        slabs = np.c_[[s[0]+s[1] for s in algo.slabs]]
+        np.savetxt(self._list_outputs()['slabs'], slabs)
         np.savetxt(self._list_outputs()['motion'], motion)
             
         del stack, sampling_coords, tmp, algo, surf_ref
