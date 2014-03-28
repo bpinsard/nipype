@@ -568,6 +568,8 @@ class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase):
         desc='format with placeholder for output filename based on dicom')
     
     #realign parameters
+    init_center_of_mass = traits.Bool(
+        desc='initialize aligning center of mass of ref mask and first frame')
     detection_threshold = traits.Float(
         0.99, usedefault=True,
         desc='correlation threshold to detect motion')
@@ -655,6 +657,8 @@ class OnlinePreprocessing(OnlinePreprocBase):
         init_reg = None
         if isdefined(self.inputs.init_reg):
             init_reg = np.loadtxt(self.inputs.init_reg)
+        elif self.inputs.init_center_of_mass:
+            init_reg = 'auto'
 
         algo = EPIOnlineRealign(
             boundary_surf[0], sampling_coords,
@@ -701,9 +705,9 @@ class OnlinePreprocessing(OnlinePreprocBase):
         out_file.close()
         motion = np.array([t.param*t.precond[:6] for t in algo.transforms])
         slabs = np.c_[[s[0]+s[1] for s in algo.slabs]]
-        np.savetxt(self._list_outputs()['slabs'], slabs)
-        np.savetxt(self._list_outputs()['motion'], motion)
-            
+        np.savetxt(self._list_outputs()['slabs'], slabs, '%d')
+        np.savetxt(self._list_outputs()['motion'], motion, '%f')
+        
         del stack, sampling_coords, tmp, algo, surf_ref
         
         return runtime
