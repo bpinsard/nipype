@@ -555,7 +555,7 @@ class SurfaceResamplingBase(BaseInterface):
         surfaces = []
         rois = []        
         surf_ref = nb.load(self.inputs.surfaces_volume_reference)
-        surf2world = surf_ref.get_affine().dot(OnlinePreprocBase.ras2vox)
+        surf2world = surf_ref.get_affine().dot(SurfaceResamplingBase.ras2vox)
 
         structs = out_file.create_group('STRUCTURES')
         coords = out_file.create_dataset('COORDINATES',
@@ -700,7 +700,7 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
             shape=(nsamples,nvols), maxshape=(nsamples,None))
 
         surf_ref = nb.load(self.inputs.surfaces_volume_reference)
-        surf2world = surf_ref.get_affine().dot(OnlinePreprocessing.ras2vox)
+        surf2world = surf_ref.get_affine().dot(SurfaceResamplingBase.ras2vox)
         boundary_surf = nb.freesurfer.read_geometry(
             self.inputs.reference_boundary)
         boundary_surf[0][:] = nb.affines.apply_affine(surf2world,
