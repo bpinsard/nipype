@@ -470,11 +470,10 @@ class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
         desc = 'fieldmap coregistration matrix')
     
     # space definition
-    mask = File()
-    surfaces_volume_reference = traits.File(
+    mask = File(
         mandatory = True,
         exists = True,
-        desc='a volume defining space of surfaces')
+        desc='a mask in reference space')
     
     #EPI parameters
     phase_encoding_dir = traits.Range(-3,3, desc='phase encoding direction')
@@ -488,6 +487,7 @@ class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
     slice_thickness = traits.Float(),
     slice_axis = traits.Range(0,2),
 
+class SurfaceResamplingInputSpec(BaseInterfaceInputSpec):
     # resampling objects
     resample_surfaces = traits.List(
         traits.Tuple(traits.Str, traits.Either(File,traits.Tuple(File,File))),
@@ -499,6 +499,13 @@ class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
     store_coords = traits.Bool(
         True, usedefault=True,
         desc='store surface and ROIs coordinates in output')
+
+    # space definition
+    surfaces_volume_reference = traits.File(
+        mandatory = True,
+        exists = True,
+        desc='a volume defining space of surfaces')
+
 
 class OnlinePreprocBase(BaseInterface):
     def _list_files(self):
@@ -513,6 +520,32 @@ class OnlinePreprocBase(BaseInterface):
                         os.path.join(p,'*.dcm'))))
             elif isinstance(p,str):
                 self.dicom_files.extend(sorted(glob.glob(p)))
+
+    def _init_stack(self):
+        if isdefined(self.inputs.dicom_files):
+            self._list_files()
+            stack = DicomStackOnline()
+            stack.set_source(filenames_to_dicoms(self.dicom_files))
+            stack._init_dataset()
+        elif isdefined(self.inputs.nifti_file):
+            stack = NiftiIterator(nb.load(self.inputs.nifti_file))
+        return stack
+
+    def _gen_fname(self):
+        if hasattr(self,'_fname'):
+            return self._fname
+        if hasattr(self,'dicom_files') and\
+                isdefined(self.inputs.out_file_format):
+            keys = re.findall('\%\((\w*)\)', self.inputs.out_file_format)
+            dic = dicom.read_file(self.dicom_files[0])
+            values = dict([(k,dic.get(k,'')) for k in keys])
+            fname_base = str(self.inputs.out_file_format % values)
+            self._fname=self._overload_extension(os.path.abspath(fname_base))
+            del dic
+            return self._fname
+        return
+
+class SurfaceResamplingBase(BaseInterface):
 
     ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
 
@@ -591,31 +624,9 @@ class OnlinePreprocBase(BaseInterface):
             del rois_nii, rois_data
         return out_file
 
-    def _init_stack(self):
-        if isdefined(self.inputs.dicom_files):
-            self._list_files()
-            stack = DicomStackOnline()
-            stack.set_source(filenames_to_dicoms(self.dicom_files))
-            stack._init_dataset()
-        elif isdefined(self.inputs.nifti_file):
-            stack = NiftiIterator(nb.load(self.inputs.nifti_file))
-        return stack
 
-    def _gen_fname(self):
-        if hasattr(self,'_fname'):
-            return self._fname
-        if hasattr(self,'dicom_files') and\
-                isdefined(self.inputs.out_file_format):
-            keys = re.findall('\%\((\w*)\)', self.inputs.out_file_format)
-            dic = dicom.read_file(self.dicom_files[0])
-            values = dict([(k,dic.get(k,'')) for k in keys])
-            fname_base = str(self.inputs.out_file_format % values)
-            self._fname=self._overload_extension(os.path.abspath(fname_base))
-            del dic
-            return self._fname
-        return
-
-class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase):
+class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase,
+                                   SurfaceResamplingInputSpec):
 
     #realign parameters
     init_center_of_mass = traits.Bool(
@@ -654,7 +665,7 @@ class OnlinePreprocessingOutputSpec(TraitedSpec):
     motion = File()
     slabs = File()
     
-class OnlinePreprocessing(OnlinePreprocBase):
+class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
 
     input_spec = OnlinePreprocessingInputSpec
     output_spec = OnlinePreprocessingOutputSpec
@@ -782,7 +793,8 @@ def filenames_to_dicoms(fnames):
         yield dicom.read_file(f)
 
 
-class OnlineFilterInputSpec(OnlinePreprocInputSpecBase):
+class OnlineFilterInputSpec(OnlinePreprocInputSpecBase,
+                            SurfaceResamplingInputSpec):
     motion = File(
         exists=True,
         mandatory=True,
@@ -799,7 +811,7 @@ class OnlineFilterOutputSpec(TraitedSpec):
 
     out_file = File(desc='resampled filtered timeseries')
     
-class OnlineFilter(OnlinePreprocBase):
+class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
 
     input_spec = OnlineFilterInputSpec
     output_spec = OnlineFilterOutputSpec
@@ -903,6 +915,7 @@ class OnlineResample4DInputSpec(OnlinePreprocInputSpecBase):
         exists=True,
         mandatory=True,
         desc='volume describing the space in which to resample')
+
     voxel_size = traits.Tuple(
         *([traits.Int()]*3),
         desc='size of the output voxels')
@@ -936,7 +949,7 @@ class OnlineResample4D(OnlinePreprocBase):
 
         slabs_array = np.loadtxt(self.inputs.slabs)
         # change to continuous slabs
-        slab_array[1:,1] = np.mod(slab_array[:-1,3]+1, stack.nslices)
+        slabs_array[1:,1] = np.mod(slabs_array[:-1,3]+1, stack.nslices)
         slabs = [((s[0],s[1]),(s[2],s[3])) for s in slabs_array]
 
         from nipy.algorithms.registration.affine import to_matrix44
@@ -955,10 +968,11 @@ class OnlineResample4D(OnlinePreprocBase):
             fieldmap = fmap,
             fieldmap_reg = fmap_reg,
             mask = mask,
+            slice_order = stack._slice_order,
             phase_encoding_dir = self.inputs.phase_encoding_dir,
             echo_time = self.inputs.echo_time,
             echo_spacing = self.inputs.echo_spacing,
-            slice_thickness = self.inputs.slice_thickness)        
+            slice_thickness = self.inputs.slice_thickness)
 
         voxel_size = self.inputs.voxel_size
         if not isdefined(voxel_size):
@@ -969,12 +983,10 @@ class OnlineResample4D(OnlinePreprocBase):
         grid = np.rollaxis(np.mgrid[[slice(0,n) for n in shape]],0,4)
         coords = nb.affines.apply_affine(mat, grid)
         del grid
-        out = np.empty(grid.shape[:-1]+(len(dicom_files),))
-        
-        
+        out = np.empty(shape+(len(self.dicom_files),))
 
         for fr, affine, data in stack.iter_frame():
-            slabregs = [(slab,mat.dot(affine)) \
+            slab_regs = [(slab,mat.dot(affine)) \
                             for slab,mat in zip(slabs,motion_mats)\
                             if slab[0][0]<=fr and slab[1][0]>=fr]
             algo.resample_coords(data, slab_regs, coords, out[...,fr])
