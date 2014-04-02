@@ -736,12 +736,13 @@ class OnlinePreprocessing(OnlinePreprocBase):
             slabs[0]=((pslab[1][0]+(pslab[1][1]==stack.nslices-1),
                        (pslab[1][1]+1)%stack.nslices),
                      (slabs[0][1][0],slabs[0][1][1]))
-            for sl in range(1,len(slab)-1):
+            for sl in range(1,len(slabs)-1):
                 slabs[sl]  = (
                     (slabs[sl][0][0],(slabs[sl-1][1][1]+1)%stack.nslices),
                     slabs[sl][1])
-            algo.resample_coords(vol, [(s,r) for s,r in zip(slabs,regs)],
-                                 coords, tmp)
+
+            slab_regs = [(s,r) for s,r in zip(slabs,regs)]
+            algo.resample_coords(vol, slab_regs, coords, tmp)
             pslab = slabs[-1]
             if data.shape[-1] <= fr:
                 data.resize((nsamples,fr))
@@ -751,8 +752,7 @@ class OnlinePreprocessing(OnlinePreprocBase):
                 vol_coords = nb.affines.apply_affine(
                     surf_ref.get_affine(),
                     np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4))
-                algo.resample_coords(vol, [(s,r) for s,r in zip(slab,reg)],
-                                     vol_coords, f1)
+                algo.resample_coords(vol, slab_regs, vol_coords, f1)
                 nb.save(nb.Nifti1Image(f1, surf_ref.get_affine()),
                         self._list_outputs()['first_frame'])
                 del vol_coords, f1
