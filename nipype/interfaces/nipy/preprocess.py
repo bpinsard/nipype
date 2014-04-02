@@ -540,7 +540,7 @@ class OnlinePreprocBase(BaseInterface):
             dic = dicom.read_file(self.dicom_files[0])
             values = dict([(k,dic.get(k,'')) for k in keys])
             fname_base = str(self.inputs.out_file_format % values)
-            self._fname=self._overload_extension(os.path.abspath(fname_base))
+            self._fname = self._overload_extension(os.path.abspath(fname_base))
             del dic
             return self._fname
         return
@@ -920,7 +920,7 @@ class OnlineResample4DInputSpec(OnlinePreprocInputSpecBase):
         *([traits.Int()]*3),
         desc='size of the output voxels')
     
-    outputtype = traits.Enum('NIFTI', Info.ftypes.keys(),
+    outputtype = traits.Enum('NIFTI', Info.ftypes.keys(), usedefault=True,
                              desc='DCMStack output filetype')
 
 class OnlineResample4DOutputSpec(TraitedSpec):
@@ -938,8 +938,8 @@ class OnlineResample4D(OnlinePreprocBase):
     
     def _list_outputs(self):
         outputs = self.output_spec().get()
-        base_fname = self._gen_fname
-        outputs['out_file'] = os.path.abspath(fname_presuffix())
+        base_fname = self._gen_fname()
+        outputs['out_file'] = os.path.abspath(fname_presuffix(base_fname))
         return outputs
 
     def _run_interface(self,runtime):
@@ -947,7 +947,7 @@ class OnlineResample4D(OnlinePreprocBase):
         stack = self._init_stack()
         stack._init_dataset()
 
-        slabs_array = np.loadtxt(self.inputs.slabs)
+        slabs_array = np.loadtxt(self.inputs.slabs,np.int)
         # change to continuous slabs
         slabs_array[1:,1] = np.mod(slabs_array[:-1,3]+1, stack.nslices)
         slabs = [((s[0],s[1]),(s[2],s[3])) for s in slabs_array]
@@ -986,9 +986,15 @@ class OnlineResample4D(OnlinePreprocBase):
         out = np.empty(shape+(len(self.dicom_files),))
 
         for fr, affine, data in stack.iter_frame():
-            slab_regs = [(slab,mat.dot(affine)) \
-                            for slab,mat in zip(slabs,motion_mats)\
+            print 'resampling frame %d'%fr
+            slab_regs = [(slab,m.dot(affine)) \
+                            for slab,m in zip(slabs,motion_mats)\
                             if slab[0][0]<=fr and slab[1][0]>=fr]
+            print slab_regs
             algo.resample_coords(data, slab_regs, coords, out[...,fr])
+
+        outputs = self._list_outputs()
         
+        nb.save(nb.Nifti1Image(out, mat),outputs['out_file'])
+
         return runtime
