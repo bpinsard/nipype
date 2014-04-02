@@ -14,6 +14,7 @@ import dicom
 import numpy as np
 
 import glob
+import re
 
 from ...utils.misc import package_check
 from ...utils.filemanip import (
@@ -30,7 +31,7 @@ else:
     from nipy import save_image, load_image
     nipy_version = nipy.__version__
     from nipy.algorithms.registration.online_preproc import (
-        EPIOnlineRealign, EPIOnlineRealignFilter,
+        EPIOnlineRealign, EPIOnlineRealignFilter, resample_mat_shape,
         surface_to_samples, NiftiIterator)
     
 
@@ -51,6 +52,41 @@ else:
 from ..base import (TraitedSpec, BaseInterface, traits,
                     BaseInterfaceInputSpec, isdefined, File, Directory,
                     InputMultiPath, OutputMultiPath)
+
+
+
+class Info(object):
+    """Handle nibabel output type and version information.
+"""
+    __outputtype = 'NIFTI'
+    ftypes = {'NIFTI': '.nii',
+              'NIFTI_GZ': '.nii.gz',
+              'MGZ':'.mgz'}
+
+    @classmethod
+    def outputtype_to_ext(cls, outputtype):
+        """Get the file extension for the given output type.
+
+Parameters
+----------
+outputtype : {'NIFTI', 'NIFTI_GZ'}
+String specifying the output type.
+
+Returns
+-------
+extension : str
+The file extension for the output type.
+"""
+
+        try:
+            return cls.ftypes[outputtype]
+        except KeyError:
+            msg = 'Invalid NIBABELOUTPUTTYPE: ', outputtype
+            raise KeyError(msg)
+
+    @classmethod
+    def outputtype(cls):
+        return cls.__outputtype
 
 
 class ComputeMaskInputSpec(BaseInterfaceInputSpec):
@@ -422,6 +458,10 @@ class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
     nifti_file = File(exists=True,
                        mandatory=True,
                        xor=['dicom_files'])
+
+    out_file_format = traits.Str(
+        mandatory=True,
+        desc='format with placeholder for output filename based on dicom')
     
     # Fieldmap parameters
     fieldmap = File(
@@ -561,12 +601,22 @@ class OnlinePreprocBase(BaseInterface):
             stack = NiftiIterator(nb.load(self.inputs.nifti_file))
         return stack
 
+    def _gen_fname(self):
+        if hasattr(self,'_fname'):
+            return self._fname
+        if hasattr(self,'dicom_files') and\
+                isdefined(self.inputs.out_file_format):
+            keys = re.findall('\%\((\w*)\)', self.inputs.out_file_format)
+            dic = dicom.read_file(self.dicom_files[0])
+            values = dict([(k,dic.get(k,'')) for k in keys])
+            fname_base = str(self.inputs.out_file_format % values)
+            self._fname=self._overload_extension(os.path.abspath(fname_base))
+            del dic
+            return self._fname
+        return
+
 class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase):
 
-    out_file_format = traits.Str(
-        mandatory=True,
-        desc='format with placeholder for output filename based on dicom')
-    
     #realign parameters
     init_center_of_mass = traits.Bool(
         desc='initialize aligning center of mass of ref mask and first frame')
@@ -680,14 +730,19 @@ class OnlinePreprocessing(OnlinePreprocBase):
         pslab=((0,0),(0,0))
         self.slabs = []
         self.mats = []
-        for fr, slab, reg, vol in algo.process(stack, yield_raw=True):
+        for fr, slabs, regs, vol in algo.process(stack, yield_raw=True):
             print 'frame %d'% fr
             #override first slab for resampling
-            slab[0]=((pslab[1][0]+(pslab[1][1]==stack.nslices-1),
-                      (pslab[1][1]+1)%stack.nslices),
-                     (slab[0][1][0],slab[0][1][1]))
-            algo.resample_coords(vol, [(s,r) for s,r in zip(slab,reg)],
+            slabs[0]=((pslab[1][0]+(pslab[1][1]==stack.nslices-1),
+                       (pslab[1][1]+1)%stack.nslices),
+                     (slabs[0][1][0],slabs[0][1][1]))
+            for sl in range(1,len(slab)-1):
+                slabs[sl]  = (
+                    (slabs[sl][0][0],(slabs[sl-1][1][1]+1)%stack.nslices),
+                    slabs[sl][1])
+            algo.resample_coords(vol, [(s,r) for s,r in zip(slabs,regs)],
                                  coords, tmp)
+            pslab = slabs[-1]
             if data.shape[-1] <= fr:
                 data.resize((nsamples,fr))
             data[:,fr] = tmp
@@ -831,3 +886,97 @@ class OnlineFilter(OnlinePreprocBase):
         outputs = self.output_spec().get()
         outputs['out_file'] = os.path.abspath('./ts.h5')
         return outputs
+
+class OnlineResample4DInputSpec(OnlinePreprocInputSpecBase):
+
+    slabs = File(
+        exists=True,
+        mandatory=True,
+        desc='slabs on which motion was estimated')
+
+    motion = File(
+        exists=True,
+        mandatory=True,
+        desc='the estimated motion')
+
+    reference = File(
+        exists=True,
+        mandatory=True,
+        desc='volume describing the space in which to resample')
+    voxel_size = traits.Tuple(
+        *([traits.Int()]*3),
+        desc='size of the output voxels')
+    
+    outputtype = traits.Enum('NIFTI', Info.ftypes.keys(),
+                             desc='DCMStack output filetype')
+
+class OnlineResample4DOutputSpec(TraitedSpec):
+    out_file = File(desc='big nifti 4D native space file of timeseries')
+    
+class OnlineResample4D(OnlinePreprocBase):
+
+    input_spec = OnlineResample4DInputSpec
+    output_spec = OnlineResample4DOutputSpec
+
+    def _overload_extension(self, value):
+        path, base, _ = split_filename(value)
+        return os.path.join(path, base + Info.outputtype_to_ext(
+                self.inputs.outputtype))
+    
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        base_fname = self._gen_fname
+        outputs['out_file'] = os.path.abspath(fname_presuffix())
+        return outputs
+
+    def _run_interface(self,runtime):
+
+        stack = self._init_stack()
+        stack._init_dataset()
+
+        slabs_array = np.loadtxt(self.inputs.slabs)
+        # change to continuous slabs
+        slab_array[1:,1] = np.mod(slab_array[:-1,3]+1, stack.nslices)
+        slabs = [((s[0],s[1]),(s[2],s[3])) for s in slabs_array]
+
+        from nipy.algorithms.registration.affine import to_matrix44
+        motion_array = np.loadtxt(self.inputs.motion)
+        motion_mats = [to_matrix44(m) for m in motion_array]
+
+        fmap, fmap_reg = None, None
+        if isdefined(self.inputs.fieldmap):
+            fmap = nb.load(self.inputs.fieldmap)
+            fmap_reg = np.eye(4)
+            if isdefined(self.inputs.fieldmap_reg):
+                fmap_reg[:] = np.loadtxt(self.inputs.fieldmap_reg)
+        mask = nb.load(self.inputs.mask)
+
+        algo = EPIOnlineRealignFilter(
+            fieldmap = fmap,
+            fieldmap_reg = fmap_reg,
+            mask = mask,
+            phase_encoding_dir = self.inputs.phase_encoding_dir,
+            echo_time = self.inputs.echo_time,
+            echo_spacing = self.inputs.echo_spacing,
+            slice_thickness = self.inputs.slice_thickness)        
+
+        voxel_size = self.inputs.voxel_size
+        if not isdefined(voxel_size):
+            voxel_size = stack._voxel_size
+
+        ref = nb.load(self.inputs.reference)
+        mat, shape = resample_mat_shape(ref.get_affine(),ref.shape,voxel_size)
+        grid = np.rollaxis(np.mgrid[[slice(0,n) for n in shape]],0,4)
+        coords = nb.affines.apply_affine(mat, grid)
+        del grid
+        out = np.empty(grid.shape[:-1]+(len(dicom_files),))
+        
+        
+
+        for fr, affine, data in stack.iter_frame():
+            slabregs = [(slab,mat.dot(affine)) \
+                            for slab,mat in zip(slabs,motion_mats)\
+                            if slab[0][0]<=fr and slab[1][0]>=fr]
+            algo.resample_coords(data, slab_regs, coords, out[...,fr])
+        
+        return runtime
