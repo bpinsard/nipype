@@ -205,11 +205,15 @@ class WorkflowBase(object):
 
     def save(self, filename=None):
         if filename is None:
-            filename = 'temp.npz'
-        np.savez(filename, object=self)
+            filename = 'temp.pklz'
+        savepkl(filename, self)
 
     def load(self, filename):
-        return np.load(filename)
+        if '.npz' in filename:
+            DeprecationWarning(('npz files will be deprecated in the next '
+                                'release. you can use numpy to open them.'))
+            return np.load(filename)
+        return loadpkl(filename)
 
 
 class Workflow(WorkflowBase):
@@ -689,10 +693,10 @@ connected.
         runner.run(execgraph, updatehash=updatehash, config=self.config)
         datestr = datetime.utcnow().strftime('%Y%m%dT%H%M%S')
         if str2bool(self.config['execution']['write_provenance']):
-            write_workflow_prov(execgraph,
-                                os.path.join(self.base_dir,
-                                             'workflow_provenance_%s' % datestr),
-                                format='all')
+            prov_base = os.path.join(self.base_dir,
+                                     'workflow_provenance_%s' % datestr)
+            logger.info('Provenance file prefix: %s' % prov_base)
+            write_workflow_prov(execgraph, prov_base, format='all')
         return execgraph
 
     # PRIVATE API AND FUNCTIONS
