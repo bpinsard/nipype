@@ -917,7 +917,7 @@ class OnlineResample4DInputSpec(OnlinePreprocInputSpecBase):
         desc='volume describing the space in which to resample')
 
     voxel_size = traits.Tuple(
-        *([traits.Int()]*3),
+        *([traits.Float()]*3),
         desc='size of the output voxels')
     
     outputtype = traits.Enum('NIFTI', Info.ftypes.keys(), usedefault=True,
