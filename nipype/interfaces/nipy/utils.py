@@ -12,10 +12,11 @@ import nibabel as nb
 import numpy as np
 from ...utils.misc import package_check
 
+have_nipy = True
 try:
     package_check('nipy')
 except Exception, e:
-    warnings.warn('nipy not installed')
+    have_nipy = False
 else:
     from nipy.algorithms.registration.histogram_registration import HistogramRegistration
     import nipy.algorithms.utils.preprocess as preproc

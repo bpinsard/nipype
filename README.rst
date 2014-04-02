@@ -2,6 +2,12 @@
 NIPYPE: Neuroimaging in Python: Pipelines and Interfaces
 ========================================================
 
+.. image:: https://travis-ci.org/nipy/nipype.png?branch=master
+  :target: https://travis-ci.org/nipy/nipype
+
+.. image:: https://coveralls.io/repos/nipy/nipype/badge.png
+  :target: https://coveralls.io/r/nipy/nipype
+
 
 Current neuroimaging software offer users an incredible opportunity to
 analyze data using a variety of different algorithms. However, this has
@@ -97,5 +103,5 @@ There are interfaces to some GNU code but these are entirely optional.
 All trademarks referenced herein are property of their respective
 holders.
 
-Copyright (c) 2009-2013, NIPY Developers
+Copyright (c) 2009-2014, NIPY Developers
 All rights reserved.

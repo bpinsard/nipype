@@ -129,12 +129,12 @@ class MaxImage(MathsCommand):
     Examples
     --------
     from nipype.interfaces.fsl.maths import MaxImage
-    maxer = MaxImage() 
+    maxer = MaxImage()
     maxer.inputs.in_file = "functional.nii"
     maxer.dimension = "T"
     maths.cmdline
     fslmaths functional.nii -Tmax functional_max.nii
-    
+
     """
     input_spec = MaxImageInput
     _suffix = "_max"
@@ -242,7 +242,9 @@ class SpatialFilter(MathsCommand):
 
 class UnaryMathsInput(MathsInput):
 
-    operation = traits.Enum("exp", "log", "sin", "cos", "sqr", "sqrt", "recip", "abs", "bin", "index",
+    operation = traits.Enum("exp", "log", "sin", "cos", "tan", "asin", "acos", "atan", "sqr", "sqrt",
+                            "recip", "abs", "bin", "binv", "fillh", "fillh26", "index", "edge", "nan",
+                            "nanm", "rand", "randn", "range",
                             argstr="-%s", position=4, mandatory=True,
                             desc="operation to perform")
 
