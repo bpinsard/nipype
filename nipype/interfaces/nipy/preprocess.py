@@ -764,7 +764,8 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
                     surf_ref.get_affine(),
                     np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4))
                 algo.resample_coords(vol, slab_regs, vol_coords, f1)
-                nb.save(nb.Nifti1Image(f1, surf_ref.get_affine()),
+                nb.save(nb.Nifti1Image(f1.astype(np.float32),
+                                       surf_ref.get_affine()),
                         self._list_outputs()['first_frame'])
                 del vol_coords, f1
 
@@ -983,7 +984,8 @@ class OnlineResample4D(OnlinePreprocBase):
         grid = np.rollaxis(np.mgrid[[slice(0,n) for n in shape]],0,4)
         coords = nb.affines.apply_affine(mat, grid)
         del grid
-        out = np.empty(shape+(len(self.dicom_files),))
+        out = np.empty(shape+(len(self.dicom_files),),dtype=np.float32)
+        tmp = np.empty(shape)
 
         for fr, affine, data in stack.iter_frame():
             print 'resampling frame %d'%fr
@@ -991,10 +993,11 @@ class OnlineResample4D(OnlinePreprocBase):
                             for slab,m in zip(slabs,motion_mats)\
                             if slab[0][0]<=fr and slab[1][0]>=fr]
             print slab_regs
-            algo.resample_coords(data, slab_regs, coords, out[...,fr])
-
+            algo.resample_coords(data, slab_regs, coords, tmp)
+            out[...,fr] = tmp
+        del tmp
         outputs = self._list_outputs()
         
         nb.save(nb.Nifti1Image(out, mat),outputs['out_file'])
-
+        del out
         return runtime
