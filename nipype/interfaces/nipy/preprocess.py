@@ -20,6 +20,7 @@ from ...utils.misc import package_check
 from ...utils.filemanip import (
     split_filename, fname_presuffix, filename_to_list)
 
+from scipy.ndimage.interpolation import map_coordinates
 
 have_nipy = True
 try:
@@ -545,6 +546,11 @@ class OnlinePreprocBase(BaseInterface):
             return self._fname
         return
 
+    def _overload_extension(self, value):
+        path, base, _ = split_filename(value)
+        return os.path.join(path, base + Info.outputtype_to_ext(
+                self.inputs.outputtype))
+
 class SurfaceResamplingBase(BaseInterface):
 
     ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
@@ -662,6 +668,7 @@ class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase,
 class OnlinePreprocessingOutputSpec(TraitedSpec):
     out_file = File(desc='hdf5 file containing the timeseries')
     first_frame = File(desc='resampled first frame in reference space')
+    mask = File(desc='resampled mask in the same space as first_frame')
     motion = File()
     slabs = File()
     
@@ -759,14 +766,30 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
                 data.resize((nsamples,fr))
             data[:,fr] = tmp
             if fr==0 and isdefined(self.inputs.resampled_first_frame):
-                f1 = np.empty(surf_ref.shape)
+                f1 = np.empty(mask.shape)
                 vol_coords = nb.affines.apply_affine(
-                    surf_ref.get_affine(),
+                    mask.get_affine(),
                     np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4))
                 algo.resample_coords(vol, slab_regs, vol_coords, f1)
                 nb.save(nb.Nifti1Image(f1.astype(np.float32),
                                        surf_ref.get_affine()),
                         self._list_outputs()['first_frame'])
+                ornt_trsfrm = nb.orientations.ornt_transform(
+                    nb.orientations.io_orientation(stack._affine),
+                    nb.orientations.io_orientation(mask.get_affine())
+                    ).astype(np.int)
+                voxel_size = stack._voxel_size[ornt_trsfrm[:,0]]
+                mat, shape = resample_mat_shape(
+                    mask.get_affine(), mask.shape, voxel_size)
+                resam_mask = map_coordinates(
+                    mask.get_data(),
+                    nb.affines.apply_affine(
+                        np.linalg.inv(mask.get_affine()),
+                        vol_coords).reshape(-1,3).T,
+                    order=0).reshape(shape)
+                nb.save(nb.Nifti1Image(resam_mask.astype(np.uint8), mat),
+                        outputs['mask'])
+
                 del vol_coords, f1
 
         out_file.close()
@@ -787,6 +810,9 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
         if isdefined(self.inputs.resampled_first_frame):
             outputs['first_frame'] = os.path.abspath(
                 self.inputs.resampled_first_frame)
+            outputs['mask'] = os.path.abspath(
+                fname_presuffix(self.inputs.resampled_first_frame,
+                                suffix='_mask'))
         return outputs
 
 def filenames_to_dicoms(fnames):
@@ -926,21 +952,18 @@ class OnlineResample4DInputSpec(OnlinePreprocInputSpecBase):
 
 class OnlineResample4DOutputSpec(TraitedSpec):
     out_file = File(desc='big nifti 4D native space file of timeseries')
-    
+    mask = File(desc='brain mask in resample space')
 class OnlineResample4D(OnlinePreprocBase):
 
     input_spec = OnlineResample4DInputSpec
     output_spec = OnlineResample4DOutputSpec
 
-    def _overload_extension(self, value):
-        path, base, _ = split_filename(value)
-        return os.path.join(path, base + Info.outputtype_to_ext(
-                self.inputs.outputtype))
-    
     def _list_outputs(self):
         outputs = self.output_spec().get()
         base_fname = self._gen_fname()
         outputs['out_file'] = os.path.abspath(fname_presuffix(base_fname))
+        outputs['mask'] = os.path.abspath(fname_presuffix(base_fname,
+                                                          suffix='_mask'))
         return outputs
 
     def _run_interface(self,runtime):
@@ -978,6 +1001,11 @@ class OnlineResample4D(OnlinePreprocBase):
         voxel_size = self.inputs.voxel_size
         if not isdefined(voxel_size):
             voxel_size = stack._voxel_size
+            ornt_trsfrm = nb.orientations.ornt_transform(
+                nb.orientations.io_orientation(stack._affine),
+                nb.orientations.io_orientation(mask.get_affine())
+                ).astype(np.int)
+            voxel_size = voxel_size[ornt_trsfrm[:,0]]
 
         ref = nb.load(self.inputs.reference)
         mat, shape = resample_mat_shape(ref.get_affine(),ref.shape,voxel_size)
@@ -1000,4 +1028,13 @@ class OnlineResample4D(OnlinePreprocBase):
         
         nb.save(nb.Nifti1Image(out, mat),outputs['out_file'])
         del out
+        resam_mask = map_coordinates(
+            mask.get_data(),
+            nb.affines.apply_affine(
+                np.linalg.inv(mask.get_affine()),coords).reshape(-1,3).T,
+            order=0).reshape(shape)
+        nb.save(nb.Nifti1Image(resam_mask.astype(np.uint8), mat),
+                outputs['mask'])
+
+        del resam_mask, coords
         return runtime
