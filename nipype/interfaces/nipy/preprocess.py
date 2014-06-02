@@ -695,7 +695,9 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
 #        fmri_group.attrs['RepetitionTime'] = self.inputs.tr
         stack = self._init_stack()
 
-        if stack._nframes_per_dicom == 1:
+        if isinstance(stack, NiftiIterator):
+            nvols = stack.nframes
+        elif stack._nframes_per_dicom == 1:
             nvols = len(self.dicom_files)
         elif stack._nframes_per_dicom == 0:
             nvols = int(len(self.dicom_files)/stack.nslices)
