@@ -5,13 +5,15 @@ class Dwi2ResponseInputSpec(MRtrixDwiCommandInputSpec):
     
     dwi = File(
         argstr="%s",
-        position=-1,
+        position=-2,
+        mandatory=True,
         desc="the input diffusion-weighted images")
 
     response = File(
         argstr="%s",
         position=-1,
-        name_source="dwi_in",
+        mandatory=True,
+        name_source="dwi",
         desc="the output rotational harmonic coefficients")
     
 
@@ -90,22 +92,23 @@ class Dwi2Response(MRtrixCommand):
 
 class Dwi2FodInputSpec(MRtrixDwiCommandInputSpec):
     dwi = File(
-        argstrs='%s',
+        argstr='%s',
         mandatory = True,
         position = -3,
         desc='the input diffusion-weighted image.')
 
     response = File(
-        position='-2',
+        argstr='%s',
+        position=-2,
         mandatory = True,
         desc=""" the diffusion-weighted signal response function for a
                      single fibre population, either as a comma-separated
                      vector of floating-point values, or a text file containing
                      the coefficients.""")
     sh_out_file = File(
-        argstrs='%s',
+        argstr='%s',
         mandatory = True,
-        position = -3,
+        position = -1,
         name_source = 'dwi',
         desc = 'the output spherical harmonics coefficients image')
     
