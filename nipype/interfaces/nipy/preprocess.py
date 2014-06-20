@@ -448,6 +448,8 @@ class Trim(BaseInterface):
         outputs['out_file'] = os.path.abspath(outputs['out_file'])
         return outputs
 
+
+
 class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
     dicom_files = traits.Either(
         InputMultiPath(File(exists=True)),
@@ -534,6 +536,11 @@ class OnlinePreprocBase(BaseInterface):
 
     def _gen_fname(self):
         if hasattr(self,'_fname'):
+            return self._fname
+        if isdefined(self.inputs.nifti_file):
+            fname = fname_presuffix(self.inputs.nifti_file, suffix='_mc',
+                                    newpath=os.getcwd())
+            self._fname = self._overload_extension(fname)
             return self._fname
         if hasattr(self,'dicom_files') and\
                 isdefined(self.inputs.out_file_format):
@@ -746,7 +753,9 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
 
         self.algo=algo
         tmp = np.empty(nsamples)
-            
+        
+        outputs = self._list_outputs()
+
         pslab=((0,0),(0,0))
         self.slabs = []
         self.mats = []
@@ -774,20 +783,21 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
                     np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4))
                 algo.resample_coords(vol, slab_regs, vol_coords, f1)
                 nb.save(nb.Nifti1Image(f1.astype(np.float32),
-                                       surf_ref.get_affine()),
+                                       mask.get_affine()),
                         self._list_outputs()['first_frame'])
                 ornt_trsfrm = nb.orientations.ornt_transform(
                     nb.orientations.io_orientation(stack._affine),
                     nb.orientations.io_orientation(mask.get_affine())
                     ).astype(np.int)
+                del vol_coords
                 voxel_size = stack._voxel_size[ornt_trsfrm[:,0]]
                 mat, shape = resample_mat_shape(
                     mask.get_affine(), mask.shape, voxel_size)
+                vol_coords = nb.affines.apply_affine(
+                    np.linalg.inv(mask.get_affine()),
+                    np.rollaxis(np.mgrid[[slice(0,d) for d in shape]],0,4))
                 resam_mask = map_coordinates(
-                    mask.get_data(),
-                    nb.affines.apply_affine(
-                        np.linalg.inv(mask.get_affine()),
-                        vol_coords).reshape(-1,3).T,
+                    mask.get_data(), vol_coords.reshape(-1,3).T,
                     order=0).reshape(shape)
                 nb.save(nb.Nifti1Image(resam_mask.astype(np.uint8), mat),
                         outputs['mask'])
@@ -797,8 +807,8 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
         out_file.close()
         motion = np.array([t.param*t.precond[:6] for t in algo.transforms])
         slabs = np.c_[[s[0]+s[1] for s in algo.slabs]]
-        np.savetxt(self._list_outputs()['slabs'], slabs, '%d')
-        np.savetxt(self._list_outputs()['motion'], motion, '%f')
+        np.savetxt(outputs['slabs'], slabs, '%d')
+        np.savetxt(outputs['motion'], motion, '%f')
         
         del stack, sampling_coords, tmp, algo, surf_ref
         
@@ -865,7 +875,9 @@ class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
 
         stack = self._init_stack()
 
-        if stack._nframes_per_dicom == 1:
+        if isinstance(stack, NiftiIterator):
+            nvols = stack.nframes
+        elif stack._nframes_per_dicom == 1:
             nvols = len(self.dicom_files)
         elif stack._nframes_per_dicom == 0:
             nvols = int(len(self.dicom_files)/stack.nslices)
@@ -971,7 +983,8 @@ class OnlineResample4D(OnlinePreprocBase):
     def _run_interface(self,runtime):
 
         stack = self._init_stack()
-        stack._init_dataset()
+        if isinstance(stack, DicomStackOnline):
+            stack._init_dataset()
 
         slabs_array = np.loadtxt(self.inputs.slabs,np.int)
         # change to continuous slabs
@@ -1014,7 +1027,7 @@ class OnlineResample4D(OnlinePreprocBase):
         grid = np.rollaxis(np.mgrid[[slice(0,n) for n in shape]],0,4)
         coords = nb.affines.apply_affine(mat, grid)
         del grid
-        out = np.empty(shape+(len(self.dicom_files),),dtype=np.float32)
+        out = np.empty(shape+(stack.nframes,),dtype=np.float32)
         tmp = np.empty(shape)
 
         for fr, affine, data in stack.iter_frame():
