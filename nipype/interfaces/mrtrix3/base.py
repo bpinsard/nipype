@@ -1,6 +1,34 @@
 from nipype.interfaces.base import CommandLineInputSpec, CommandLine, traits, TraitedSpec, File, InputMultiPath, isdefined
-import os.path as op
+import os
+from ...utils.filemanip import split_filename
 
+
+class Info(object):
+
+    _outputtype = 'NIFTI_GZ'
+    ftypes = {'NIFTI': '.nii',
+              'NIFTI_GZ': '.nii.gz'}
+
+    @classmethod
+    def outputtype_to_ext(cls, outputtype):
+        """Get the file extension for the given output type.
+
+        Parameters
+        ----------
+        outputtype : {'NIFTI', 'NIFTI_GZ'}
+            String specifying the output type.
+
+        Returns
+        -------
+        extension : str
+            The file extension for the output type.
+        """
+
+        try:
+            return cls.ftypes[outputtype]
+        except KeyError:
+            msg = 'Invalid MRTRIXOUTPUTTYPE: ', outputtype
+            raise KeyError(msg)
 
 class MRtrixCommandInputSpec(CommandLineInputSpec):
 
@@ -22,16 +50,52 @@ class MRtrixCommandInputSpec(CommandLineInputSpec):
         argstr='-nthreads %d',
         desc='use this number of threads in multi-threaded applications')
 
+    outputtype = traits.Enum('NIFTI_GZ', Info.ftypes.keys(),
+                             desc='MRtrix output filetype')
+
 class MRtrixCommandOutputSpec(TraitedSpec):
     pass
 
 class MRtrixCommand(CommandLine):
-    pass    
+    _outputtype = None
+
+    def __init__(self, **inputs):
+        super(MRtrixCommand, self).__init__(**inputs)
+
+        if self._outputtype is None:
+            self._outputtype = Info._outputtype
+
+        if not isdefined(self.inputs.outputtype):
+            self.inputs.outputtype = self._outputtype
+        else:
+            self._output_update()
+
+    @classmethod
+    def set_default_output_type(cls, outputtype):
+        """Set the default output type for MRtrix classes.
+
+        This method is used to set the default output type for all MRtrix
+        subclasses.  However, setting this will not update the output
+        type for any existing instances.  For these, assign the
+        <instance>.inputs.outputtype.
+        """
+
+        if outputtype in Info.ftypes:
+            cls._outputtype = outputtype
+        else:
+            raise AttributeError('Invalid MRTRIX outputtype: %s' % outputtype)
+
+
+    def _overload_extension(self, value, name=None):
+        path, base, _ = split_filename(value)
+        return os.path.join(path, base + Info.outputtype_to_ext(self.inputs.outputtype))
+
 
 class MRtrixDwiCommandInputSpec(MRtrixCommandInputSpec):
     shell =  traits.List(
         traits.Int,
         argstr='-shell %s',
+        sep=',',
         desc="""
      specify one or more diffusion-weighted gradient shells to use during
      processing, as a comma-separated list of the desired approximate b-values.

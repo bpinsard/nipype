@@ -13,7 +13,8 @@ class Dwi2ResponseInputSpec(MRtrixDwiCommandInputSpec):
         argstr="%s",
         position=-1,
         name_source="dwi",
-        name_template='%s_response',
+        name_template='%s_response.txt',
+        keep_extension=True,
         desc="the output rotational harmonic coefficients")
 
     # DW Shell selection options
@@ -90,12 +91,6 @@ class Dwi2Response(MRtrixCommand):
     input_spec = Dwi2ResponseInputSpec
     output_spec = Dwi2ResponseOutputSpec
 
-    def _format_arg(self, name, trait_spec, value):
-        if name=='shells':
-            value = value.join(',')
-        return super(Dwi2Response,self)._format_arg(name, trait_spec,value)
-
-
 class Dwi2FodInputSpec(MRtrixDwiCommandInputSpec):
     dwi = File(
         argstr='%s',
@@ -113,7 +108,6 @@ class Dwi2FodInputSpec(MRtrixDwiCommandInputSpec):
                      the coefficients.""")
     sh_out_file = File(
         argstr='%s',
-        mandatory = True,
         position = -1,
         name_source = 'dwi',
         name_template='%s_fod',
