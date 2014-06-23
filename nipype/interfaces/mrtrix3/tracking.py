@@ -4,11 +4,6 @@ from .base import MRtrixCommandInputSpec, MRtrixCommandOutputSpec, MRtrixCommand
 
 class TckgenInputSpec(MRtrixCommandInputSpec):
     
-    """
-    perform streamlines tractography.
-    
-    """
-
     source = File(
         argstr = '%s',
         position=-2,
@@ -24,7 +19,10 @@ class TckgenInputSpec(MRtrixCommandInputSpec):
     
     tracks = File(
         argstr = '%s',
-        position=-2,        
+        position=-1,
+        name_source = 'source',
+        name_template = '%s_track.tck',
+        keep_extension = True,
         desc='the output file containing the tracks generated.')
 
     algorithm = traits.Enum(
@@ -38,7 +36,7 @@ class TckgenInputSpec(MRtrixCommandInputSpec):
     #Region Of Interest processing options
 
     include = traits.Either(
-        File(),traits.Tuple([traits.Float]*4),
+        File(exists=True),traits.Tuple([traits.Float]*4),
         argstr = '-include %s',
         desc="""
      specify an inclusion region of interest, as either a binary mask image, or
@@ -46,7 +44,7 @@ class TckgenInputSpec(MRtrixCommandInputSpec):
      must traverse ALL inclusion regions to be accepted.""")
 
     exclude = traits.Either(
-        File(),traits.Tuple([traits.Float]*4),
+        File(exists=True),traits.Tuple([traits.Float]*4),
         argstr = '-exclude %s',
         desc="""
      specify an exclusion region of interest, as either a binary mask image, or
@@ -54,7 +52,7 @@ class TckgenInputSpec(MRtrixCommandInputSpec):
      that enter ANY exclude region will be discarded.""")
 
     mask = traits.Either(
-        File(),traits.Tuple([traits.Float]*4),
+        File(exists=True),traits.Tuple([traits.Float]*4),
         argstr = '-mask %s',
         desc="""
      specify a masking region of interest, as either a binary mask image, or as
@@ -65,6 +63,7 @@ class TckgenInputSpec(MRtrixCommandInputSpec):
 
     gradient = File(
         argstr='-grad %s',
+        exists = True,
         desc= """
      specify the diffusion encoding scheme (may be required for Tensor_Det and
      Tensor_Prob, ignored otherwise)""")
@@ -170,18 +169,21 @@ class TckgenInputSpec(MRtrixCommandInputSpec):
 
     act = File(
         argstr = '-act %s',
+        exists = True,
         desc="""
      use the Anatomically-Constrained Tractography framework during tracking;
      provided image must be in the 5TT (five-tissue-type) format""")
 
     backtrack = traits.Bool(
         argstr='-backtrack',
+        requires = ['act'],
         desc="""
      allow tracks to be truncated and re-tracked if a poor structural
      termination is encountered""")
 
     crop_at_gmwmi = traits.Bool(
         argstr = '-crop_at_gmwmi',
+        requires = ['act'],
         desc = 'crop streamline endpoints more precisely as they cross the GM-WM interface')
 
     #Tractography seeding options
@@ -194,19 +196,20 @@ class TckgenInputSpec(MRtrixCommandInputSpec):
 
     seed_image = File(
         argstr='-seed_image %s',
+        exists = True,
         desc = """
      seed streamlines entirely at random within a mask image (this is the same
      behaviour as the streamline seeding in MRtrix 0.2)""")
 
     seed_random_per_voxel = traits.Tuple(
-        File(),traits.Int(),
+        File(exists=True), traits.Int(),
         argstr = '-seed_random_per_voxel %s %d',
         desc = """
      seed a fixed number of streamlines per voxel in a mask image; random
      placement of seeds in each voxel""")
 
     seed_grid_per_voxel = traits.Tuple(
-        File(), traits.Int(),
+        File(exists=True), traits.Int(),
         argstr = '-seed_grid_per_voxel %s %d',
         desc="""
      seed a fixed number of streamlines per voxel in a mask image; place seeds
@@ -215,18 +218,23 @@ class TckgenInputSpec(MRtrixCommandInputSpec):
 
     seed_rejection = File(
         argstr = '-seed_rejection %s',
+        exists = True,
         desc = """
      seed from an image using rejection sampling (higher values = more probable
      to seed from)""")
 
     seed_gmwmi = File(
         argstr = '-seed_gmwmi %s',
+        exists = True,
         desc = """
      seed from the grey matter - white matter interface (only valid if using
      ACT framework)""")
 
     seed_dynamic = File(
         argstr = '-seed_dynamic %s',
+        exists = True,
+        xor = ['seeding','seed_image','seed_random_per_voxel',
+               'seed_grid_per_voxel','seed_rejection','seed_gmwmi'],
         desc = """
      determine seed points dynamically using the SIFT model (must NOT provide
      any other seeding mechanism)""")
@@ -239,15 +247,21 @@ class TckgenInputSpec(MRtrixCommandInputSpec):
 
     output_seeds = File(
         argstr = '-output_seeds %s',
+#        name_source='source',
         desc = 'output the seed location of all successful streamlines to a file')
     
 
 class TckgenOutputSpec(MRtrixCommandOutputSpec):
+    tracks=File(exists = True,)
+    output_seeds = File()
+    
 
 class Tckgen(MRtrixCommand):
+    """
+    perform streamlines tractography.
+    """
+
     input_spec = TckgenInputSpec
     output_spec = TckgenOutputSpec
 
-    
-
-
+    _cmd = 'tckgen'
