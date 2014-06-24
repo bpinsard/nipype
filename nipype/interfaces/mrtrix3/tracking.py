@@ -265,3 +265,7 @@ class Tckgen(MRtrixCommand):
     output_spec = TckgenOutputSpec
 
     _cmd = 'tckgen'
+
+
+class Tck2Connectome(MRtrixCommand):
+    pass
