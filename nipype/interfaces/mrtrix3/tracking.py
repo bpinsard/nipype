@@ -266,6 +266,103 @@ class Tckgen(MRtrixCommand):
 
     _cmd = 'tckgen'
 
+class Tck2ConnectomeInputSpec(MRtrixCommandInputSpec):
+    
+     tracks_in = File(
+         argstr='%s', position=-3,
+         mandatory = True,
+         exists = True,
+         desc='the input track file')
+
+     nodes_in = File(
+         argstr='%s', position=-2,
+         mandatory = True,
+         exists = True,         
+         desc='the input node parcellation image')
+
+     connectome_out = File(
+         argstr='%s', position=-1,
+         mandatory = True,
+         desc = 'the output .csv file containing edge weights')
+
+     #Structural connectome streamline assignment option
+
+     _assign_opts = ['assignment_voxel_lookup',
+                     'assignment_radial_search',
+                     'assignment_reverse_search',
+                     'assignment_forward_search']
+
+     assignment_voxel_lookup = traits.Bool(
+         argstr = '-assignment_voxel_lookup',
+         xor = _assign_opts,
+         desc = 'use a simple voxel lookup value at each streamline endpoint')
+
+     assignment_radial_search = traits.Bool(
+         argstr = '-assignment_radial_search radius',
+         xor = _assign_opts,
+         desc= """
+     perform a radial search from each streamline endpoint to locate the
+     nearest node.
+     Argument is the maximum radius in mm; if no node is found within this
+     radius, the streamline endpoint is not assigned to any node.""")
+     
+     assignment_reverse_search = traits.Bool(
+         argstr = '-assignment_reverse_search max_dist',
+         xor = _assign_opts,
+         desc = """
+     traverse from each streamline endpoint inwards along the streamline, in
+     search of the last node traversed by the streamline. Argument is the
+     maximum traversal length in mm (set to 0 to allow search to continue to
+     the streamline midpoint).""")
+
+     assignment_forward_search = traits.Bool(
+         argstr = '-assignment_forward_search max_dist',
+         xor = _assign_opts,
+         desc = """
+     project the streamline forwards from the endpoint in search of a
+     parcellation node voxel. Argument is the maximum traversal length in mm.
+""")
+     
+     # Structural connectome metric option
+
+     metrix = traits.Enum(
+         'count', 'meanlength', 'invlength', 'invnodevolume',
+         'invlength_invnodevolume', 'mean_scalar',
+         argstr = '-metric %s',
+         desc = 'specify the edge weight metric.')
+
+     image = File(
+         argstr = '-image %s',
+         desc = 'provide the associated image for the mean_scalar metric')
+     
+     tck_weights_in = File(
+         argstr = '-tck_weights_in %s',
+         desc = 'specify a text scalar file containing the streamline weights')
+
+     keep_unassigned = traits.Bool(
+         argstr = '-keep_unassigned',
+         desc = """
+     By default, the program discards the information regarding those
+     streamlines that are not successfully assigned to a node pair. Set this
+     option to keep these values (will be the first row/column in the output
+     matrix)""")
+
+     keep_unassigned = traits.Bool(
+         argstr = '-zero_diagonal',
+         desc = """set all diagonal entries in the matrix to zero 
+   (these represent streamlines that connect to the same node at both ends)""")
+
+    
+class Tck2ConnectomeOutputSpec(MRtrixCommandOutputSpec):
+    connectome_out = File(
+        desc = 'the output .csv file containing edge weights')
 
 class Tck2Connectome(MRtrixCommand):
-    pass
+    """
+    generate a connectome matrix from a streamlines file and a node
+    parcellation image
+    """
+
+    input_spec = Tck2ConnectomeInputSpec
+    output_spec = Tck2ConnectomeOutputSpec
+    _cmd = 'tck2connectome'
