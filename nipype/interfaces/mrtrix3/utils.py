@@ -69,3 +69,5 @@ class LabelConfig(MRtrixCommand):
 
     input_spec = LabelConfigInputSpec
     output_spec = LabelConfigOuputSpec
+
+    _cmd = 'labelconfig'
