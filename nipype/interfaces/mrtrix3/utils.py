@@ -20,6 +20,8 @@ class LabelConfigInputSpec(MRtrixCommandInputSpec):
      labels_out = File(
          argstr='%s',
          position=-1,
+         name_source = 'labels_in',
+         name_template = '%s_lconf',
          desc='the output labels reconfigured to increment of 1')
 
      # Options for importing information from parcellation lookup tables

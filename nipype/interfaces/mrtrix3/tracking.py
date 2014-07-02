@@ -325,7 +325,7 @@ class Tck2ConnectomeInputSpec(MRtrixCommandInputSpec):
      
      # Structural connectome metric option
 
-     metrix = traits.Enum(
+     metric = traits.Enum(
          'count', 'meanlength', 'invlength', 'invnodevolume',
          'invlength_invnodevolume', 'mean_scalar',
          argstr = '-metric %s',
