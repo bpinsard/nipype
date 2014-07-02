@@ -366,3 +366,107 @@ class Tck2Connectome(MRtrixCommand):
     input_spec = Tck2ConnectomeInputSpec
     output_spec = Tck2ConnectomeOutputSpec
     _cmd = 'tck2connectome'
+
+class TckMapInputSpec(MRtrixCommandInputSpec):
+
+    tracks_in = File(
+        argstr='%s', position=-2,
+        exists = True,
+        mandatory=True,
+        desc='the input track file.')
+
+    out_file= File(
+        argstr='%s', position=-1,
+        mandatory=True,
+        desc='the output track-weighted image')
+
+
+
+    #Options for the header of the output image
+    
+    template = File(
+        argstr='-template %s',
+        desc = """
+     an image file to be used as a template for the output (the output image
+     will have the same transform and field of view).""")
+
+    voxelsize = traits.Tuple(
+        (traits.Float(),)*3,
+        argstr = '-vox %f,%f,%f',
+        desc = """
+     provide either an isotropic voxel size (in mm), or comma-separated list of
+     3 voxel dimensions.""")
+
+    datatype = traits.Enum(
+        'short','int','float','double', # are these real possible values?
+        argstr = '-datatype %s',
+        desc = 'specify output image data type.')
+
+    #Options for the dimensionality of the output image
+
+    colour = traits.Bool(
+        argstr = '-colour',
+        desc = 'perform track mapping in directionally-encoded colour space')
+
+    #Options for the TWI image contrast properties
+
+    contrast = traits.Enum(
+        'tdi', 'precise_tdi', 'endpoint', 'length', 'invlength',
+        'scalar_map','scalar_map_count', 'fod_amp', 'curvature',
+        argstr = '-contrast %s',
+        desc = 'define the desired form of contrast for the output image',
+        usedefault=True)
+
+    scalar_image = File(
+        argstr = '-image %s',
+        desc = """
+     provide the scalar image map for generating images with 'scalar_map'
+     contrast, or the spherical harmonics image for 'fod_amp' contrast""")
+
+    stat_vox = traits.Enum(
+        'sum', 'min', 'mean', 'max',
+        argstr = '-stat_vox %s',
+        desc = """
+     define the statistic for choosing the final voxel intensities for a given
+     contrast type given the individual values from the tracks passing through
+     each voxel.""",
+        usedefault=True)
+
+    stat_tck = traits.Enum(
+        'sum', 'min', 'mean', 'max', 'median', 'mean_nonzero', 'gaussian',
+        'ends_min', 'ends_mean', 'ends_max', 'ends_prod',
+        argstr = '-stat_tck %s',
+        desc = """
+     define the statistic for choosing the contribution to be made by each
+     streamline as a function of the samples taken along their lengths
+     Only has an effect for 'scalar_map', 'fod_amp' and 'curvature' contrast
+     types (default: mean)""")
+
+    fwhm_tck = traits.Float(
+        argstr = '-fwhm_tck %f',
+        desc = """
+     when using gaussian-smoothed per-track statistic, specify the desired
+     full-width half-maximum of the Gaussian smoothing kernel (in mm)""")
+
+    map_zero = traits.Bool(
+        argstr = '-map_zero',
+        desc = """
+     if a streamline has zero contribution based on the contrast & statistic,
+     typically it is not mapped; use this option to still contribute to the map
+     even if this is the case (these non-contributing voxels can then influence
+     the mean value in each voxel of the map)""")
+
+class TckMapOutputSpec(MRtrixCommandOutputSpec):
+    out_file= File(
+        exists = True,
+        desc='the output track-weighted image')
+
+class TckMap(MRtrixCommand):
+    """
+    Use track data as a form of contrast for producing a high-resolution image.
+    """
+
+    input_spec = TckMapInputSpec
+    output_spec = TckMapOutputSpec
+    _cmd = 'tckmap'
+    

@@ -34,20 +34,25 @@ class MRtrixCommandInputSpec(CommandLineInputSpec):
 
     quiet = traits.Bool(
         argstr='-quiet',
+        nohash=True,
         desc='do not display information messages or progress status.')
     debug = traits.Bool(
         argstr='-debug',
+        nohash=True,
         desc='display debugging messages.')
     failonwarn = traits.Bool(
         argstr='-failonwarn',
+        nohash=True,
         desc='terminate program if a warning is produced')
 
     force = traits.Bool(
         argstr='-force',
+        nohash=True,
         desc='force overwrite of output files.')
 
     nthreads = traits.Int(
         argstr='-nthreads %d',
+        nohash=True,
         desc='use this number of threads in multi-threaded applications')
 
     outputtype = traits.Enum('NIFTI_GZ', Info.ftypes.keys(),
