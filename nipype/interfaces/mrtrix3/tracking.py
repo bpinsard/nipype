@@ -1,5 +1,6 @@
 from nipype.interfaces.base import traits, File, InputMultiPath, isdefined
 from .base import MRtrixCommandInputSpec, MRtrixCommandOutputSpec, MRtrixCommand
+import os
 
 
 class TckgenInputSpec(MRtrixCommandInputSpec):
@@ -470,3 +471,8 @@ class TckMap(MRtrixCommand):
     output_spec = TckMapOutputSpec
     _cmd = 'tckmap'
     
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['out_file'] = os.path.abspath(self.inputs.out_file)
+        return outputs
+
