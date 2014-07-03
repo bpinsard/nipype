@@ -368,6 +368,11 @@ class Tck2Connectome(MRtrixCommand):
     output_spec = Tck2ConnectomeOutputSpec
     _cmd = 'tck2connectome'
 
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['connectome_out'] = os.path.abspath(self.inputs.connectome_out)
+        return outputs
+
 class TckMapInputSpec(MRtrixCommandInputSpec):
 
     tracks_in = File(
