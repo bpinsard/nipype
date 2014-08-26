@@ -10,6 +10,7 @@ import os
 import warnings
 
 import nibabel as nb
+import nibabel.gifti as gii
 import dicom
 import numpy as np
 
@@ -558,6 +559,15 @@ class OnlinePreprocBase(BaseInterface):
         return os.path.join(path, base + Info.outputtype_to_ext(
                 self.inputs.outputtype))
 
+def load_gii_fs(sfilename):
+    if split_filename(sfilename)[-1] == '.gii':
+        sfile = gii.read(sfilename)
+        return sfile.darrays[0].data, sfile.darrays[1].data
+    else:
+        verts, tris = nb.freesurfer.read_geometry(sfilename)
+        verts[:] = nb.affines.apply_affine(surf2world, verts)
+        return verts, tris
+
 class SurfaceResamplingBase(BaseInterface):
 
     ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
@@ -574,19 +584,19 @@ class SurfaceResamplingBase(BaseInterface):
         coords = out_file.create_dataset('COORDINATES',
                                          (0,3),maxshape = (None,3),
                                          dtype = np.float)
+                
         for surf_name, surf_file in self.inputs.resample_surfaces:
             surf_group = structs.create_group(surf_name)
             surf_group.attrs['ModelType'] = 'SURFACE'
             surf_group.attrs['SurfaceFile'] = surf_file
             if isinstance(surf_file, tuple):
-                verts, tris = nb.freesurfer.read_geometry(surf_file[0])
-                verts2, _ =  nb.freesurfer.read_geometry(surf_file[1])
+                verts, tris = load_gii_fs(surf_file[0])
+                verts2, _ =  load_gii_fs(surf_file[1])
                 verts += verts2
                 verts /= 2.
                 del verts2
             else:
-                verts, tris = nb.freesurfer.read_geometry(surf_file)
-            verts[:] = nb.affines.apply_affine(surf2world, verts)
+                verts, tris = load_gii_fs(surf_file)
             ofst = coords.shape[0]
             count = verts.shape[0]
             coords.resize((ofst+count,3))
