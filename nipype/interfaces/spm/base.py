@@ -5,7 +5,7 @@
 In order to use the standalone MCR version of spm, you need to ensure that
 the following commands are executed at the beginning of your script::
 
-   from nipype import spm
+   from nipype.interfaces import spm
    matlab_cmd = '/path/to/run_spm8.sh /path/to/Compiler_Runtime/v713/ script'
    spm.SPMCommand.set_mlab_paths(matlab_cmd=matlab_cmd, use_mcr=True)
 
@@ -276,9 +276,9 @@ class SPMCommand(BaseInterface):
 
     @property
     def version(self):
-        version_dict = Info.version(matlab_cmd=self._matlab_cmd,
-                                    paths=self._paths,
-                                    use_mcr=self._use_mcr)
+        version_dict = Info.version(matlab_cmd=self.inputs.matlab_cmd,
+                                    paths=self.inputs.paths,
+                                    use_mcr=self.inputs.use_mcr)
         if version_dict:
             return '.'.join((version_dict['name'].split('SPM')[-1],
                              version_dict['release']))
