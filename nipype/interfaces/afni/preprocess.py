@@ -113,10 +113,8 @@ class TShiftInputSpec(AFNICommandInputSpec):
                          desc='different interpolation methods (see 3dTShift for details)' +
                          ' default = Fourier', argstr='-%s')
 
-    tpattern = traits.Enum(('alt+z', 'alt+z2', 'alt-z',
-                            'alt-z2', 'seq+z', 'seq-z'),
-                           desc='use specified slice time pattern rather than one in header',
-                           argstr='-tpattern %s')
+    tpattern = traits.Str(desc='use specified slice time pattern rather than one in header',
+                                    argstr='-tpattern %s')
 
     rlt = traits.Bool(desc='Before shifting, remove the mean and linear trend',
                       argstr="-rlt")
@@ -572,7 +570,6 @@ class VolregInputSpec(AFNICommandInputSpec):
                    copyfile=False)
     out_file = File(name_template="%s_volreg", desc='output image file name',
                     argstr='-prefix %s', name_source="in_file")
-
     basefile = File(desc='base file for registration',
                     argstr='-base %s',
                     position=-6,
@@ -594,12 +591,18 @@ class VolregInputSpec(AFNICommandInputSpec):
                             argstr='-tshift 0')
     copyorigin = traits.Bool(desc='copy base file origin coords to output',
                              argstr='-twodup')
+    oned_matrix_save = File(name_template='%s.aff12.1D',
+                            desc='Save the matrix transformation',
+                            argstr='-1Dmatrix_save %s',
+                            keep_extension=True,
+                            name_source="in_file")
 
 
 class VolregOutputSpec(TraitedSpec):
     out_file = File(desc='registered file', exists=True)
     md1d_file = File(desc='max displacement info file', exists=True)
     oned_file = File(desc='movement parameters info file', exists=True)
+    oned_matrix_save = File(desc='matrix transformation from base to input', exists=True)
 
 
 class Volreg(AFNICommand):
@@ -619,7 +622,7 @@ class Volreg(AFNICommand):
     >>> volreg.inputs.zpad = 4
     >>> volreg.inputs.outputtype = "NIFTI"
     >>> volreg.cmdline #doctest: +ELLIPSIS
-    '3dvolreg -Fourier -twopass -1Dfile functional.1D -prefix functional_volreg.nii -zpad 4 -maxdisp1D functional_md.1D functional.nii'
+    '3dvolreg -Fourier -twopass -1Dfile functional.1D -1Dmatrix_save functional.aff12.1D -prefix functional_volreg.nii -zpad 4 -maxdisp1D functional_md.1D functional.nii'
     >>> res = volreg.run() # doctest: +SKIP
 
     """
@@ -1961,7 +1964,7 @@ class AFNItoNIFTI(AFNICommand):
     input_spec = AFNItoNIFTIInputSpec
     output_spec = AFNICommandOutputSpec
 
-    def _overload_extension(self, value, name=None):
+    def _overload_extension(self, value):
         path, base, ext = split_filename(value)
         if ext.lower() not in [".1d", ".nii.gz", ".1D"]:
             ext = ext + ".nii"
