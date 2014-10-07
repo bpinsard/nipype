@@ -20,6 +20,7 @@ from glob import glob
 # Third-party imports
 import numpy as np
 import scipy.io as sio
+from nipype.external import six
 
 # Local imports
 from nipype.interfaces.base import (Bunch, traits, TraitedSpec, File, Directory,
@@ -196,7 +197,7 @@ class EstimateModel(SPMCommand):
         if opt == 'spm_mat_file':
             return np.array([str(val)], dtype=object)
         if opt == 'estimation_method':
-            if isinstance(val, str):
+            if isinstance(val, six.string_types):
                 return {'%s' % val: 1}
             else:
                 return val
@@ -213,7 +214,11 @@ class EstimateModel(SPMCommand):
     def _list_outputs(self):
         outputs = self._outputs().get()
         pth, _ = os.path.split(self.inputs.spm_mat_file)
-        mask = os.path.join(pth, 'mask.img')
+        spm12 = '12' in self.version.split('.')[0]
+        if spm12:
+            mask = os.path.join(pth, 'mask.nii')
+        else:
+            mask = os.path.join(pth, 'mask.img')
         outputs['mask_image'] = mask
         spm = sio.loadmat(self.inputs.spm_mat_file, struct_as_record=False)
         betas = []
@@ -221,9 +226,15 @@ class EstimateModel(SPMCommand):
             betas.append(str(os.path.join(pth, vbeta.fname[0])))
         if betas:
             outputs['beta_images'] = betas
-        resms = os.path.join(pth, 'ResMS.img')
+        if spm12:
+            resms = os.path.join(pth, 'ResMS.nii')
+        else:
+            resms = os.path.join(pth, 'ResMS.img')
         outputs['residual_image'] = resms
-        rpv = os.path.join(pth, 'RPV.img')
+        if spm12:
+            rpv = os.path.join(pth, 'RPV.nii')
+        else:
+            rpv = os.path.join(pth, 'RPV.img')
         outputs['RPVimage'] = rpv
         spm = os.path.join(pth, 'SPM.mat')
         outputs['spm_mat_file'] = spm
@@ -382,10 +393,17 @@ class EstimateContrast(SPMCommand):
         if con_images:
             outputs['con_images'] = con_images
             outputs['spmT_images'] = spmT_images
-        ess = glob(os.path.join(pth, 'ess*.img'))
+        spm12 = '12' in self.version.split('.')[0]
+        if spm12:
+            ess = glob(os.path.join(pth, 'ess*.nii'))
+        else:
+            ess = glob(os.path.join(pth, 'ess*.img'))
         if len(ess) > 0:
             outputs['ess_images'] = sorted(ess)
-        spmf = glob(os.path.join(pth, 'spmF*.img'))
+        if spm12:
+            spmf = glob(os.path.join(pth, 'spmF*.nii'))
+        else:
+            spmf = glob(os.path.join(pth, 'spmF*.img'))
         if len(spmf) > 0:
             outputs['spmF_images'] = sorted(spmf)
         outputs['spm_mat_file'] = self.inputs.spm_mat_file

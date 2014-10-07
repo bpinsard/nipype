@@ -5,7 +5,7 @@
 In order to use the standalone MCR version of spm, you need to ensure that
 the following commands are executed at the beginning of your script::
 
-   from nipype import spm
+   from nipype.interfaces import spm
    matlab_cmd = '/path/to/run_spm8.sh /path/to/Compiler_Runtime/v713/ script'
    spm.SPMCommand.set_mlab_paths(matlab_cmd=matlab_cmd, use_mcr=True)
 
@@ -24,6 +24,7 @@ from copy import deepcopy
 from nibabel import load
 import numpy as np
 from scipy.io import savemat
+from nipype.external import six
 
 # Local imports
 from ..base import (BaseInterface, traits, isdefined, InputMultiPath,
@@ -237,6 +238,7 @@ class SPMCommand(BaseInterface):
                                                               'mfile',
                                                               'paths',
                                                               'use_mcr'])
+        self._find_mlab_cmd_defaults()
         self._check_mlab_inputs()
         self._matlab_cmd_update()
 
@@ -245,6 +247,17 @@ class SPMCommand(BaseInterface):
         cls._matlab_cmd = matlab_cmd
         cls._paths = paths
         cls._use_mcr = use_mcr
+
+    def _find_mlab_cmd_defaults(self):
+        # check if the user has set environment variables to enforce
+        # the standalone (MCR) version of SPM
+        if self._use_mcr or 'FORCE_SPMMCR' in os.environ:
+            self._use_mcr = True
+            if self._matlab_cmd is None:
+                try:
+                    self._matlab_cmd = os.environ['SPMMCRCMD']
+                except KeyError:
+                    pass
 
     def _matlab_cmd_update(self):
         # MatlabCommand has to be created here,
@@ -264,9 +277,9 @@ class SPMCommand(BaseInterface):
 
     @property
     def version(self):
-        version_dict = Info.version(matlab_cmd=self._matlab_cmd,
-                                    paths=self._paths,
-                                    use_mcr=self._use_mcr)
+        version_dict = Info.version(matlab_cmd=self.inputs.matlab_cmd,
+                                    paths=self.inputs.paths,
+                                    use_mcr=self.inputs.use_mcr)
         if version_dict:
             return '.'.join((version_dict['name'].split('SPM')[-1],
                              version_dict['release']))
@@ -404,7 +417,7 @@ class SPMCommand(BaseInterface):
                     if isinstance(val, np.ndarray):
                         jobstring += self._generate_job(prefix=None,
                                                         contents=val)
-                    elif isinstance(val, str):
+                    elif isinstance(val, six.string_types):
                         jobstring += '\'%s\';...\n' % (val)
                     else:
                         jobstring += '%s;...\n' % str(val)
@@ -419,7 +432,7 @@ class SPMCommand(BaseInterface):
                         jobstring += self._generate_job(newprefix,
                                                         val[field])
             return jobstring
-        if isinstance(contents, str):
+        if isinstance(contents, six.string_types):
             jobstring += "%s = '%s';\n" % (prefix, contents)
             return jobstring
         jobstring += "%s = %s;\n" % (prefix, str(contents))
@@ -456,7 +469,7 @@ class SPMCommand(BaseInterface):
 
         if strcmp(name, 'SPM8') || strcmp(name, 'SPM12b'),
            spm_jobman('initcfg');
-           spm_get_defaults('CmdLine', 1);
+           spm_get_defaults('cmdline', 1);
         end\n
         """
         if self.mlab.inputs.mfile:
@@ -487,6 +500,12 @@ class SPMCommand(BaseInterface):
         mscript += """
         spm_jobman(\'run\', jobs);\n
         """
+        if self.inputs.use_mcr:
+            mscript += """
+        if strcmp(name, 'SPM8') || strcmp(name, 'SPM12b'),
+            close(\'all\', \'force\');
+        end;
+            """
         if postscript is not None:
             mscript += postscript
         return mscript

@@ -144,7 +144,7 @@ class AFNICommand(CommandLine):
         else:
             raise AttributeError('Invalid AFNI outputtype: %s' % outputtype)
 
-    def _overload_extension(self, value):
+    def _overload_extension(self, value, name=None):
         path, base, _ = split_filename(value)
         return os.path.join(path, base + Info.outputtype_to_ext(self.inputs.outputtype))
 
@@ -159,3 +159,7 @@ class AFNICommand(CommandLine):
                     if ext == "":
                         outputs[name] = outputs[name] + "+orig.BRIK"
         return outputs
+
+    def _filename_from_source(self, name):
+        return os.path.abspath(super(AFNICommand,self)._filename_from_source(name))
+            

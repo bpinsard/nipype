@@ -8,6 +8,25 @@ NIPYPE: Neuroimaging in Python: Pipelines and Interfaces
 .. image:: https://coveralls.io/repos/nipy/nipype/badge.png
   :target: https://coveralls.io/r/nipy/nipype
 
+.. image:: https://pypip.in/version/nipype/badge.png
+    :target: https://pypi.python.org/pypi/nipype/
+    :alt: Latest Version
+
+.. image:: https://pypip.in/download/nipype/badge.png
+    :target: https://pypi.python.org/pypi/nipype/
+    :alt: Downloads
+
+.. image:: https://pypip.in/py_versions/nipype/badge.png
+    :target: https://pypi.python.org/pypi/nipype/
+    :alt: Supported Python versions
+
+.. image:: https://pypip.in/status/nipype/badge.png
+    :target: https://pypi.python.org/pypi/nipype/
+    :alt: Development Status
+
+.. image:: https://pypip.in/license/nipype/badge.png
+    :target: https://pypi.python.org/pypi/nipype/
+    :alt: License
 
 Current neuroimaging software offer users an incredible opportunity to
 analyze data using a variety of different algorithms. However, this has
@@ -19,7 +38,7 @@ umbrella of NiPy, is a Python project that provides a uniform interface
 to existing neuroimaging software and facilitates interaction between
 these packages within a single workflow. Nipype provides an environment
 that encourages interactive exploration of algorithms from different
-packages (e.g., SPM, FSL, FreeSurfer, AFNI, Slicer), eases the
+packages (e.g., SPM, FSL, FreeSurfer, AFNI, Slicer, ANTS), eases the
 design of workflows within and between packages, and reduces the
 learning curve necessary to use different packages. Nipype is creating a
 collaborative platform for neuroimaging software development in a
@@ -103,5 +122,5 @@ There are interfaces to some GNU code but these are entirely optional.
 All trademarks referenced herein are property of their respective
 holders.
 
-Copyright (c) 2009-2013, NIPY Developers
+Copyright (c) 2009-2014, NIPY Developers
 All rights reserved.
