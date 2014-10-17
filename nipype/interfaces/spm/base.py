@@ -24,6 +24,7 @@ from copy import deepcopy
 from nibabel import load
 import numpy as np
 from scipy.io import savemat
+from nipype.external import six
 
 # Local imports
 from ..base import (BaseInterface, traits, isdefined, InputMultiPath,
@@ -416,7 +417,7 @@ class SPMCommand(BaseInterface):
                     if isinstance(val, np.ndarray):
                         jobstring += self._generate_job(prefix=None,
                                                         contents=val)
-                    elif isinstance(val, str):
+                    elif isinstance(val, six.string_types):
                         jobstring += '\'%s\';...\n' % (val)
                     else:
                         jobstring += '%s;...\n' % str(val)
@@ -431,7 +432,7 @@ class SPMCommand(BaseInterface):
                         jobstring += self._generate_job(newprefix,
                                                         val[field])
             return jobstring
-        if isinstance(contents, str):
+        if isinstance(contents, six.string_types):
             jobstring += "%s = '%s';\n" % (prefix, contents)
             return jobstring
         jobstring += "%s = %s;\n" % (prefix, str(contents))
@@ -468,7 +469,7 @@ class SPMCommand(BaseInterface):
 
         if strcmp(name, 'SPM8') || strcmp(name, 'SPM12b'),
            spm_jobman('initcfg');
-           spm_get_defaults('CmdLine', 1);
+           spm_get_defaults('cmdline', 1);
         end\n
         """
         if self.mlab.inputs.mfile:
@@ -499,6 +500,12 @@ class SPMCommand(BaseInterface):
         mscript += """
         spm_jobman(\'run\', jobs);\n
         """
+        if self.inputs.use_mcr:
+            mscript += """
+        if strcmp(name, 'SPM8') || strcmp(name, 'SPM12b'),
+            close(\'all\', \'force\');
+        end;
+            """
         if postscript is not None:
             mscript += postscript
         return mscript

@@ -13,6 +13,7 @@ The `Pipeline` class provides core functionality for batch processing.
 """
 
 from datetime import datetime
+from nipype.utils.misc import flatten, unflatten
 try:
     from collections import OrderedDict
 except ImportError:
@@ -34,6 +35,7 @@ import sys
 from tempfile import mkdtemp
 from warnings import warn
 from hashlib import sha1
+from nipype.external import six
 
 import numpy as np
 
@@ -361,7 +363,7 @@ connected.
                         # handles the case that source is specified
                         # with a function
                         sourcename = source[0]
-                    elif isinstance(source, str):
+                    elif isinstance(source, six.string_types):
                         sourcename = source
                     else:
                         raise Exception(('Unknown source specification in '
@@ -382,7 +384,7 @@ connected.
         # turn functions into strings
         for srcnode, destnode, connects in connection_list:
             for idx, (src, dest) in enumerate(connects):
-                if isinstance(src, tuple) and not isinstance(src[1], str):
+                if isinstance(src, tuple) and not isinstance(src[1], six.string_types):
                     function_source = getsource(src[1])
                     connects[idx] = ((src[0], function_source, src[2:]), dest)
 
@@ -716,8 +718,8 @@ connected.
                                      'report_template.html'),
                         op.join(report_dir, 'index.html'))
         shutil.copyfile(op.join(op.dirname(__file__),
-                                     '..', 'external', 'd3.v3.min.js'),
-                        op.join(report_dir, 'd3.v3.min.js'))
+                                     '..', 'external', 'd3.js'),
+                        op.join(report_dir, 'd3.js'))
         nodes, groups = topological_sort(graph, depth_first=True)
         graph_file = op.join(report_dir, 'graph1.json')
         json_dict = {'nodes': [], 'links': [], 'groups': [], 'maxN': 0}
@@ -896,7 +898,7 @@ connected.
 
     def _set_node_input(self, node, param, source, sourceinfo):
         """Set inputs of a node given the edge connection"""
-        if isinstance(sourceinfo, str):
+        if isinstance(sourceinfo, six.string_types):
             val = source.get_output(sourceinfo)
         elif isinstance(sourceinfo, tuple):
             if callable(sourceinfo[1]):
@@ -1841,7 +1843,7 @@ class JoinNode(Node):
         if not joinfield:
             # default is the interface fields
             joinfield = self._interface.inputs.copyable_trait_names()
-        elif isinstance(joinfield, str):
+        elif isinstance(joinfield, six.string_types):
             joinfield = [joinfield]
         self.joinfield = joinfield
         """the fields to join"""
@@ -2026,7 +2028,7 @@ class MapNode(Node):
 
     """
 
-    def __init__(self, interface, iterfield, name, serial=False, **kwargs):
+    def __init__(self, interface, iterfield, name, serial=False, nested=False, **kwargs):
         """
 
         Parameters
@@ -2042,14 +2044,18 @@ class MapNode(Node):
             node specific name
         serial : boolean
             flag to enforce executing the jobs of the mapnode in a serial manner rather than parallel
+        nested : boolea
+            support for nested lists, if set the input list will be flattened before running, and the
+            nested list structure of the outputs will be resored
         See Node docstring for additional keyword arguments.
         """
 
 
         super(MapNode, self).__init__(interface, name, **kwargs)
-        if isinstance(iterfield, str):
+        if isinstance(iterfield, six.string_types):
             iterfield = [iterfield]
         self.iterfield = iterfield
+        self.nested = nested
         self._inputs = self._create_dynamic_traits(self._interface.inputs,
                                                    fields=self.iterfield)
         self._inputs.on_trait_change(self._set_mapnode_input)
@@ -2065,7 +2071,10 @@ class MapNode(Node):
         for name, spec in basetraits.items():
             if name in fields and ((nitems is None) or (nitems > 1)):
                 logger.debug('adding multipath trait: %s' % name)
-                output.add_trait(name, InputMultiPath(spec.trait_type))
+                if self.nested:
+                    output.add_trait(name, InputMultiPath(traits.Any()))
+                else:
+                    output.add_trait(name, InputMultiPath(spec.trait_type))
             else:
                 output.add_trait(name, traits.Trait(spec))
             setattr(output, name, Undefined)
@@ -2109,7 +2118,10 @@ class MapNode(Node):
                     self._interface.inputs.traits()[name].trait_type))
             logger.debug('setting hashinput %s-> %s' %
                          (name, getattr(self._inputs, name)))
-            setattr(hashinputs, name, getattr(self._inputs, name))
+            if self.nested:
+                setattr(hashinputs, name, flatten(getattr(self._inputs, name)))
+            else:
+                setattr(hashinputs, name, getattr(self._inputs, name))
         hashed_inputs, hashvalue = hashinputs.get_hashval(
             hash_method=self.config['execution']['hash_method'])
         rm_extra = self.config['execution']['remove_unnecessary_outputs']
@@ -2136,7 +2148,10 @@ class MapNode(Node):
     def _make_nodes(self, cwd=None):
         if cwd is None:
             cwd = self.output_dir()
-        nitems = len(filename_to_list(getattr(self.inputs, self.iterfield[0])))
+        if self.nested:
+            nitems = len(flatten(filename_to_list(getattr(self.inputs, self.iterfield[0]))))
+        else:
+            nitems = len(filename_to_list(getattr(self.inputs, self.iterfield[0])))
         for i in range(nitems):
             nodename = '_' + self.name + str(i)
             node = Node(deepcopy(self._interface), name=nodename)
@@ -2146,7 +2161,10 @@ class MapNode(Node):
             node._interface.inputs.set(
                 **deepcopy(self._interface.inputs.get()))
             for field in self.iterfield:
-                fieldvals = filename_to_list(getattr(self.inputs, field))
+                if self.nested:
+                    fieldvals = flatten(filename_to_list(getattr(self.inputs, field)))
+                else:
+                    fieldvals = filename_to_list(getattr(self.inputs, field))
                 logger.debug('setting input %d %s %s' % (i, field,
                                                          fieldvals[i]))
                 setattr(node.inputs, field,
@@ -2198,6 +2216,14 @@ class MapNode(Node):
                     defined_vals = [isdefined(val) for val in values]
                     if any(defined_vals) and self._result.outputs:
                         setattr(self._result.outputs, key, values)
+
+        if self.nested:
+            for key, _ in self.outputs.items():
+                values = getattr(self._result.outputs, key)
+                if isdefined(values):
+                    values = unflatten(values, filename_to_list(getattr(self.inputs, self.iterfield[0])))
+                setattr(self._result.outputs, key, values)
+
         if returncode and any([code is not None for code in returncode]):
             msg = []
             for i, code in enumerate(returncode):
@@ -2248,7 +2274,10 @@ class MapNode(Node):
         if self._serial :
             return 1
         else:
-            return len(filename_to_list(getattr(self.inputs, self.iterfield[0])))
+            if self.nested:
+                return len(filename_to_list(flatten(getattr(self.inputs, self.iterfield[0]))))
+            else:
+                return len(filename_to_list(getattr(self.inputs, self.iterfield[0])))
 
     def _get_inputs(self):
         old_inputs = self._inputs.get()
@@ -2288,8 +2317,12 @@ class MapNode(Node):
         os.chdir(cwd)
         self._check_iterfield()
         if execute:
-            nitems = len(filename_to_list(getattr(self.inputs,
-                                                  self.iterfield[0])))
+            if self.nested:
+                nitems = len(filename_to_list(flatten(getattr(self.inputs,
+                                                      self.iterfield[0]))))
+            else:
+                nitems = len(filename_to_list(getattr(self.inputs,
+                                                      self.iterfield[0])))
             nodenames = ['_' + self.name + str(i) for i in range(nitems)]
             # map-reduce formulation
             self._collate_results(self._node_runner(self._make_nodes(cwd),

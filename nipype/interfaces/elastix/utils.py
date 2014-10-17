@@ -1,12 +1,7 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+# coding: utf-8
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
-#
-# @Author: oesteban - code@oscaresteban.es
-# @Date:   2014-06-17 10:17:07
-# @Last Modified by:   oesteban
-# @Last Modified time: 2014-06-27 10:25:36
+
 """
 Generic interfaces to manipulate registration parameters files, including
 transform files (to configure warpings)
@@ -51,7 +46,8 @@ class EditTransform(BaseInterface):
     """
     Manipulates an existing transform file generated with elastix
 
-    Example::
+    Example
+    -------
 
     >>> from nipype.interfaces.elastix import EditTransform
     >>> tfm = EditTransform()
@@ -59,6 +55,8 @@ class EditTransform(BaseInterface):
     >>> tfm.inputs.reference_image = 'fixed1.nii'
     >>> tfm.inputs.output_type = 'unsigned char'
     >>> tfm.run() # doctest: +SKIP
+
+
     """
 
     input_spec = EditTransformInputSpec
