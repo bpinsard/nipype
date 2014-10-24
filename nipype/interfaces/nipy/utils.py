@@ -16,10 +16,11 @@ import scipy.stats as sstats
 
 from ...utils.misc import package_check
 
+have_nipy = True
 try:
     package_check('nipy')
 except Exception, e:
-    warnings.warn('nipy not installed')
+    have_nipy = False
 else:
     from nipy.algorithms.registration.histogram_registration import HistogramRegistration
     from nipy.algorithms.registration.affine import Affine
@@ -37,7 +38,6 @@ from nipype.utils.filemanip import (fname_presuffix, filename_to_list,
 
 
 class SimilarityInputSpec(BaseInterfaceInputSpec):
-
     volume1 = File(exists=True, desc="3D volume", mandatory=True)
     volume2 = File(exists=True, desc="3D volume", mandatory=True)
     mask1 = File(exists=True, desc="3D volume")
@@ -55,7 +55,6 @@ histogram as an input and return a float.""", usedefault=True)
 
 
 class SimilarityOutputSpec(TraitedSpec):
-
     similarity = traits.Float(desc="Similarity between volume 1 and 2")
 
 
@@ -63,6 +62,9 @@ class Similarity(BaseInterface):
     """Calculates similarity between two 3D volumes. Both volumes have to be in
     the same coordinate system, same space within that coordinate system and
     with the same voxel dimensions.
+
+    .. deprecated:: 0.10.0
+       Use :py:class:`nipype.algorithms.metrics.Similarity` instead.
 
     Example
     -------
@@ -78,6 +80,12 @@ class Similarity(BaseInterface):
 
     input_spec = SimilarityInputSpec
     output_spec = SimilarityOutputSpec
+
+    def __init__(self, **inputs):
+        warnings.warn(("This interface is deprecated since 0.10.0."
+                      " Please use nipype.algorithms.metrics.Similarity"),
+                      DeprecationWarning)
+        super(Similarity,self).__init__(**inputs)
 
     def _run_interface(self, runtime):
 

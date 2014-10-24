@@ -17,10 +17,11 @@ from ...utils.filemanip import (fname_presuffix, filename_to_list,
                                 list_to_filename, split_filename,
                                 savepkl, loadpkl)
 
+have_nipy = True
 try:
     package_check('nipy')
 except Exception, e:
-    warnings.warn('nipy not installed')
+    have_nipy = False
 else:
     from nipy.labs.mask import compute_mask
     import nipy.algorithms.utils.preprocess as preproc
