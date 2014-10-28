@@ -73,3 +73,96 @@ class LabelConfig(MRtrixCommand):
     output_spec = LabelConfigOuputSpec
 
     _cmd = 'labelconfig'
+
+
+class MRInfoInputSpec(MRtrixCommandInputSpec):
+     """
+     display header information, or extract specific information from the
+     header.
+
+     By default, all information contained in each image header will be printed
+     to the console in a reader-friendly format.
+
+     Alternatively, command-line options may be used to extract specific
+     details from the header(s); these are printed to the console in a format
+     more appropriate for scripting purposes or piping to file. If multiple
+     options and/or images are provided, the requested header fields will be
+     printed in the order in which they appear in the help page, with all
+     requested details from each input image in sequence printed before the
+     next image is processed.
+
+     The command can also write the diffusion gradient table from a single
+     input image to file; either in the MRtrix or FSL format (bvecs/bvals file
+     pair; includes appropriate diffusion gradient vector reorientation)
+     """
+     in_files = InputMultiPath(
+          argstr = '%s',
+          desc = 'the input image(s).')
+     
+     #OPTIONS
+
+     norealign = traits.Bool(
+          argstr = '-norealign',
+          desc = """
+     do not realign transform to near-default RAS coordinate system (the
+     default behaviour on image load). This is useful to inspect the transform
+     and strides as they are actually stored in the header, rather than as
+     MRtrix interprets them.""")
+
+     format = traits.Bool(
+          argstr = '-format',
+          desc = 'image file format')
+     ndim = traits.Bool(
+          argstr = '-ndim',
+          desc = 'number of image dimensions')
+     dimensions = traits.Bool(
+          argstr = '-dimensions',
+          desc = 'image dimensions along each axis')
+     voxel_size =  traits.Bool(
+          argstr = '-vox',
+          desc = 'voxel size along each image dimension')
+     datatype_long = traits.Bool(
+          argstr = '-datatype_long',
+          desc = 'data type used for image data storage (long description)')
+     datatype_short = traits.Bool(
+          argstr = '-datatype_short',
+          desc = 'data type used for image data storage (short specifier)')
+     stride = traits.Bool(
+          argstr = '-stride',
+          desc = 'data strides i.e. order and direction of axes data layout')
+     offset = traits.Bool(
+          argstr = '-offset', desc = 'image intensity offset')
+     multiplier = traits.Bool(
+          argstr = '-multiplier',
+          desc = 'image intensity multiplier')
+     comments = traits.Bool(
+          argstr = '-comments',
+          desc = 'any comments embedded in the image header')
+     properties = traits.Bool(
+          argstr = '-properties',
+          desc = 'any text properties embedded in the image header')
+     transform = traits.Bool(
+          argstr = '-transform',
+          desc = 'the image transform')
+     dwgrad = traits.Bool(
+          argstr = '-dwgrad',
+          desc = 'the diffusion-weighting gradient table')
+
+     export_grad_mrtrix = File(
+          argstr = '-export_grad_mrtrix %s',
+          desc = 'export the diffusion-weighted gradient table to file in MRtrix format')
+     export_grad_fsl = traits.Tuple(
+          File(),File(),
+          argstr = '-export_grad_fsl %s %s',
+          desc = 'export the diffusion-weighted gradient table to files in FSL (bvecs / bvals) format')
+
+class MRInfoOutputSpec(MRtrixCommandOutputSpec):
+     export_grad_mrtrix = File()
+     bvecs = File()
+     bvals = File()
+
+class MRInfo(MRtrixCommand):
+    input_spec = MRInfoInputSpec
+    output_spec = MRInfoOutputSpec
+    _cmd = 'mrinfo'
+ 
