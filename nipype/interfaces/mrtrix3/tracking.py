@@ -253,9 +253,11 @@ class TckgenInputSpec(MRtrixCommandInputSpec):
     
 
 class TckgenOutputSpec(MRtrixCommandOutputSpec):
-    tracks=File(exists = True,)
-    output_seeds = File()
-    
+    tracks=File(
+        exists = True,
+        mandatory=True)
+    output_seeds = File(
+        exists=True)
 
 class Tckgen(MRtrixCommand):
     """
@@ -356,6 +358,8 @@ class Tck2ConnectomeInputSpec(MRtrixCommandInputSpec):
     
 class Tck2ConnectomeOutputSpec(MRtrixCommandOutputSpec):
     connectome_out = File(
+        mandatory = True,
+        exists = True
         desc = 'the output .csv file containing edge weights')
 
 class Tck2Connectome(MRtrixCommand):
@@ -465,6 +469,7 @@ class TckMapInputSpec(MRtrixCommandInputSpec):
 class TckMapOutputSpec(MRtrixCommandOutputSpec):
     out_file= File(
         exists = True,
+        mandatory = True,
         desc='the output track-weighted image')
 
 class TckMap(MRtrixCommand):

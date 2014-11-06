@@ -1,5 +1,6 @@
 from nipype.interfaces.base import CommandLineInputSpec, CommandLine, traits, TraitedSpec, File, InputMultiPath, isdefined
 from .base import MRtrixCommandInputSpec, MRtrixCommandOutputSpec, MRtrixCommand, MRtrixDwiCommandInputSpec
+import os
 
 class Dwi2ResponseInputSpec(MRtrixDwiCommandInputSpec):
     
@@ -73,8 +74,10 @@ class Dwi2ResponseInputSpec(MRtrixDwiCommandInputSpec):
      estimation. """)
 
 class Dwi2ResponseOutputSpec(MRtrixCommandOutputSpec):
-    response = File()
-    sf = File()
+    response = File(
+        exists = True,
+        mandatory = True)
+    sf = File(exists = True,)
 
 class Dwi2Response(MRtrixCommand):
     """
@@ -90,6 +93,12 @@ class Dwi2Response(MRtrixCommand):
     
     input_spec = Dwi2ResponseInputSpec
     output_spec = Dwi2ResponseOutputSpec
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        if isdefined(self.inputs.sf):
+            outputs['sf'] = os.path.abspath(self.inputs.sf)
+        return outputs
 
 class Dwi2FodInputSpec(MRtrixDwiCommandInputSpec):
     dwi = File(
@@ -175,7 +184,9 @@ class Dwi2FodInputSpec(MRtrixDwiCommandInputSpec):
      format can support it.""")
 
 class Dwi2FodOutputSpec(MRtrixCommandOutputSpec):
-    sh_out_file = File()
+    sh_out_file = File(
+        exists = True,
+        mandatory = True)
 
 class Dwi2Fod(MRtrixCommand):
     """
@@ -222,4 +233,3 @@ class Dwi2Fod(MRtrixCommand):
     _cmd = 'dwi2fod'
     input_spec = Dwi2FodInputSpec
     output_spec = Dwi2FodOutputSpec
-
