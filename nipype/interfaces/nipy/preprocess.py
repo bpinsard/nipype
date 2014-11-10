@@ -513,6 +513,7 @@ class SurfaceResamplingInputSpec(BaseInterfaceInputSpec):
 class SurfaceResamplingOutputSpec(TraitedSpec):
     out_file = File(desc='resampled filtered timeseries')
     first_frame = File(desc='resampled first frame in reference space')
+    mask = File(desc='resampled mask in the same space as first_frame')
 
 class OnlinePreprocBase(BaseInterface):
     def _list_files(self):
@@ -795,7 +796,6 @@ class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase,
         desc = 'output first frame resampled and undistorted in reference space for visual registration check')
 
 class OnlinePreprocessingOutputSpec(SurfaceResamplingOutputSpec):
-    mask = File(desc='resampled mask in the same space as first_frame')
     motion = File()
     motion_params = File()
     slabs = File()
