@@ -264,7 +264,7 @@ class RegressOutMotion(BaseInterface):
         except Exception as e:
             print "RegressOutMotion failed", e
         finally:
-            del nii, motion, cdata, outnii
+            del nii, motion, cdata, betamaps, outnii, betanii, _
         return runtime
         
     def _list_outputs(self):
