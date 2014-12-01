@@ -34,7 +34,7 @@ else:
     nipy_version = nipy.__version__
     from nipy.algorithms.registration.online_preproc import (
         EPIOnlineRealign, EPIOnlineRealignFilter, resample_mat_shape,
-        surface_to_samples, NiftiIterator)
+        vertices_normals, NiftiIterator)
     
 
 try:
@@ -771,11 +771,18 @@ class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase,
     boundary_sampling_distance = traits.Float(
         1.5, usedefault = True,
         desc='distance from reference boundary in mm.')
+    boundary_gradient_factor = traits.Float(
+        1,usedefault=True,
+        desc = 'scaling of LoG values')
+    boundary_gradient_offset = traits.Float(
+        0,usedefault=True,
+        desc = 'offset of LoG values')
+
     nsamples_per_slab = traits.Int(
-        10000, usedefault=True,
+        1000, usedefault=True,
         desc='number of samples to use during optimization of a slab')
     min_nsamples_per_slab = traits.Int(
-        1000, usedefault=True,
+        100, usedefault=True,
         desc='min number of samples to perform a slab realignment')
     # optimizer
     optimization_ftol = traits.Float(
@@ -786,10 +793,28 @@ class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase,
         desc='tolerance of optimizer for convergence')
     optimization_gtol = traits.Float(
         1e-5, usedefault=True,
-        desc='tolerance of optimizer for convergence')
+        desc='gradient tolerance of optimizer for convergence')
 
     init_reg = File(
         desc = 'coarse init epi to t1 registration matrix')
+
+    # iekf parameters
+    
+    iekf_jacobian_epsilon = traits.Float(
+        1e-6, usedefault=True,
+        desc = 'the delta to use to compute jacobian')
+    iekf_convergence = traits.Float(
+        1e-5, usedefault=True,
+        desc = 'convergence threshold for iekf')
+    iekf_max_iter = traits.Int(
+        8, usedefault=True,
+        desc = 'maximum number of iteration per slab for iekf')
+    iekf_observation_var = traits.Float(
+        1e4, usedefault=True,
+        desc = 'iekf observation variance, covariance omitted for white noise')
+    iekf_transition_cov = traits.Float(
+        1e-2, usedefault=True,
+        desc = 'iekf transition (co)variance, initialized with 0 covariance (ie. independence)')
 
     # resampling options
     resampled_first_frame = traits.File(
@@ -826,9 +851,7 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
             self.inputs.reference_boundary)
         boundary_surf[0][:] = nb.affines.apply_affine(surf2world,
                                                       boundary_surf[0])
-        sampling_coords = surface_to_samples(
-            boundary_surf[0], boundary_surf[1], 
-            self.inputs.boundary_sampling_distance)
+        normals = vertices_normals(boundary_surf[0],boundary_surf[1])
         fmap, fmap_reg = self._load_fieldmap()
 
         mask = nb.load(self.inputs.mask)
@@ -840,7 +863,7 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
             init_reg = 'auto'
 
         realigner = EPIOnlineRealign(
-            boundary_surf[0], sampling_coords,
+            boundary_surf[0], normals,
             fieldmap = fmap, 
             fieldmap_reg=fmap_reg,
             init_reg = init_reg,
@@ -852,8 +875,13 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
             ftol = self.inputs.optimization_ftol,
             xtol = self.inputs.optimization_xtol,
             gtol = self.inputs.optimization_gtol,
-            slice_thickness = self.inputs.slice_thickness)
-
+            slice_thickness = self.inputs.slice_thickness,
+            iekf_jacobian_epsilon = self.inputs.iekf_jacobian_epsilon,
+            iekf_convergence = self.inputs.iekf_convergence,
+            iekf_max_iter = self.inputs.iekf_max_iter,
+            iekf_observation_var = self.inputs.iekf_observation_var,
+            iekf_transition_cov = self.inputs.iekf_transition_cov)
+        
         self.algo=realigner
 
         for fr, slab, reg, data in self.resampler(
@@ -869,7 +897,7 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
         motion_params = np.array([realigner.affine_class(m)._vec12[:6] for m in motion])
         np.savetxt(outputs['motion_params'], motion_params)
         
-        del self.stack, sampling_coords, realigner, surf_ref
+        del self.stack, realigner, surf_ref
         
         return runtime
 
