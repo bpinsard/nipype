@@ -330,18 +330,19 @@ class RegressOutMaskSignal(BaseInterface):
         signal_masks_nii = [nb.load(m) for m in self.inputs.signal_masks]
         thr = self.inputs.signal_masks_threshold
         if isinstance(thr,list):
-            signal_masks=[m.get_data()>t for m,t in zip(signal_masks_nii,thr)]
+            signal_masks=[(m.get_data()>t)*mask for m,t in zip(signal_masks_nii,thr)]
         else:
-            signal_masks = [m.get_data()>thr for m in signal_masks_nii]
+            signal_masks = [(m.get_data()>thr)*mask for m in signal_masks_nii]
 
-        m = np.isnan(data).sum(1)
+        m = np.isnan(data).sum(-1)*mask
         #correct for isolated nan values in mask timeseries due to realign
         # linearly interpolate in ts and extrapolate at ends of ts
         # TODO:optimize
         y = lambda z: z.nonzero()[0]
-        for i in m.nonzero()[0]:
-            nans = np.isnan(data[i])
-            data[i] = np.interp(y(nans),y(~nans),data[i,~nans])
+        if np.count_nonzero(m):
+            for x,y,z in zip(m.nonzero()):
+                nans = np.isnan(data[x,y,z])
+                data[x,y,z] = np.interp(y(nans),y(~nans),data[x,y,z,~nans])
         nt=data.shape[-1]
 
         signals = np.squeeze(np.concatenate([self.inputs.signal_estimate_function(data[m])[...,np.newaxis] for m in signal_masks],1))
