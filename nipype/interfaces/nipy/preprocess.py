@@ -372,6 +372,10 @@ class RegressOutMaskSignal(BaseInterface):
         nb.save(betanii, self._list_outputs()['beta_maps'])
         np.savetxt(self._list_outputs()['regressors'], signals)
         del nii, data, cdata, outnii, betas, betamaps, betanii
+        return runtime
+        
+    def _list_outputs(self):
+        outputs = self._outputs().get()
         outputs["out_file"] = fname_presuffix(
             self.inputs.in_file,
             prefix = self.inputs.prefix,
