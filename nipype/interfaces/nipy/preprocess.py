@@ -614,7 +614,7 @@ class SurfaceResamplingBase(BaseInterface):
                     verts /= 2.
                     del verts2
                 else:
-                    verts, tris = load_gii_fs(surf_file)
+                    verts, tris = self.load_gii_fs(surf_file)
                 ofst = coords.shape[0]
                 count = verts.shape[0]
                 coords.resize((ofst+count,3))
