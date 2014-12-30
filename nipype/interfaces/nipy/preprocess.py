@@ -463,10 +463,6 @@ class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
                        mandatory=True,
                        xor=['dicom_files'])
 
-    out_file_format = traits.Str(
-        mandatory=True,
-        desc='format with placeholder for output filename based on dicom')
-    
     # Fieldmap parameters
     fieldmap = File(
         desc = 'precomputed fieldmap coregistered with reference space')
@@ -492,6 +488,11 @@ class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
     slice_axis = traits.Range(0,2),
 
 class SurfaceResamplingInputSpec(BaseInterfaceInputSpec):
+
+    out_file_format = traits.Str(
+        mandatory=True,
+        desc='format with placeholder for output filename based on dicom')
+
     # resampling objects
     resample_surfaces = traits.List(
         traits.Tuple(traits.Str, traits.Either(File,traits.Tuple(File,File))),
@@ -649,6 +650,7 @@ class SurfaceResamplingBase(BaseInterface):
                 coords.resize((ofst+nvoxs,3))
                 coords[ofst:ofst+nvoxs] = nb.affines.apply_affine(
                     rois_nii.get_affine(), voxs)
+                voxel_indices = rois_group.create_dataset('INDICES',voxs)
                 rois = rois_group.create_dataset(
                     'ROIS',(len(counts),),dtype=np.dtype(
                         [('name', 'S200'),('label',np.int),
@@ -748,7 +750,7 @@ class SurfaceResamplingBase(BaseInterface):
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
-        outputs['out_file'] = os.path.abspath('./ts.h5')
+        outputs['out_file'] = os.path.abspath(self._gen_fname())
         if isdefined(self.inputs.resampled_first_frame):
             outputs['first_frame'] = os.path.abspath(
                 self.inputs.resampled_first_frame)
@@ -908,6 +910,7 @@ class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
     
     def _run_interface(self,runtime):
 
+        self.stack = self._init_stack()
         out_file = self._init_ts_file()
         coords = out_file['COORDINATES']
         
@@ -919,7 +922,6 @@ class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
         mask = nb.load(self.inputs.mask)
         mask_data = mask.get_data()>0
 
-        self.stack = self._init_stack()
         from itertools import izip
         def iter_affreg(it, motion):
             for n, m in izip(it, motion):
