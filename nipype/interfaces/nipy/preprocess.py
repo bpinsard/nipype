@@ -716,7 +716,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 coords.resize((ofst+nvoxs,3))
                 coords[ofst:ofst+nvoxs] = nb.affines.apply_affine(
                     rois_nii.get_affine(), voxs)
-                voxel_indices = rois_group.create_dataset('INDICES',voxs)
+                voxel_indices = rois_group.create_dataset('INDICES',data=voxs)
                 rois = rois_group.create_dataset(
                     'ROIS',(len(counts),),dtype=np.dtype(
                         [('name', 'S200'),('label',np.int),
@@ -931,7 +931,8 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
                 print 'frame %d, slab %s'% (fr,slab)
 
         finally:
-            out_file.close()
+            if 'out_file' in locals():
+                out_file.close()
 
         outputs = self._list_outputs()
 #        out_file.close()
