@@ -1519,11 +1519,9 @@ class CommandLine(BaseInterface):
             if isdefined(retval) and "%s" in retval:
                 name_template = retval
             else:
-                return retval
-#                name_template = trait_spec.name_template
+                name_template = trait_spec.name_template
 #            if not name_template:
 #                name_template = "%s_generated"
-
             if isinstance(trait_spec.name_source, list):
                 for ns in trait_spec.name_source:
                     if isdefined(getattr(self.inputs, ns)):
@@ -1587,11 +1585,8 @@ class CommandLine(BaseInterface):
             value = getattr(self.inputs, name)
             if spec.genfile or spec.name_source:
                 value = self._filename_from_source(name)
-                if not isdefined(value):
-                    try:
-                        value = self._gen_filename(name)
-                    except NotImplementedError:
-                        pass
+            if not isdefined(value) and spec.genfile:
+                value = self._gen_filename(name)
             if not isdefined(value):
                 continue
             arg = self._format_arg(name, spec, value)
