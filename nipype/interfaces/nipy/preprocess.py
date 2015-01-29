@@ -972,8 +972,9 @@ class OnlineFilterInputSpec(OnlinePreprocInputSpecBase,
     resampled_first_frame = traits.File(
         desc = 'output first frame resampled and undistorted in reference space for visual registration check')
     
-class OnlineFilterOutputSpec(SurfaceResamplingOutputSpec):
-    pass
+class OnlineFilterOutputSpec(SurfaceResamplingOutputSpec):    
+    nifti_out = File(exists=True,
+                     desc='at some point we might outputs also 4d nifti corrected for checking')
     
 class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
 
