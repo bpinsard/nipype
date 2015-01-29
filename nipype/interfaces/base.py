@@ -1520,6 +1520,8 @@ class CommandLine(BaseInterface):
                 name_template = retval
             else:
                 name_template = trait_spec.name_template
+            if name_template is None:
+                return retval
 #            if not name_template:
 #                name_template = "%s_generated"
             if isinstance(trait_spec.name_source, list):
