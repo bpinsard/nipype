@@ -694,8 +694,6 @@ class SurfaceResamplingBase(NipyBaseInterface):
 
         if isdefined(self.inputs.resample_rois):
             for roiset_name,roiset_file,roiset_labels in self.inputs.resample_rois:
-                rois_nii = nb.load(roiset_file)
-                rois_data = rois_nii.get_data()
                 roiset_labels = dict((k,l) for k,l in np.loadtxt(
                         roiset_labels, dtype=np.object,
                         converters = {0:int,1:str}))
@@ -703,19 +701,39 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 rois_group.attrs['ModelType'] = 'VOXELS'
                 rois_group.attrs['ROIsFile'] = roiset_file
 
-                voxs = np.empty((0,3))
                 nvoxs = 0
                 counts = dict()
-                for k in roiset_labels.keys():
-                    roi_mask = rois_data==k
-                    counts[k] = np.count_nonzero(roi_mask)
-                    nvoxs += counts[k]
-                    voxs = np.vstack([voxs,np.c_[np.where(roi_mask)]])
+
+                if nb.filename_parser.splitext_addext(roiset_file, ('.gz', '.bz2'))[1] in nb.ext_map:
+                    voxs = []
+                    rois_nii = nb.load(roiset_file)
+                    rois_data = rois_nii.get_data()
+                    for k in roiset_labels.keys():
+                        roi_mask = rois_data==k
+                        counts[k] = np.count_nonzero(roi_mask)
+                        nvoxs += counts[k]
+                        voxs.append(np.argwhere(roi_mask))
+                    voxs = np.vstack(voxs)
+                    crds = nb.affines.apply_affine(rois_nii.get_affine(), voxs)
+                    del rois_nii, rois_data
+                else:
+                    rois_txt = np.loadtxt(roiset_file,delimiter=',',skiprows=1)
+                    crds = []
+                    voxs = []
+                    for k in roiset_labels.keys():
+                        roi_mask = rois_txt[:,-1] == k
+                        counts[k] = np.count_nonzero(roi_mask)
+                        nvoxs += counts[k]
+                        crds.append(rois_txt[roi_mask,:3])
+                        voxs.append(rois_txt[roi_mask,3:6].astype(np.int))
+                    del rois_txt
+                    voxs = np.vstack(voxs)
+                    crds = np.vstack(crds)
+                    
                 # this allows using ROIs in different sampling
                 ofst = coords.shape[0]
                 coords.resize((ofst+nvoxs,3))
-                coords[ofst:ofst+nvoxs] = nb.affines.apply_affine(
-                    rois_nii.get_affine(), voxs)
+                coords[ofst:ofst+nvoxs] = crds
                 voxel_indices = rois_group.create_dataset('INDICES',data=voxs)
                 rois = rois_group.create_dataset(
                     'ROIS',(len(counts),),dtype=np.dtype(
@@ -723,15 +741,13 @@ class SurfaceResamplingBase(NipyBaseInterface):
                          ('IndexOffset', np.int),('IndexCount', np.int),
                          #('ref', h5py.special_dtype(ref=h5py.RegionReference))
                          ]))
-                i=0
-                for roi_idx, roi_count in counts.items():
+                for i,roi in enumerate(counts.items()):
+                    roi_idx, roi_count = roi
                     label = roiset_labels[roi_idx]
                     rois[i] = (label[:200],roi_idx,ofst,roi_count,)
-#                           coords.regionref[ofst:ofst+roi_count])
+                    #                           coords.regionref[ofst:ofst+roi_count])
                     ofst += roi_count
-                    i+=1
-            
-                del rois_nii, rois_data
+                del voxs, crds
         return out_file
 
     def resampler(self, iterator, out_file, dataset_path='FMRI/DATA'):
@@ -1025,7 +1041,8 @@ class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
                 print 'frame %d, slab %s'% (fr,slab)
         finally:
             print 'closing file'
-            out_file.close()
+            if 'out_file' in locals():
+                out_file.close()
         
         del self.stack, noise_filter        
         return runtime
