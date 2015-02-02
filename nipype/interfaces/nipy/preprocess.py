@@ -187,7 +187,7 @@ class FmriRealign4d(BaseInterface):
                 string = ' '.join(params) + '\n'
                 mfile.write(string)
             mfile.close()
-
+        del corr_run
         return runtime
 
     def _list_outputs(self):
@@ -318,7 +318,7 @@ class SpaceTimeRealigner(BaseInterface):
                 string = ' '.join(params) + '\n'
                 mfile.write(string)
             mfile.close()
-
+        del corr_run
         return runtime
 
     def _list_outputs(self):
@@ -376,6 +376,7 @@ class Trim(BaseInterface):
             nii.get_affine(),
             nii.get_header())
         nb.save(nii2, out_file)
+        del nii2 
         return runtime
 
     def _list_outputs(self):
