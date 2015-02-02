@@ -905,6 +905,10 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
             realigner.process(self.stack, yield_raw=True),out_file, 'FMRI/DATA'):
             print 'frame %d, slab %s'% (fr,slab)
 
+        dcm = dicom.read_file(self.dicom_files[0])
+        out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
+        out_file['FMRI/DATA'].attrs['scan_data'] = dcm.AcquisitionDate
+        del dcm
         outputs = self._list_outputs()
         out_file.close()
         motion = np.asarray([s[2] for s in self.slabs])
@@ -992,6 +996,11 @@ class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
         for fr, slab, reg, data in self.resampler(
             noise_filter.correct(stack_it, pvmaps, self.stack._shape[:3]), out_file, 'FMRI/DATA'):
             print 'frame %d, slab %s'% (fr,slab)
+
+        dcm = dicom.read_file(self.dicom_files[0])
+        out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
+        out_file['FMRI/DATA'].attrs['scan_data'] = dcm.AcquisitionDate
+        del dcm
 
         out_file.close()
         
