@@ -50,12 +50,11 @@ try:
 except Exception, e:
     warnings.warn('dcmstack not installed')
 else:
-    from dcmstack.dcmstack import DicomStackOnline
+    from .online_stack import DicomStackOnline, filenames_to_dicoms
 
 from ..base import (TraitedSpec, BaseInterface, traits,
                     BaseInterfaceInputSpec, isdefined, File, Directory,
                     InputMultiPath, OutputMultiPath)
-
 
 
 class Info(object):
@@ -969,11 +968,6 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
         outputs['motion'] = os.path.abspath('./motion.npy')
         outputs['motion_params'] = os.path.abspath('./motion.txt')
         return outputs
-
-def filenames_to_dicoms(fnames):
-    for f in fnames:
-        yield dicom.read_file(f)
-
 
 class OnlineFilterInputSpec(OnlinePreprocInputSpecBase,
                             SurfaceResamplingInputSpec):
