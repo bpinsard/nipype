@@ -907,7 +907,7 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
 
         dcm = dicom.read_file(self.dicom_files[0])
         out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
-        out_file['FMRI/DATA'].attrs['scan_data'] = dcm.AcquisitionDate
+        out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
         del dcm
         outputs = self._list_outputs()
         out_file.close()
@@ -999,7 +999,7 @@ class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
 
         dcm = dicom.read_file(self.dicom_files[0])
         out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
-        out_file['FMRI/DATA'].attrs['scan_data'] = dcm.AcquisitionDate
+        out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
         del dcm
 
         out_file.close()
