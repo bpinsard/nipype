@@ -956,52 +956,58 @@ class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
     
     def _run_interface(self,runtime):
 
-        out_file = self._init_ts_file()
-        coords = out_file['COORDINATES']
-        
-        fmri_group = out_file.create_group('FMRI')
-
-        from nipy.algorithms.registration.affine import to_matrix44
-        motion = np.load(self.inputs.motion)
-        fmap, fmap_reg = self._load_fieldmap()
-        mask = nb.load(self.inputs.mask)
-        mask_data = mask.get_data()>0
-
         self.stack = self._init_stack()
-        from itertools import izip
-        def iter_affreg(it, motion):
-            for n, m in izip(it, motion):
-                fr, slab, aff, tt, data = n
-                yield fr, slab, m, data
+        try:
+            out_file =  self._init_ts_file()
+            coords = out_file['COORDINATES']
+        
+            fmri_group = out_file.create_group('FMRI')
+
+            from nipy.algorithms.registration.affine import to_matrix44
+            motion = np.load(self.inputs.motion)
+            fmap, fmap_reg = self._load_fieldmap()
+            mask = nb.load(self.inputs.mask)
+            mask_data = mask.get_data()>0
+            
+            from itertools import izip
+            def iter_affreg(it, motion):
+                for n, m in izip(it, motion):
+                    fr, slab, aff, tt, data = n
+                    yield fr, slab, m, data
                        
-        stack_it = iter_affreg(self.stack.iter_slabs(), motion)
+            stack_it = iter_affreg(self.stack.iter_slabs(), motion)
 
-        if isdefined(self.inputs.partial_volume_maps):
-            pvmaps = [nb.load(f) for f in self.inputs.partial_volume_maps]
-            pvmaps = nb.Nifti1Image(
-                np.concatenate([m.get_data().reshape((m.shape+(1,)[:4])) for m in pvmaps],3),
-                pvmaps[0].get_affine())
+            if isdefined(self.inputs.partial_volume_maps):
+                pvmaps = [nb.load(f) for f in self.inputs.partial_volume_maps]
+                pvmaps = nb.Nifti1Image(
+                    np.concatenate([m.get_data().reshape((m.shape+(1,)[:4])) for m in pvmaps],3),
+                    pvmaps[0].get_affine())
         
-        noise_filter = EPIOnlineRealignFilter(
-            fieldmap = fmap, fieldmap_reg = fmap_reg,
-            mask = mask,
-            phase_encoding_dir = self.inputs.phase_encoding_dir,
-            echo_time = self.inputs.echo_time,
-            echo_spacing = self.inputs.echo_spacing,
-            slice_thickness = self.inputs.slice_thickness)
 
-        self.algo = noise_filter
+            noise_filter = EPIOnlineRealignFilter(
+                fieldmap = fmap, fieldmap_reg = fmap_reg,
+                mask = mask,
+                phase_encoding_dir = self.inputs.phase_encoding_dir,
+                echo_time = self.inputs.echo_time,
+                echo_spacing = self.inputs.echo_spacing,
+                slice_thickness = self.inputs.slice_thickness)
 
-        for fr, slab, reg, data in self.resampler(
-            noise_filter.correct(stack_it, pvmaps, self.stack._shape[:3]), out_file, 'FMRI/DATA'):
-            pass
-        dcm = dicom.read_file(self.dicom_files[0])
-        out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
-        out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
-        del dcm
+            self.algo = noise_filter
 
-        out_file.close()
-        
+            for fr, slab, reg, data in self.resampler(
+                noise_filter.correct(stack_it, pvmaps, self.stack._shape[:3]), out_file, 'FMRI/DATA'):
+                pass
+
+            dcm = dicom.read_file(self.dicom_files[0])
+            out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
+            out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
+            del dcm
+            
+        finally:
+            print 'closing file'
+            if 'out_file' in locals():
+                out_file.close()
+
         del self.stack, noise_filter        
         return runtime
 
