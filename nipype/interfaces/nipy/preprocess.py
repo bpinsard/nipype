@@ -707,7 +707,6 @@ class SurfaceResamplingBase(BaseInterface):
         tmp = np.empty(nsamples)
         first_frame_exported = False
         for fr, slab, reg, data in iterator:
-            print 'frame %d, slab %s'% (fr,slab)
             self.slabs.append((fr,slab,reg))
             self.slabs_data.append(data)
 
@@ -995,7 +994,6 @@ class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
 
         for fr, slab, reg, data in self.resampler(
             noise_filter.correct(stack_it, pvmaps, self.stack._shape[:3]), out_file, 'FMRI/DATA'):
-            print 'frame %d, slab %s'% (fr,slab)
 
         dcm = dicom.read_file(self.dicom_files[0])
         out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
