@@ -994,7 +994,7 @@ class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
 
         for fr, slab, reg, data in self.resampler(
             noise_filter.correct(stack_it, pvmaps, self.stack._shape[:3]), out_file, 'FMRI/DATA'):
-
+            pass
         dcm = dicom.read_file(self.dicom_files[0])
         out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
         out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
