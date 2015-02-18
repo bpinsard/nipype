@@ -491,7 +491,7 @@ class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
     slice_thickness = traits.Float(),
     slice_axis = traits.Range(0,2),
 
-class SurfaceResamplingInputSpec(BaseInterfaceInputSpec):
+class SurfaceResamplingBaseInputSpec(BaseInterfaceInputSpec):
     # resampling objects
     resample_surfaces = traits.List(
         traits.Tuple(traits.Str, traits.Either(File,traits.Tuple(File,File))),
@@ -506,14 +506,18 @@ class SurfaceResamplingInputSpec(BaseInterfaceInputSpec):
 
     # space definition
     surfaces_volume_reference = traits.File(
-        mandatory = True,
+#        mandatory = True,
         exists = True,
         desc='a volume defining space of surfaces')
 
-class SurfaceResamplingOutputSpec(TraitedSpec):
+    # output
+    resampled_first_frame = traits.File(
+        desc = 'output first frame resampled and undistorted in reference space for visual registration check')
+
+class SurfaceResamplingBaseOutputSpec(TraitedSpec):
     out_file = File(desc='resampled filtered timeseries')
-    first_frame = File(desc='resampled first frame in reference space')
-    mask = File(desc='resampled mask in the same space as first_frame')
+    resampled_first_frame = File(desc='resampled first frame in reference space')
+    mask = File(desc='resampled mask in the same space as resampled_first_frame')
 
 class OnlinePreprocBase(BaseInterface):
     def _list_files(self):
@@ -594,8 +598,6 @@ class SurfaceResamplingBase(BaseInterface):
         
         surfaces = []
         rois = []        
-        surf_ref = nb.load(self.inputs.surfaces_volume_reference)
-        surf2world = surf_ref.get_affine().dot(SurfaceResamplingBase.ras2vox)
 
         structs = out_file.create_group('STRUCTURES')
         coords = out_file.create_dataset('COORDINATES',
@@ -705,7 +707,7 @@ class SurfaceResamplingBase(BaseInterface):
         self.slabs = []
         self.slabs_data = []
         tmp = np.empty(nsamples)
-        first_frame_exported = False
+        resampled_first_frame_exported = False
         for fr, slab, reg, data in iterator:
             self.slabs.append((fr,slab,reg))
             self.slabs_data.append(data)
@@ -721,7 +723,7 @@ class SurfaceResamplingBase(BaseInterface):
                     rdata[:,fr] = tmp
                     if rdata.shape[-1] < fr:
                         rdata.resize((nsamples,fr))
-                if fr<1 and isdefined(self.inputs.resampled_first_frame) and not first_frame_exported:
+                if fr<1 and isdefined(self.inputs.resampled_first_frame) and not resampled_first_frame_exported:
                     print 'resampling first frame'
                     mask = nb.load(self.inputs.mask)
                     mask_data = mask.get_data()>0
@@ -739,7 +741,7 @@ class SurfaceResamplingBase(BaseInterface):
                     outputs = self._list_outputs()
                     nb.save(nb.Nifti1Image(f1.astype(np.float32),
                                            mask.get_affine()),
-                            outputs['first_frame'])
+                            outputs['resampled_first_frame'])
                     del vol_coords, f1
                     ornt_trsfrm = nb.orientations.ornt_transform(
                         nb.orientations.io_orientation(self.stack._affine),
@@ -756,7 +758,7 @@ class SurfaceResamplingBase(BaseInterface):
                         order=0).reshape(shape)
                     nb.save(nb.Nifti1Image(resam_mask.astype(np.uint8), mat),
                             outputs['mask'])
-                    first_frame_exported = True
+                    resampled_first_frame_exported = True
                     del vol_coords, resam_mask
                 del self.slabs_data
                 self.slabs_data = []        
@@ -766,16 +768,78 @@ class SurfaceResamplingBase(BaseInterface):
         outputs = self.output_spec().get()
         outputs['out_file'] = os.path.abspath('./ts.h5')
         if isdefined(self.inputs.resampled_first_frame):
-            outputs['first_frame'] = os.path.abspath(
+            outputs['resampled_first_frame'] = os.path.abspath(
                 self.inputs.resampled_first_frame)
             outputs['mask'] = os.path.abspath(
                 fname_presuffix(self.inputs.resampled_first_frame,
                                 suffix='_mask'))
         return outputs
 
+class SurfaceResamplingInputSpec(SurfaceResamplingBaseInputSpec,
+                                 OnlinePreprocInputSpecBase):
+    motion = File(
+        exists=True,
+        mandatory=True,
+        desc='the estimated motion')
+
+class SurfaceResampling(SurfaceResamplingBase, 
+                        OnlinePreprocBase):
+    input_spec = SurfaceResamplingInputSpec
+    output_spec = SurfaceResamplingBaseOutputSpec
+    
+    def _run_interface(self,runtime):
+
+        self.stack = self._init_stack()
+        try:
+            out_file =  self._init_ts_file()
+            coords = out_file['COORDINATES']
+        
+            fmri_group = out_file.create_group('FMRI')
+
+            from nipy.algorithms.registration.affine import to_matrix44
+            motion = np.load(self.inputs.motion)
+            fmap, fmap_reg = self._load_fieldmap()
+            mask = nb.load(self.inputs.mask)
+            mask_data = mask.get_data()>0
+            
+            from itertools import izip
+            def iter_affreg(it, motion):
+                for n, m in izip(it, motion):
+                    fr, slab, aff, tt, data = n
+                    yield fr, slab, m, data
+                                   
+            stack_it = iter_affreg(self.stack.iter_slabs(), motion)
+
+
+            noise_filter = EPIOnlineRealignFilter(
+                fieldmap = fmap, fieldmap_reg = fmap_reg,
+                mask = mask,
+                phase_encoding_dir = self.inputs.phase_encoding_dir,
+                echo_time = self.inputs.echo_time,
+                echo_spacing = self.inputs.echo_spacing,
+                slice_thickness = self.inputs.slice_thickness)
+
+            self.algo = noise_filter
+
+            for fr, slab, reg, data in self.resampler(stack_it, out_file, 'FMRI/DATA'):
+                print fr, slab
+
+            dcm = dicom.read_file(self.dicom_files[0])
+            out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
+            out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
+            del dcm
+            
+        finally:
+            print 'closing file'
+            if 'out_file' in locals():
+                out_file.close()
+
+        del self.stack, noise_filter        
+        return runtime
+
 
 class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase,
-                                   SurfaceResamplingInputSpec):
+                                   SurfaceResamplingBaseInputSpec):
 
     #realign parameters
     init_center_of_mass = traits.Bool(
@@ -832,11 +896,7 @@ class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase,
         1e-2, usedefault=True,
         desc = 'iekf transition (co)variance, initialized with 0 covariance (ie. independence)')
 
-    # resampling options
-    resampled_first_frame = traits.File(
-        desc = 'output first frame resampled and undistorted in reference space for visual registration check')
-
-class OnlinePreprocessingOutputSpec(SurfaceResamplingOutputSpec):
+class OnlinePreprocessingOutputSpec(SurfaceResamplingBaseOutputSpec):
     motion = File()
     motion_params = File()
     slabs = File()
@@ -934,7 +994,7 @@ def filenames_to_dicoms(fnames):
 
 
 class OnlineFilterInputSpec(OnlinePreprocInputSpecBase,
-                            SurfaceResamplingInputSpec):
+                            SurfaceResamplingBaseInputSpec):
     motion = File(
         exists=True,
         mandatory=True,
@@ -942,11 +1002,8 @@ class OnlineFilterInputSpec(OnlinePreprocInputSpecBase,
     partial_volume_maps = InputMultiPath(
         File(exists=True),
         desc='partial volumes maps to regress out')
-
-    resampled_first_frame = traits.File(
-        desc = 'output first frame resampled and undistorted in reference space for visual registration check')
     
-class OnlineFilterOutputSpec(SurfaceResamplingOutputSpec):
+class OnlineFilterOutputSpec(SurfaceResamplingBaseOutputSpec):
     pass
     
 class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
