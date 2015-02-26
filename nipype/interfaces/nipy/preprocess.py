@@ -580,7 +580,6 @@ class SurfaceResamplingBase(BaseInterface):
 
     ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
 
-
     def load_gii_fs(self,sfilename):
         if split_filename(sfilename)[-1] == '.gii':
             sfile = gii.read(sfilename)
@@ -782,8 +781,7 @@ class SurfaceResamplingInputSpec(SurfaceResamplingBaseInputSpec,
         mandatory=True,
         desc='the estimated motion')
 
-class SurfaceResamplingOutputSpec(SurfaceResamplingBaseOutputSpec,
-                                  OnlinePreprocOutputSpecBase):
+class SurfaceResamplingOutputSpec(SurfaceResamplingBaseOutputSpec):
     pass
 
 class SurfaceResampling(SurfaceResamplingBase, 
