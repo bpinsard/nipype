@@ -491,34 +491,6 @@ class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
     slice_thickness = traits.Float(),
     slice_axis = traits.Range(0,2),
 
-class SurfaceResamplingBaseInputSpec(BaseInterfaceInputSpec):
-    # resampling objects
-    resample_surfaces = traits.List(
-        traits.Tuple(traits.Str, traits.Either(File,traits.Tuple(File,File))),
-        desc='freesurfer surface files from which signal to be extracted')
-    resample_rois = traits.List(
-        traits.Tuple(traits.Str, File, File),
-        desc = 'list of rois NIFTI files from which to extract signal and labels file')
-    
-    store_coords = traits.Bool(
-        True, usedefault=True,
-        desc='store surface and ROIs coordinates in output')
-
-    # space definition
-    surfaces_volume_reference = traits.File(
-#        mandatory = True,
-        exists = True,
-        desc='a volume defining space of surfaces')
-
-    # output
-    resampled_first_frame = traits.File(
-        desc = 'output first frame resampled and undistorted in reference space for visual registration check')
-
-class SurfaceResamplingBaseOutputSpec(TraitedSpec):
-    out_file = File(desc='resampled filtered timeseries')
-    resampled_first_frame = File(desc='resampled first frame in reference space')
-    mask = File(desc='resampled mask in the same space as resampled_first_frame')
-
 class OnlinePreprocBase(BaseInterface):
     def _list_files(self):
         # list files depending on input type
@@ -576,6 +548,33 @@ class OnlinePreprocBase(BaseInterface):
         return os.path.join(path, base + Info.outputtype_to_ext(
                 self.inputs.outputtype))
 
+class SurfaceResamplingBaseInputSpec(BaseInterfaceInputSpec):
+    # resampling objects
+    resample_surfaces = traits.List(
+        traits.Tuple(traits.Str, traits.Either(File,traits.Tuple(File,File))),
+        desc='freesurfer surface files from which signal to be extracted')
+    resample_rois = traits.List(
+        traits.Tuple(traits.Str, File, File),
+        desc = 'list of rois NIFTI files from which to extract signal and labels file')
+    
+    store_coords = traits.Bool(
+        True, usedefault=True,
+        desc='store surface and ROIs coordinates in output')
+
+    # space definition
+    surfaces_volume_reference = traits.File(
+#        mandatory = True,
+        exists = True,
+        desc='a volume defining space of surfaces')
+
+    # output
+    resampled_first_frame = traits.File(
+        desc = 'output first frame resampled and undistorted in reference space for visual registration check')
+
+class SurfaceResamplingBaseOutputSpec(TraitedSpec):
+    out_file = File(desc='resampled filtered timeseries')
+    resampled_first_frame = File(desc='resampled first frame in reference space')
+    mask = File(desc='resampled mask in the same space as resampled_first_frame')
 
 class SurfaceResamplingBase(BaseInterface):
 
@@ -775,6 +774,7 @@ class SurfaceResamplingBase(BaseInterface):
                                 suffix='_mask'))
         return outputs
 
+
 class SurfaceResamplingInputSpec(SurfaceResamplingBaseInputSpec,
                                  OnlinePreprocInputSpecBase):
     motion = File(
@@ -782,10 +782,14 @@ class SurfaceResamplingInputSpec(SurfaceResamplingBaseInputSpec,
         mandatory=True,
         desc='the estimated motion')
 
+class SurfaceResamplingOutputSpec(SurfaceResamplingBaseOutputSpec,
+                                  OnlinePreprocOutputSpecBase):
+    pass
+
 class SurfaceResampling(SurfaceResamplingBase, 
                         OnlinePreprocBase):
     input_spec = SurfaceResamplingInputSpec
-    output_spec = SurfaceResamplingBaseOutputSpec
+    output_spec = SurfaceResamplingOutputSpec
     
     def _run_interface(self,runtime):
 
