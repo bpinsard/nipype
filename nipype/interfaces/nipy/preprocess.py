@@ -20,6 +20,7 @@ import re
 from ...utils.misc import package_check
 from ...utils.filemanip import (
     split_filename, fname_presuffix, filename_to_list)
+from .base import *
 
 from scipy.ndimage.interpolation import map_coordinates
 
@@ -451,7 +452,7 @@ class Trim(BaseInterface):
 
 
 
-class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
+class OnlinePreprocInputSpecBase(NipyBaseInterfaceInputSpec):
     dicom_files = traits.Either(
         InputMultiPath(File(exists=True)),
         InputMultiPath(Directory(exists=True)),
@@ -491,7 +492,7 @@ class OnlinePreprocInputSpecBase(BaseInterfaceInputSpec):
     slice_thickness = traits.Float(),
     slice_axis = traits.Range(0,2),
 
-class OnlinePreprocBase(BaseInterface):
+class OnlinePreprocBase(NipyBaseInterface):
     def _list_files(self):
         # list files depending on input type
         df = filename_to_list(self.inputs.dicom_files)
