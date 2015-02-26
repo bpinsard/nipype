@@ -56,42 +56,6 @@ from ..base import (TraitedSpec, BaseInterface, traits,
                     BaseInterfaceInputSpec, isdefined, File, Directory,
                     InputMultiPath, OutputMultiPath)
 
-
-
-class Info(object):
-    """Handle nibabel output type and version information.
-"""
-    __outputtype = 'NIFTI'
-    ftypes = {'NIFTI': '.nii',
-              'NIFTI_GZ': '.nii.gz',
-              'MGZ':'.mgz'}
-
-    @classmethod
-    def outputtype_to_ext(cls, outputtype):
-        """Get the file extension for the given output type.
-
-Parameters
-----------
-outputtype : {'NIFTI', 'NIFTI_GZ'}
-String specifying the output type.
-
-Returns
--------
-extension : str
-The file extension for the output type.
-"""
-
-        try:
-            return cls.ftypes[outputtype]
-        except KeyError:
-            msg = 'Invalid NIBABELOUTPUTTYPE: ', outputtype
-            raise KeyError(msg)
-
-    @classmethod
-    def outputtype(cls):
-        return cls.__outputtype
-
-
 class ComputeMaskInputSpec(BaseInterfaceInputSpec):
     mean_volume = File(exists=True, mandatory=True,
                        desc="mean EPI image, used to compute the threshold for the mask")
@@ -101,7 +65,6 @@ class ComputeMaskInputSpec(BaseInterfaceInputSpec):
     m = traits.Float(desc="lower fraction of the histogram to be discarded")
     M = traits.Float(desc="upper fraction of the histogram to be discarded")
     cc = traits.Bool(desc="Keep only the largest connected component")
-
 
 class ComputeMaskOutputSpec(TraitedSpec):
     brain_mask = File(exists=True)
@@ -545,7 +508,9 @@ class OnlinePreprocBase(NipyBaseInterface):
         return
 
     def _overload_extension(self, value):
-        path, base, _ = split_filename(value)
+        path, base, ext = split_filename(value)
+        if ext not in Info.ftypes.values():
+            return value
         return os.path.join(path, base + Info.outputtype_to_ext(
                 self.inputs.outputtype))
 
@@ -765,7 +730,7 @@ class SurfaceResamplingBase(BaseInterface):
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
-        outputs['out_file'] = os.path.abspath('./ts.h5')
+        outputs['out_file'] = self._gen_fname()
         if isdefined(self.inputs.resampled_first_frame):
             outputs['resampled_first_frame'] = os.path.abspath(
                 self.inputs.resampled_first_frame)
