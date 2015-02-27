@@ -974,7 +974,7 @@ class OnlineFilterInputSpec(OnlinePreprocInputSpecBase,
 class OnlineFilterOutputSpec(SurfaceResamplingBaseOutputSpec):
     pass
     
-class OnlineFilter(OnlinePreprocBase, SurfaceResamplingBase):
+class OnlineFilter(SurfaceResamplingBase, OnlinePreprocBase):
 
     input_spec = OnlineFilterInputSpec
     output_spec = OnlineFilterOutputSpec
