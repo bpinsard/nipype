@@ -36,6 +36,7 @@ else:
     from nipy.algorithms.registration.online_preproc import (
         EPIOnlineRealign, EPIOnlineRealignFilter, resample_mat_shape,
         vertices_normals, NiftiIterator)
+    from nipy.algorithms.registration.online_dcmstack import DicomStackOnline
     
 
 try:
@@ -44,13 +45,6 @@ except Exception, e:
     warnings.warn('h5py not installed')
 else:
     import h5py
-
-try:
-    package_check('dcmstack')
-except Exception, e:
-    warnings.warn('dcmstack not installed')
-else:
-    from dcmstack.dcmstack import DicomStackOnline
 
 from ..base import (TraitedSpec, BaseInterface, traits,
                     BaseInterfaceInputSpec, isdefined, File, Directory,
@@ -1018,7 +1012,7 @@ class OnlineFilter(SurfaceResamplingBase, OnlinePreprocBase):
                 slice_thickness = self.inputs.slice_thickness)
 
             self.algo = noise_filter
-
+            
             for fr, slab, reg, data in self.resampler(
                 noise_filter.correct(stack_it, pvmaps, self.stack._shape[:3]), out_file, 'FMRI/DATA'):
                 pass
