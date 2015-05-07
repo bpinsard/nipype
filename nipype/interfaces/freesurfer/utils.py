@@ -1340,8 +1340,76 @@ class ComputeVolumeFractionsInputSpec(CommandLineInputSpec):
         argstr='%s', position=-2)
 
     out_stem = traits.Str(
-        'pve', usedefault=True, argstr='%s', position=-1,
-        desc='the prefix of the generated files')
+        'pve', usedefault=True, argstr='--o %s', position=-1,
+        desc='outstem : output will be oustem.{cortex,subcort_gm,wm,csf}.mgz')
+    
+    reg_file = File(
+        exists=True,
+        argstr='--reg %s',
+        desc='regfile : can be LTA or reg.dat')
+
+    upsample_factor = traits.Int(
+        argstr = '--usf %s',
+        desc='upsample factor (default 2)')
+    regheader = traits.Str(
+        argstr='--regheader %s',
+        desc='subjects')
+    resolution = traits.Int(
+        argstr='--r %s',
+        desc='resolution, sets USF = round(1/res)')
+    seg_file = File(
+        argstr='--seg  %s',
+        desc='use segfile instead of aseg.mgz')
+    white_surf = traits.Str(
+        argstr='--wsurf %s',
+        desc='white surface (default is white)')
+    pial_surf=traits.Str(
+        argstr='--psurf %s',
+        desc='pial surface (default is pial)')
+    no_aseg = traits.Bool(
+        argstr='--no-aseg',
+        desc='do not include aseg (good for testing)')
+    stack_file = File(
+        argstr='--stack %s'
+        desc='put ctx,subcortgm,wm,csf into a single multi-frame file')
+    gm_file = File(
+        argstr='--gm %s'
+        desc='put ctx+subcortgm into a single-frame file')
+    no_fill_csf = traits.Bool(
+        argstr='--no-fill-csf'
+        desc="""do not attempt to fill voxels surrounding seg with the extracerebral CSF segmetation
+     Note: when the fill is done, there is no attempt to actually segment xCSF voxels.
+     The passed segmentation is dilated and the new voxels become xCSF
+     Note: if the passed seg already has the CSF_ExtraCerebral seg, nothing will be done""")
+    dilation = traits.Int(
+        argstr='--dil %d',
+        desc='for xCSF fill, dilate by N (default is 3); use -1 to fill the entire volume')
+    out_seg = File(
+        argstr='--out-seg %s'
+        desc='save seg (after adding xcsf voxels)')
+    ttseg = File(
+        argstr='--ttseg %s',
+        desc='save tissue type segmentation (probably not that useful)')
+    ttset_ctab = File(
+        argstr='--ttseg-ctab %s',
+        desc='save tissue type segmentation ctab (probably not that useful)')
+
+    mgz = traits.Bool(
+        argstr='--mgz'
+        desc='use mgz format (default)')
+    mgh = traits.Bool(
+        argstr='--mgh'
+        desc='use mgh format')
+    nii = traits.Bool(
+        argstr='--nii'
+        desc='use nii format')
+    niigz = traits.Bool(
+        argstr='--nii.gz'
+        desc='use nii.gz format')
+    ttype_head= traits.Bool(
+        argstr='--ttype+head',
+        desc='use default+head instead of default tissue type info for seg')
+
 
 class ComputeVolumeFractionsOutputSpec(TraitedSpec):
     partial_volume_maps = OutputMultiPath(
