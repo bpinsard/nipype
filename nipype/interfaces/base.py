@@ -1589,8 +1589,9 @@ class CommandLine(BaseInterface):
                 out_name = name
                 if trait_spec.output_name is not None:
                     out_name = trait_spec.output_name
-                outputs[out_name] = \
-                    os.path.abspath(self._filename_from_source(name))
+                out_file = self._filename_from_source(name)
+                if isdefined(out_file) and out_file != None:
+                    outputs[out_name] = os.path.abspath(out_file)
             return outputs
 
     def _parse_inputs(self, skip=None):
