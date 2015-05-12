@@ -35,7 +35,7 @@ else:
     nipy_version = nipy.__version__
     from nipy.algorithms.registration.online_preproc import (
         EPIOnlineRealign, EPIOnlineRealignFilter, resample_mat_shape,
-        vertices_normals, NiftiIterator)
+        vertices_normals, NiftiIterator, filenames_to_dicoms)
     from nipy.algorithms.registration.online_dcmstack import DicomStackOnline
     
 
