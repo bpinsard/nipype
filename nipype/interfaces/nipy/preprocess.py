@@ -585,11 +585,13 @@ class SurfaceResamplingBase(BaseInterface):
                 surf_group.create_dataset('TRIANGLES', data=tris)
                 del verts, tris
 
+
         if isdefined(self.inputs.resample_rois):
             for roiset_name,roiset_file,roiset_labels in self.inputs.resample_rois:
-                roiset_labels = dict((k,l) for k,l in np.loadtxt(
-                        roiset_labels, dtype=np.object,
-                        converters = {0:int,1:str}))
+                roiset = np.loadtxt(
+                    roiset_labels, dtype=np.object,
+                    converters = {0:int,1:str})
+                roiset_labels = dict((k,l) for k,l in roiset)
                 rois_group = structs.create_group(roiset_name)
                 rois_group.attrs['ModelType'] = 'VOXELS'
                 rois_group.attrs['ROIsFile'] = roiset_file
@@ -613,7 +615,7 @@ class SurfaceResamplingBase(BaseInterface):
                     rois_txt = np.loadtxt(roiset_file,delimiter=',',skiprows=1)
                     crds = []
                     voxs = []
-                    for k in roiset_labels.keys():
+                    for k in roiset[:,0]:
                         roi_mask = rois_txt[:,-1] == k
                         counts[k] = np.count_nonzero(roi_mask)
                         nvoxs += counts[k]
