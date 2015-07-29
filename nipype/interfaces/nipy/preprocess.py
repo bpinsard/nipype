@@ -646,7 +646,7 @@ class SurfaceResamplingBase(BaseInterface):
         return out_file
 
     def resampler(self, iterator, out_file, dataset_path='FMRI/DATA'):
-        coords = out_file['COORDINATES']      
+        coords = np.asarray(out_file['COORDINATES'])
         nsamples = coords.shape[0]
 
         nslabs = len(self.stack._slabs)
