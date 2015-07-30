@@ -14,6 +14,7 @@ was written to work with FSL version 4.1.4.
 import os
 import os.path as op
 import warnings
+import glob
 
 import numpy as np
 
@@ -471,10 +472,12 @@ class FLIRTInputSpec(FSLCommandInputSpec):
                                    desc='do not use blurring on downsampling')
     rigid2D = traits.Bool(argstr='-2D',
                           desc='use 2D rigid body mode - ignores dof')
-
     save_log = traits.Bool(desc='save to log file')
     verbose = traits.Int(argstr='-verbose %d',
                          desc='verbose mode, 0 is least')
+    bgvalue = traits.Float(0, argstr='-setbackground %f',
+                           desc=('use specified background value for points '
+                                 'outside FOV'))
 
     # BBR options
     wm_seg = File(
@@ -530,10 +533,11 @@ class FLIRT(FSLCommand):
     >>> from nipype.interfaces import fsl
     >>> from nipype.testing import example_data
     >>> flt = fsl.FLIRT(bins=640, cost_func='mutualinfo')
-    >>> flt.inputs.in_file = example_data('structural.nii')
-    >>> flt.inputs.reference = example_data('mni.nii')
+    >>> flt.inputs.in_file = 'structural.nii'
+    >>> flt.inputs.reference = 'mni.nii'
+    >>> flt.inputs.output_type = "NIFTI_GZ"
     >>> flt.cmdline #doctest: +ELLIPSIS
-    'flirt -in .../structural.nii -ref .../mni.nii -out structural_flirt.nii.gz -omat structural_flirt.mat -bins 640 -searchcost mutualinfo'
+    'flirt -in structural.nii -ref mni.nii -out structural_flirt.nii.gz -omat structural_flirt.mat -bins 640 -searchcost mutualinfo'
     >>> res = flt.run() #doctest: +SKIP
 
     """
@@ -678,8 +682,17 @@ class MCFLIRT(FSLCommand):
                                                       '_variance.ext', cwd=cwd)
             outputs['std_img'] = self._gen_fname(outputs['out_file'] +
                                                  '_sigma.ext', cwd=cwd)
+
+        # The mean image created if -stats option is specified ('meanvol')
+        # is missing the top and bottom slices. Therefore we only expose the
+        # mean image created by -meanvol option ('mean_reg') which isn't
+        # corrupted.
+        # Note that the same problem holds for the std and variance image.
+
+        if isdefined(self.inputs.mean_vol) and self.inputs.mean_vol:
             outputs['mean_img'] = self._gen_fname(outputs['out_file'] +
-                                                  '_meanvol.ext', cwd=cwd)
+                                                  '_mean_reg.ext', cwd=cwd)
+
         if isdefined(self.inputs.save_mats) and self.inputs.save_mats:
             _, filename = os.path.split(outputs['out_file'])
             matpathname = os.path.join(cwd, filename + '.mat')
@@ -932,18 +945,18 @@ class FNIRT(FSLCommand):
 
 class ApplyWarpInputSpec(FSLCommandInputSpec):
     in_file = File(exists=True, argstr='--in=%s',
-                   mandatory=True,
+                   mandatory=True, position=0,
                    desc='image to be warped')
-    out_file = File(argstr='--out=%s', genfile=True,
+    out_file = File(argstr='--out=%s', genfile=True, position=2,
                     desc='output filename', hash_files=False)
     ref_file = File(exists=True, argstr='--ref=%s',
-                    mandatory=True,
+                    mandatory=True, position=1,
                     desc='reference image')
     field_file = File(exists=True, argstr='--warp=%s',
                       desc='file containing warp field')
     abswarp = traits.Bool(argstr='--abs', xor=['relwarp'],
                           desc="treat warp field as absolute: x' = w(x)")
-    relwarp = traits.Bool(argstr='--rel', xor=['abswarp'],
+    relwarp = traits.Bool(argstr='--rel', xor=['abswarp'], position=-1,
                           desc="treat warp field as relative: x' = x + w(x)")
     datatype = traits.Enum('char', 'short', 'int', 'float', 'double',
                            argstr='--datatype=%s',
@@ -960,7 +973,7 @@ class ApplyWarpInputSpec(FSLCommandInputSpec):
     mask_file = File(exists=True, argstr='--mask=%s',
                      desc='filename for mask image (in reference space)')
     interp = traits.Enum(
-        'nn', 'trilinear', 'sinc', 'spline', argstr='--interp=%s',
+        'nn', 'trilinear', 'sinc', 'spline', argstr='--interp=%s', position=-2,
         desc='interpolation method')
 
 
@@ -1150,35 +1163,27 @@ class SUSAN(FSLCommand):
 class FUGUEInputSpec(FSLCommandInputSpec):
     in_file = File(exists=True, argstr='--in=%s',
                    desc='filename of input volume')
-    unwarped_file = File(
-        argstr='--unwarp=%s', genfile=True,
-        desc='apply unwarping and save as filename', hash_files=False)
-    forward_warping = traits.Bool(
-        False, usedefault=True,
-        desc='apply forward warping instead of unwarping')
-    warped_file = File(argstr='--warp=%s',
-                       desc='apply forward warping and save as filename',
-                       hash_files=False)
-    phasemap_file = File(exists=True, argstr='--phasemap=%s',
-                         desc='filename for input phase image')
+    shift_in_file = File(exists=True, argstr='--loadshift=%s',
+                         desc='filename for reading pixel shift volume')
+    phasemap_in_file = File(exists=True, argstr='--phasemap=%s',
+                            desc='filename for input phase image')
+    fmap_in_file = File(exists=True, argstr='--loadfmap=%s',
+                        desc='filename for loading fieldmap (rad/s)')
+    unwarped_file = File(argstr='--unwarp=%s', desc='apply unwarping and save as filename',
+                         xor=['warped_file'], requires=['in_file'])
+    warped_file = File(argstr='--warp=%s', desc='apply forward warping and save as filename',
+                       xor=['unwarped_file'], requires=['in_file'])
+
+    forward_warping = traits.Bool(False, usedefault=True,
+                                  desc='apply forward warping instead of unwarping')
+
     dwell_to_asym_ratio = traits.Float(argstr='--dwelltoasym=%.10f',
                                        desc='set the dwell to asym time ratio')
     dwell_time = traits.Float(argstr='--dwell=%.10f',
-                              desc='set the EPI dwell time per phase-encode line - same as echo spacing - (sec)')
+                              desc=('set the EPI dwell time per phase-encode line - same as echo '
+                                    'spacing - (sec)'))
     asym_se_time = traits.Float(argstr='--asym=%.10f',
                                 desc='set the fieldmap asymmetric spin echo time (sec)')
-    fmap_out_file = File(argstr='--savefmap=%s',
-                     desc='filename for saving fieldmap (rad/s)', hash_files=False)
-    fmap_in_file = File(exists=True, argstr='--loadfmap=%s',
-                        desc='filename for loading fieldmap (rad/s)')
-
-    save_shift = traits.Bool(desc='output pixel shift volume')
-
-    shift_out_file = traits.File(argstr='--saveshift=%s',
-                           desc='filename for saving pixel shift volume', hash_files=False)
-
-    shift_in_file = File(exists=True, argstr='--loadshift=%s',
-                         desc='filename for reading pixel shift volume')
     median_2dfilter = traits.Bool(argstr='--median',
                                 desc='apply 2D median filtering')
     despike_2dfilter = traits.Bool(argstr='--despike',
@@ -1197,7 +1202,7 @@ class FUGUEInputSpec(FSLCommandInputSpec):
                                desc='apply Fourier (sinusoidal) fitting of order N')
     pava = traits.Bool(argstr='--pava',
                        desc='apply monotonic enforcement via PAVA')
-    despike_theshold = traits.Float(argstr='--despikethreshold=%s',
+    despike_threshold = traits.Float(argstr='--despikethreshold=%s',
                                     desc='specify the threshold for de-spiking (default=3.0)')
     unwarp_direction = traits.Enum('x', 'y', 'z', 'x-', 'y-', 'z-',
                                    argstr='--unwarpdir=%s',
@@ -1208,16 +1213,24 @@ class FUGUEInputSpec(FSLCommandInputSpec):
                         desc='apply intensity correction to unwarping (pixel shift method only)')
     icorr_only = traits.Bool(argstr='--icorronly', requires=['unwarped_file'],
                              desc='apply intensity correction only')
-    mask_file = File(exists=True, argstr='--mask=%s',
-                     desc='filename for loading valid mask')
-    save_unmasked_fmap = traits.Bool(argstr='--unmaskfmap',
-                                     requires=['fmap_out_file'],
-                                     desc='saves the unmasked fieldmap when using --savefmap')
-    save_unmasked_shift = traits.Bool(argstr='--unmaskshift',
-                                      requires=['shift_out_file'],
+    mask_file = File(exists=True, argstr='--mask=%s', desc='filename for loading valid mask')
+    nokspace = traits.Bool(False, argstr='--nokspace', desc='do not use k-space forward warping')
+
+    # Special outputs: shift (voxel shift map, vsm)
+    save_shift = traits.Bool(False, xor=['save_unmasked_shift'],
+                             desc='write pixel shift volume')
+    shift_out_file = File(argstr='--saveshift=%s', desc='filename for saving pixel shift volume')
+    save_unmasked_shift = traits.Bool(argstr='--unmaskshift', xor=['save_shift'],
                                       desc='saves the unmasked shiftmap when using --saveshift')
-    nokspace = traits.Bool(
-        argstr='--nokspace', desc='do not use k-space forward warping')
+
+    # Special outputs: fieldmap (fmap)
+    save_fmap = traits.Bool(False, xor=['save_unmasked_fmap'],
+                            desc='write field map volume')
+    fmap_out_file = File(argstr='--savefmap=%s', desc='filename for saving fieldmap (rad/s)')
+    save_unmasked_fmap = traits.Bool(False, argstr='--unmaskfmap', xor=['save_fmap'],
+                                     desc='saves the unmasked fieldmap when using --savefmap')
+
+
 
 
 class FUGUEOutputSpec(TraitedSpec):
@@ -1228,12 +1241,64 @@ class FUGUEOutputSpec(TraitedSpec):
 
 
 class FUGUE(FSLCommand):
-    """Use FSL FUGUE to unwarp epi's with fieldmaps
+    """
+    `FUGUE <http://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FUGUE>`_ is, most generally, a set of tools for
+    EPI distortion correction.
+
+    Distortions may be corrected for
+        1. improving registration with non-distorted images (e.g. structurals), or
+        2. dealing with motion-dependent changes.
+
+    FUGUE is designed to deal only with the first case - improving registration.
+
 
     Examples
     --------
 
-    Please insert examples for use of this command
+
+    Unwarping an input image (shift map is known) ::
+
+    >>> from nipype.interfaces.fsl.preprocess import FUGUE
+    >>> fugue = FUGUE()
+    >>> fugue.inputs.in_file = 'epi.nii'
+    >>> fugue.inputs.mask_file = 'epi_mask.nii'
+    >>> fugue.inputs.shift_in_file = 'vsm.nii'  # Previously computed with fugue as well
+    >>> fugue.inputs.unwarp_direction = 'y'
+    >>> fugue.inputs.output_type = "NIFTI_GZ"
+    >>> fugue.cmdline #doctest: +ELLIPSIS
+    'fugue --in=epi.nii --mask=epi_mask.nii --loadshift=vsm.nii --unwarpdir=y --unwarp=epi_unwarped.nii.gz'
+    >>> fugue.run() #doctest: +SKIP
+
+
+    Warping an input image (shift map is known) ::
+
+    >>> from nipype.interfaces.fsl.preprocess import FUGUE
+    >>> fugue = FUGUE()
+    >>> fugue.inputs.in_file = 'epi.nii'
+    >>> fugue.inputs.forward_warping = True
+    >>> fugue.inputs.mask_file = 'epi_mask.nii'
+    >>> fugue.inputs.shift_in_file = 'vsm.nii'  # Previously computed with fugue as well
+    >>> fugue.inputs.unwarp_direction = 'y'
+    >>> fugue.inputs.output_type = "NIFTI_GZ"
+    >>> fugue.cmdline #doctest: +ELLIPSIS
+    'fugue --in=epi.nii --mask=epi_mask.nii --loadshift=vsm.nii --unwarpdir=y --warp=epi_warped.nii.gz'
+    >>> fugue.run() #doctest: +SKIP
+
+
+    Computing the vsm (unwrapped phase map is known) ::
+
+    >>> from nipype.interfaces.fsl.preprocess import FUGUE
+    >>> fugue = FUGUE()
+    >>> fugue.inputs.phasemap_in_file = 'epi_phasediff.nii'
+    >>> fugue.inputs.mask_file = 'epi_mask.nii'
+    >>> fugue.inputs.dwell_to_asym_ratio = (0.77e-3 * 3) / 2.46e-3
+    >>> fugue.inputs.unwarp_direction = 'y'
+    >>> fugue.inputs.save_shift = True
+    >>> fugue.inputs.output_type = "NIFTI_GZ"
+    >>> fugue.cmdline #doctest: +ELLIPSIS
+    'fugue --dwelltoasym=0.9390243902 --mask=epi_mask.nii --phasemap=epi_phasediff.nii --saveshift=epi_phasediff_vsm.nii.gz --unwarpdir=y'
+    >>> fugue.run() #doctest: +SKIP
+
 
     """
 
@@ -1241,62 +1306,86 @@ class FUGUE(FSLCommand):
     input_spec = FUGUEInputSpec
     output_spec = FUGUEOutputSpec
 
-    def __init__(self, **kwargs):
-        super(FUGUE, self).__init__(**kwargs)
-        warn(
-            'This interface has not been fully tested. Please report any failures.')
-
-    def _list_outputs(self):
-        outputs = self._outputs().get()
-        if self.inputs.forward_warping:
-            out_field = 'warped_file'
-        else:
-            out_field = 'unwarped_file'
-
-        out_file = getattr(self.inputs, out_field)
-        if not isdefined(out_file):
-            if isdefined(self.inputs.in_file):
-                out_file = self._gen_fname(self.inputs.in_file,
-                                           suffix='_'+out_field[:-5])
-        if isdefined(out_file):
-            outputs[out_field] = os.path.abspath(out_file)
-        if isdefined(self.inputs.fmap_out_file):
-            outputs['fmap_out_file'] = os.path.abspath(
-                self.inputs.fmap_out_file)
-        if isdefined(self.inputs.shift_out_file):
-            outputs['shift_out_file'] = os.path.abspath(
-                self.inputs.shift_out_file)
-
-        return outputs
-
-    def _gen_filename(self, name):
-        if name == 'unwarped_file' and not self.inputs.forward_warping:
-            return self._list_outputs()['unwarped_file']
-        if name == 'warped_file' and self.inputs.forward_warping:
-            return self._list_outputs()['warped_file']
-        return None
-
     def _parse_inputs(self, skip=None):
         if skip is None:
             skip = []
 
-        if not isdefined(self.inputs.save_shift) or not self.inputs.save_shift:
-            skip += ['shift_out_file']
-        else:
-            if not isdefined(self.inputs.shift_out_file):
-                self.inputs.shift_out_file = self._gen_fname(
-                    self.inputs.in_file, suffix='_vsm')
+        input_phase = isdefined(self.inputs.phasemap_in_file)
+        input_vsm = isdefined(self.inputs.shift_in_file)
+        input_fmap = isdefined(self.inputs.fmap_in_file)
 
-        if self.inputs.forward_warping or not isdefined(self.inputs.in_file):
-            skip += ['unwarped_file']
-            if not isdefined(self.inputs.warped_file):
-                self.inputs.warped_file = self._gen_fname(
-                    self.inputs.in_file, suffix='_warped')
-        if not self.inputs.forward_warping or not isdefined(self.inputs.in_file):
-            skip += ['warped_file']
-            if not isdefined(self.inputs.unwarped_file):
-                self.inputs.unwarped_file = self._gen_fname(
-                    self.inputs.in_file, suffix='_unwarped')
+        if not input_phase and not input_vsm and not input_fmap:
+            raise RuntimeError('Either phasemap_in_file, shift_in_file or fmap_in_file must be set.')
+
+        if not isdefined(self.inputs.in_file):
+            skip += ['unwarped_file', 'warped_file']
+        else:
+            if self.inputs.forward_warping:
+                skip += ['unwarped_file']
+                trait_spec = self.inputs.trait('warped_file')
+                trait_spec.name_template = "%s_warped"
+                trait_spec.name_source = 'in_file'
+                trait_spec.output_name = 'warped_file'
+            else:
+                skip += ['warped_file']
+                trait_spec = self.inputs.trait('unwarped_file')
+                trait_spec.name_template = "%s_unwarped"
+                trait_spec.name_source = 'in_file'
+                trait_spec.output_name = 'unwarped_file'
+
+        # Handle shift output
+        if not isdefined(self.inputs.shift_out_file):
+            vsm_save_masked = (isdefined(self.inputs.save_shift) and self.inputs.save_shift)
+            vsm_save_unmasked = (isdefined(self.inputs.save_unmasked_shift) and
+                                 self.inputs.save_unmasked_shift)
+
+            if (vsm_save_masked or vsm_save_unmasked):
+                trait_spec = self.inputs.trait('shift_out_file')
+                trait_spec.output_name = 'shift_out_file'
+
+                if input_fmap:
+                    trait_spec.name_source = 'fmap_in_file'
+                elif input_phase:
+                    trait_spec.name_source = 'phasemap_in_file'
+                elif input_vsm:
+                    trait_spec.name_source = 'shift_in_file'
+                else:
+                    raise RuntimeError(('Either phasemap_in_file, shift_in_file or '
+                                       'fmap_in_file must be set.'))
+
+                if vsm_save_unmasked:
+                    trait_spec.name_template = '%s_vsm_unmasked'
+                else:
+                    trait_spec.name_template = '%s_vsm'
+            else:
+                skip += ['save_shift', 'save_unmasked_shift', 'shift_out_file']
+
+        # Handle fieldmap output
+        if not isdefined(self.inputs.fmap_out_file):
+            fmap_save_masked = (isdefined(self.inputs.save_fmap) and self.inputs.save_fmap)
+            fmap_save_unmasked = (isdefined(self.inputs.save_unmasked_fmap) and
+                                 self.inputs.save_unmasked_fmap)
+
+            if (fmap_save_masked or fmap_save_unmasked):
+                trait_spec = self.inputs.trait('fmap_out_file')
+                trait_spec.output_name = 'fmap_out_file'
+
+                if input_vsm:
+                    trait_spec.name_source = 'shift_in_file'
+                elif input_phase:
+                    trait_spec.name_source = 'phasemap_in_file'
+                elif input_fmap:
+                    trait_spec.name_source = 'fmap_in_file'
+                else:
+                    raise RuntimeError(('Either phasemap_in_file, shift_in_file or '
+                                       'fmap_in_file must be set.'))
+
+                if fmap_save_unmasked:
+                    trait_spec.name_template = '%s_fieldmap_unmasked'
+                else:
+                    trait_spec.name_template = '%s_fieldmap'
+            else:
+                skip += ['save_fmap', 'save_unmasked_fmap', 'fmap_out_file']
 
         return super(FUGUE, self)._parse_inputs(skip=skip)
 
@@ -1387,52 +1476,59 @@ class PRELUDE(FSLCommand):
 
 
 class FIRSTInputSpec(FSLCommandInputSpec):
-    in_file = File(exists=True, mandatory=True, position=-2,
-                  argstr='-i %s',
-                  desc='input data file')
-    out_file = File('segmented', usedefault=True, mandatory=True, position=-1,
-                  argstr='-o %s',
-                  desc='output data file', hash_files=False)
+    in_file = File(
+        exists=True, mandatory=True, position=-2, copyfile=False,
+        argstr='-i %s', desc='input data file')
+    out_file = File(
+        'segmented', usedefault=True, mandatory=True, position=-1,
+        argstr='-o %s', desc='output data file', hash_files=False)
     verbose = traits.Bool(argstr='-v', position=1,
-        desc="Use verbose logging.")
-    brain_extracted = traits.Bool(argstr='-b', position=2,
+                          desc="Use verbose logging.")
+    brain_extracted = traits.Bool(
+        argstr='-b', position=2,
         desc="Input structural image is already brain-extracted")
-    no_cleanup = traits.Bool(argstr='-d', position=3,
+    no_cleanup = traits.Bool(
+        argstr='-d', position=3,
         desc="Input structural image is already brain-extracted")
-    method = traits.Enum('auto', 'fast', 'none',
-                         xor=['method_as_numerical_threshold'],
-                         argstr='-m', position=4,
+    method = traits.Enum(
+        'auto', 'fast', 'none', xor=['method_as_numerical_threshold'],
+        argstr='-m %s', position=4, usedefault=True,
         desc=("Method must be one of auto, fast, none, or it can be entered "
               "using the 'method_as_numerical_threshold' input"))
-    method_as_numerical_threshold = traits.Float(argstr='-m', position=4,
+    method_as_numerical_threshold = traits.Float(
+        argstr='-m %.4f', position=4,
         desc=("Specify a numerical threshold value or use the 'method' input "
               "to choose auto, fast, or none"))
-    list_of_specific_structures = traits.List(traits.Str, argstr='-s %s',
-                                              sep=',', position=5, minlen=1,
+    list_of_specific_structures = traits.List(
+        traits.Str, argstr='-s %s', sep=',', position=5, minlen=1,
         desc='Runs only on the specified structures (e.g. L_Hipp, R_Hipp'
-                          'L_Accu, R_Accu, L_Amyg, R_Amyg'
-                          'L_Caud, R_Caud, L_Pall, R_Pall'
-                          'L_Puta, R_Puta, L_Thal, R_Thal, BrStem')
-    affine_file = File(exists=True, position=6,
-                  argstr='-a %s',
-                  desc=('Affine matrix to use (e.g. img2std.mat) (does not '
-                        're-run registration)'))
+             'L_Accu, R_Accu, L_Amyg, R_Amyg'
+             'L_Caud, R_Caud, L_Pall, R_Pall'
+             'L_Puta, R_Puta, L_Thal, R_Thal, BrStem')
+    affine_file = File(
+        exists=True, position=6, argstr='-a %s',
+        desc=('Affine matrix to use (e.g. img2std.mat) (does not '
+              're-run registration)'))
 
 
 class FIRSTOutputSpec(TraitedSpec):
-    vtk_surfaces = OutputMultiPath(File(exists=True),
-          desc='VTK format meshes for each subcortical region')
-    bvars = OutputMultiPath(File(exists=True),
-          desc='bvars for each subcortical region')
-    original_segmentations = File(exists=True,
-          desc=('3D image file containing the segmented regions as integer '
-                'values. Uses CMA labelling'))
-    segmentation_file = File(exists=True,
-          desc='4D image file containing a single volume per segmented region')
+    vtk_surfaces = OutputMultiPath(
+        File(exists=True),
+        desc='VTK format meshes for each subcortical region')
+    bvars = OutputMultiPath(
+        File(exists=True),
+        desc='bvars for each subcortical region')
+    original_segmentations = File(
+        exists=True, desc=('3D image file containing the segmented regions '
+                           'as integer values. Uses CMA labelling'))
+    segmentation_file = File(
+        exists=True, desc=('4D image file containing a single volume per '
+                           'segmented region'))
 
 
 class FIRST(FSLCommand):
-    """Use FSL's run_first_all command to segment subcortical volumes
+    """
+    Use FSL's run_first_all command to segment subcortical volumes
 
     http://www.fmrib.ox.ac.uk/fsl/first/index.html
 
@@ -1466,7 +1562,7 @@ class FIRST(FSLCommand):
                           'L_Thal', 'R_Thal',
                           'BrStem']
         outputs['original_segmentations'] = \
-                                      self._gen_fname('original_segmentations')
+            self._gen_fname('original_segmentations')
         outputs['segmentation_file'] = self._gen_fname('segmentation_file')
         outputs['vtk_surfaces'] = self._gen_mesh_names('vtk_surfaces',
                                                        structures)
@@ -1475,10 +1571,20 @@ class FIRST(FSLCommand):
 
     def _gen_fname(self, name):
         path, outname, ext = split_filename(self.inputs.out_file)
+
+        method = 'none'
+        if isdefined(self.inputs.method) and self.inputs.method == 'fast':
+            method = 'fast'
+
+        if isdefined(self.inputs.method_as_numerical_threshold):
+            thres = '%.4f' % self.inputs.method_as_numerical_threshold
+            method = thres.replace('.', '')
+
         if name == 'original_segmentations':
-            return op.abspath(outname + '_all_fast_origsegs.nii.gz')
+            return op.abspath('%s_all_%s_origsegs.nii.gz' % (outname, method))
         if name == 'segmentation_file':
-            return op.abspath(outname + '_all_fast_firstseg.nii.gz')
+            return op.abspath('%s_all_%s_firstseg.nii.gz' % (outname, method))
+
         return None
 
     def _gen_mesh_names(self, name, structures):
@@ -1487,12 +1593,12 @@ class FIRST(FSLCommand):
             vtks = list()
             for struct in structures:
                 vtk = prefix + '-' + struct + '_first.vtk'
-            vtks.append(op.abspath(vtk))
+                vtks.append(op.abspath(vtk))
             return vtks
         if name == 'bvars':
             bvars = list()
             for struct in structures:
                 bvar = prefix + '-' + struct + '_first.bvars'
-            bvars.append(op.abspath(bvar))
+                bvars.append(op.abspath(bvar))
             return bvars
         return None

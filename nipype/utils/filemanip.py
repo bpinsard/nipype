@@ -7,6 +7,7 @@
 import cPickle
 from glob import glob
 import gzip
+import hashlib
 from hashlib import md5
 import json
 import os
@@ -17,6 +18,7 @@ import numpy as np
 
 from ..interfaces.traits_extension import isdefined
 from .misc import is_container
+from .config import mkdir_p
 
 from .. import logging, config
 fmlogger = logging.getLogger("filemanip")
@@ -60,10 +62,8 @@ def split_filename(fname):
 
     special_extensions = [".nii.gz", ".tar.gz"]
 
-    if fname and fname.endswith(os.path.sep):
-        fname = fname[:-1]
-
-    pth, fname = os.path.split(fname)
+    pth = os.path.dirname(fname)
+    fname = os.path.basename(fname)
 
     ext = None
     for special_ext in special_extensions:
@@ -144,20 +144,20 @@ def check_forhash(filename):
         return False, None
 
 
-def hash_infile(afile, chunk_len=8192):
-    """ Computes md5 hash of a file"""
-    md5hex = None
+def hash_infile(afile, chunk_len=8192, crypto=hashlib.md5):
+    """ Computes hash of a file using 'crypto' module"""
+    hex = None
     if os.path.isfile(afile):
-        md5obj = md5()
+        crypto_obj = crypto()
         fp = file(afile, 'rb')
         while True:
             data = fp.read(chunk_len)
             if not data:
                 break
-            md5obj.update(data)
+            crypto_obj.update(data)
         fp.close()
-        md5hex = md5obj.hexdigest()
-    return md5hex
+        hex = crypto_obj.hexdigest()
+    return hex
 
 
 def hash_timestamp(afile):
@@ -257,8 +257,8 @@ def copyfile(originalfile, newfile, copy=False, create_new=False,
             copyfile(matofile, matnfile, copy)
         copyfile(hdrofile, hdrnfile, copy)
     elif originalfile.endswith(".BRIK"):
-        hdrofile = originalfile[:-4] + ".HEAD"
-        hdrnfile = newfile[:-4] + ".HEAD"
+        hdrofile = originalfile[:-5] + ".HEAD"
+        hdrnfile = newfile[:-5] + ".HEAD"
         copyfile(hdrofile, hdrnfile, copy)
 
     return newfile
@@ -377,30 +377,21 @@ def load_json(filename):
     fp.close()
     return data
 
-
-def loadflat(infile, *args):
-    """Load an npz file into a dict
-    """
-    data = np.load(infile)
-    out = {}
-    if args:
-        outargs = np.setdiff1d(args, data.files)
-        if outargs:
-            raise IOError('File does not contain variables: '+str(outargs))
-    for k in data.files:
-        if k in args or not args:
-            out[k] = [f for f in data[k].flat]
-            if len(out[k]) == 1:
-                out[k] = out[k].pop()
-    return out
-
-
 def loadcrash(infile, *args):
     if '.pkl' in infile:
         return loadpkl(infile)
+    elif '.npz' in infile:
+        DeprecationWarning(('npz files will be deprecated in the next '
+                            'release. you can use numpy to open them.'))
+        data = np.load(infile)
+        out = {}
+        for k in data.files:
+            out[k] = [f for f in data[k].flat]
+            if len(out[k]) == 1:
+                out[k] = out[k].pop()
+        return out
     else:
-        return loadflat(infile, *args)
-
+        raise ValueError('Only pickled crashfiles are supported')
 
 def loadpkl(infile):
     """Load a zipped or plain cPickled file
