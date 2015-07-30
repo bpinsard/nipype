@@ -23,15 +23,15 @@ def test_GenerateDirections_inputs():
     ),
     out_file=dict(argstr='%s',
     hash_files=False,
+    name_source=['num_dirs'],
+    name_template='directions_%d.txt',
     position=-1,
-    usedefault=True,
     ),
     power=dict(argstr='-power %s',
     ),
     quiet_display=dict(argstr='-quiet',
     ),
-    terminal_output=dict(mandatory=True,
-    nohash=True,
+    terminal_output=dict(nohash=True,
     ),
     )
     inputs = GenerateDirections.input_spec()

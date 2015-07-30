@@ -7,10 +7,13 @@ def test_DcmStack_inputs():
     ),
     embed_meta=dict(),
     exclude_regexes=dict(),
+    force_read=dict(usedefault=True,
+    ),
     include_regexes=dict(),
     out_ext=dict(usedefault=True,
     ),
     out_format=dict(),
+    out_path=dict(),
     )
     inputs = DcmStack.input_spec()
 

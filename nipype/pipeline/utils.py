@@ -7,27 +7,24 @@ from copy import deepcopy
 from glob import glob
 from collections import defaultdict
 import os
-import pwd
 import re
-from uuid import uuid1
 
 import numpy as np
 from nipype.utils.misc import package_check
+from nipype.external import six
 
 package_check('networkx', '1.3')
-from socket import gethostname
 
 import networkx as nx
 
 from ..utils.filemanip import (fname_presuffix, FileNotFoundError,
                                filename_to_list, get_related_files)
 from ..utils.misc import create_function_from_source, str2bool
-from ..interfaces.base import (CommandLine, isdefined, Undefined, Bunch,
+from ..interfaces.base import (CommandLine, isdefined, Undefined,
                                InterfaceResult)
 from ..interfaces.utility import IdentityInterface
 from ..utils.provenance import ProvStore, pm, nipype_ns, get_id
 
-from .. import get_info
 from .. import logging, config
 logger = logging.getLogger('workflow')
 
@@ -103,7 +100,7 @@ def modify_paths(object, relative=True, basedir=None):
             out = tuple(out)
     else:
         if isdefined(object):
-            if isinstance(object, str) and os.path.isfile(object):
+            if isinstance(object, six.string_types) and os.path.isfile(object):
                 if relative:
                     if config.getboolean('execution', 'use_relative_paths'):
                         out = relpath(object, start=basedir)
@@ -186,7 +183,7 @@ def _write_detailed_dot(graph, dotfilename):
         inports = []
         for u, v, d in graph.in_edges_iter(nbunch=n, data=True):
             for cd in d['connect']:
-                if isinstance(cd[0], str):
+                if isinstance(cd[0], six.string_types):
                     outport = cd[0]
                 else:
                     outport = cd[0][0]
@@ -206,7 +203,7 @@ def _write_detailed_dot(graph, dotfilename):
         outports = []
         for u, v, d in graph.out_edges_iter(nbunch=n, data=True):
             for cd in d['connect']:
-                if isinstance(cd[0], str):
+                if isinstance(cd[0], six.string_types):
                     outport = cd[0]
                 else:
                     outport = cd[0][0]
@@ -607,7 +604,7 @@ def generate_expanded_graph(graph_in):
             # the itersource is a (node name, fields) tuple
             src_name, src_fields = inode.itersource
             # convert a single field to a list
-            if isinstance(src_fields, str):
+            if isinstance(src_fields, six.string_types):
                 src_fields = [src_fields]
             # find the unique iterable source node in the graph
             try:
@@ -789,7 +786,7 @@ def _standardize_iterables(node):
     if node.synchronize:
         if len(iterables) == 2:
             first, last = iterables
-            if all((isinstance(item, str) and item in fields
+            if all((isinstance(item, six.string_types) and item in fields
                     for item in first)):
                 iterables = _transpose_iterables(first, last)
 
@@ -919,7 +916,7 @@ def export_graph(graph_in, base_dir=None, show=False, use_execgraph=False,
 
 
 def format_dot(dotfilename, format=None):
-    cmd = 'dot -T%s -O %s' % (format, dotfilename)
+    cmd = 'dot -T%s -O \'%s\'' % (format, dotfilename)
     CommandLine(cmd).run()
     logger.info('Converting dotfile: %s to %s format' % (dotfilename, format))
 
@@ -961,7 +958,7 @@ def walk_outputs(object):
             if isdefined(val):
                 out.extend(walk_outputs(val))
     else:
-        if isdefined(object) and isinstance(object, basestring):
+        if isdefined(object) and isinstance(object, six.string_types):
             if os.path.islink(object) or os.path.isfile(object):
                 out = [(filename, 'f') for filename in get_all_files(object)]
             elif os.path.isdir(object):
@@ -1100,11 +1097,12 @@ def write_workflow_prov(graph, filename=None, format='turtle'):
                 subresult = InterfaceResult(result.interface[idx],
                                             runtime, outputs={})
                 if result.inputs:
-                    subresult.inputs = result.inputs[idx]
+                    if idx < len(result.inputs):
+                        subresult.inputs = result.inputs[idx]
                 if result.outputs:
                     for key, value in result.outputs.items():
                         values = getattr(result.outputs, key)
-                        if isdefined(values):
+                        if isdefined(values) and idx < len(values):
                             subresult.outputs[key] = values[idx]
                 sub_bundle = ProvStore().add_results(subresult)
                 ps.g = merge_bundles(ps.g, sub_bundle)
@@ -1137,7 +1135,9 @@ def write_workflow_prov(graph, filename=None, format='turtle'):
                 pm.json.dump(ps.g, fp, cls=pm.ProvBundle.JSONEncoder)
     return ps.g
 
-def topological_sort(graph, depth_first=True):
+def topological_sort(graph, depth_first=False):
+    """Returns a depth first sorted order if depth_first is True
+    """
     nodesort = nx.topological_sort(graph)
     if not depth_first:
         return nodesort, None
