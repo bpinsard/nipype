@@ -711,7 +711,7 @@ class SurfaceResamplingBase(BaseInterface):
                     mat, shape = resample_mat_shape(
                         mask.get_affine(), mask.shape, voxel_size)
                     vol_coords = nb.affines.apply_affine(
-                        np.linalg.inv(mask.get_affine()),
+                        np.linalg.inv(mask.get_affine()).dot(mat),
                         np.rollaxis(np.mgrid[[slice(0,d) for d in shape]],0,4))
                     resam_mask = map_coordinates(
                         mask.get_data(), vol_coords.reshape(-1,3).T,
