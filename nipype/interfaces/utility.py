@@ -505,7 +505,7 @@ class LoadResults(IOBase):
         return base
 
     def _run_interface(self, runtime):
-        self._outs = loadpkl(self.inputs.result_file).outputs.get()
+        self._outs = loadpkl(self.inputs.result_file).outputs
         return runtime
 
     def _list_outputs(self):
