@@ -604,12 +604,14 @@ class ReconAllInputSpec(CommandLineInputSpec):
                               desc='name of T1 file to process')
     T2_file = File(exists=True, argstr="-T2 %s", min_ver='5.3.0',
                    desc='Use a T2 image to refine the cortical surface')
-    openmp = traits.Int(argstr="-openmp %d",
+    openmp = traits.Int(argstr="-openmp %d", hash_files=False,
                         desc="Number of processors to use in parallel")
+    use_gpu = traits.Bool(argstr='-use-gpu', hash_files=False,
+                          desc='use GPU versions of mri_em_register, mri_ca_register, mris_inflate and mris_sphere')
     subjects_dir = Directory(exists=True, argstr='-sd %s', hash_files=False,
                              desc='path to subjects directory', genfile=True)
     flags = traits.Str(argstr='%s', desc='additional parameters')
-
+    
 
 class ReconAllIOutputSpec(FreeSurferSource.output_spec):
     subjects_dir = Directory(exists=True, desc='Freesurfer subjects directory.')
