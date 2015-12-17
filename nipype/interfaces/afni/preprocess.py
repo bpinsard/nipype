@@ -14,17 +14,14 @@ import os
 import re
 import numpy as np
 
+from .base import AFNICommand, AFNICommandInputSpec, AFNICommandOutputSpec
+from ..base import CommandLineInputSpec, CommandLine, OutputMultiPath
 from ..base import (Directory, TraitedSpec,
                     traits, isdefined, File, InputMultiPath, Undefined)
 from ...utils.filemanip import (load_json, save_json, split_filename)
-from nipype.utils.filemanip import fname_presuffix
-from .base import AFNICommand, AFNICommandInputSpec,\
-    AFNICommandOutputSpec
-from nipype.interfaces.base import CommandLineInputSpec, CommandLine,\
-    OutputMultiPath
+from ...utils.filemanip import fname_presuffix
 
 warn = warnings.warn
-warnings.filterwarnings('always', category=UserWarning)
 
 
 class To3DInputSpec(AFNICommandInputSpec):
@@ -114,7 +111,7 @@ class TShiftInputSpec(AFNICommandInputSpec):
                          ' default = Fourier', argstr='-%s')
 
     tpattern = traits.Str(desc='use specified slice time pattern rather than one in header',
-                                    argstr='-tpattern %s')
+                          argstr='-tpattern %s')
 
     rlt = traits.Bool(desc='Before shifting, remove the mean and linear trend',
                       argstr="-rlt")
@@ -172,6 +169,20 @@ class RefitInputSpec(CommandLineInputSpec):
                          argstr='-yorigin %s')
     zorigin = traits.Str(desc='z distance for edge voxel offset',
                          argstr='-zorigin %s')
+
+    xdel = traits.Float(desc='new x voxel dimension in mm',
+                        argstr='-xdel %f')
+
+    ydel = traits.Float(desc='new y voxel dimension in mm',
+                        argstr='-ydel %f')
+
+    zdel = traits.Float(desc='new z voxel dimension in mm',
+                        argstr='-zdel %f')
+
+    space = traits.Enum('TLRC', 'MNI', 'ORIG',
+                        argstr='-space %s',
+                        desc='Associates the dataset with a specific' +
+                        ' template type, e.g. TLRC, MNI, ORIG')
 
 
 class Refit(CommandLine):
@@ -237,6 +248,9 @@ class WarpInputSpec(AFNICommandInputSpec):
                    argstr="-gridset %s",
                    exists=True)
 
+    newgrid = traits.Float(desc="specify grid of this size (mm)",
+                           argstr="-newgrid %f")
+
     zpad = traits.Int(desc="pad input dataset with N planes" +
                       " of zero on all sides.",
                       argstr="-zpad %d")
@@ -259,7 +273,13 @@ class Warp(AFNICommand):
     >>> warp.inputs.out_file = "trans.nii.gz"
     >>> warp.cmdline
     '3dWarp -deoblique -prefix trans.nii.gz structural.nii'
-    >>> res = warp.run() # doctest: +SKIP
+
+    >>> warp_2 = afni.Warp()
+    >>> warp_2.inputs.in_file = 'structural.nii'
+    >>> warp_2.inputs.newgrid = 1.0
+    >>> warp_2.inputs.out_file = "trans.nii.gz"
+    >>> warp_2.cmdline
+    '3dWarp -newgrid 1.000000 -prefix trans.nii.gz structural.nii'
 
     """
 
@@ -579,8 +599,8 @@ class VolregInputSpec(AFNICommandInputSpec):
                       argstr='-zpad %d',
                       position=-5)
     md1d_file = File(name_template='%s_md.1D', desc='max displacement output file',
-                    argstr='-maxdisp1D %s', name_source="in_file",
-                    keep_extension=True, position=-4)
+                     argstr='-maxdisp1D %s', name_source="in_file",
+                     keep_extension=True, position=-4)
     oned_file = File(name_template='%s.1D', desc='1D movement parameters output file',
                      argstr='-1Dfile %s',
                      name_source="in_file",
@@ -681,7 +701,7 @@ class CopyInputSpec(AFNICommandInputSpec):
                    exists=True,
                    copyfile=False)
     out_file = File(name_template="%s_copy", desc='output image file name',
-                    argstr='-prefix %s', name_source="in_file")
+                    argstr='%s', position=-1, name_source="in_file")
 
 
 class Copy(AFNICommand):
@@ -696,11 +716,26 @@ class Copy(AFNICommand):
     ========
 
     >>> from nipype.interfaces import afni as afni
-    >>> copy = afni.Copy()
-    >>> copy.inputs.in_file = 'functional.nii'
-    >>> copy.inputs.out_file = 'new_func.nii'
-    >>> res = copy.run() # doctest: +SKIP
+    >>> copy3d = afni.Copy()
+    >>> copy3d.inputs.in_file = 'functional.nii'
+    >>> copy3d.cmdline
+    '3dcopy functional.nii functional_copy'
 
+    >>> from copy import deepcopy
+    >>> copy3d_2 = deepcopy(copy3d)
+    >>> copy3d_2.inputs.outputtype = 'NIFTI'
+    >>> copy3d_2.cmdline
+    '3dcopy functional.nii functional_copy.nii'
+
+    >>> copy3d_3 = deepcopy(copy3d)
+    >>> copy3d_3.inputs.outputtype = 'NIFTI_GZ'
+    >>> copy3d_3.cmdline
+    '3dcopy functional.nii functional_copy.nii.gz'
+
+    >>> copy3d_4 = deepcopy(copy3d)
+    >>> copy3d_4.inputs.out_file = 'new_func.nii'
+    >>> copy3d_4.cmdline
+    '3dcopy functional.nii new_func.nii'
     """
 
     _cmd = '3dcopy'
@@ -1131,7 +1166,7 @@ class Allineate(AFNICommand):
         outputs = self.output_spec().get()
         if not isdefined(self.inputs.out_file):
             outputs['out_file'] = self._gen_filename(self.inputs.in_file,
-                                                  suffix=self.inputs.suffix)
+                                                     suffix=self.inputs.suffix)
         else:
             outputs['out_file'] = os.path.abspath(self.inputs.out_file)
         return outputs
@@ -1217,6 +1252,7 @@ class SkullStrip(AFNICommand):
 
     """
     _cmd = '3dSkullStrip'
+    _redirect_x = True
     input_spec = SkullStripInputSpec
     output_spec = AFNICommandOutputSpec
 
@@ -1358,48 +1394,47 @@ class TCorrelate(AFNICommand):
 
 
 class TCorr1DInputSpec(AFNICommandInputSpec):
-    xset = File(desc = '3d+time dataset input',
-                  argstr = ' %s',
-                  position = -2,
-                  mandatory = True,
-                  exists = True,
-                  copyfile=False)
-    y_1d = File(desc = '1D time series file input',
-                   argstr = ' %s',
-                   position = -1,
-                   mandatory = True,
-                   exists = True)
-    out_file = File(desc = 'output filename prefix',
-                   name_template='%s_correlation.nii.gz',
-                   argstr = '-prefix %s',
-                   name_source = 'xset',
-                   keep_extension = True)
+    xset = File(desc='3d+time dataset input',
+                argstr=' %s',
+                position=-2,
+                mandatory=True,
+                exists=True,
+                copyfile=False)
+    y_1d = File(desc='1D time series file input',
+                argstr=' %s',
+                position=-1,
+                mandatory=True,
+                exists=True)
+    out_file = File(desc='output filename prefix',
+                    name_template='%s_correlation.nii.gz',
+                    argstr='-prefix %s',
+                    name_source='xset',
+                    keep_extension=True)
     pearson = traits.Bool(desc='Correlation is the normal' +
-                   ' Pearson correlation coefficient',
-                   argstr=' -pearson',
-                   xor=['spearman','quadrant','ktaub'],
-                   position=1)
+                          ' Pearson correlation coefficient',
+                          argstr=' -pearson',
+                          xor=['spearman', 'quadrant', 'ktaub'],
+                          position=1)
     spearman = traits.Bool(desc='Correlation is the' +
-                   ' Spearman (rank) correlation coefficient',
-                   argstr=' -spearman',
-                   xor=['pearson','quadrant','ktaub'],
-                   position=1)
+                           ' Spearman (rank) correlation coefficient',
+                           argstr=' -spearman',
+                           xor=['pearson', 'quadrant', 'ktaub'],
+                           position=1)
     quadrant = traits.Bool(desc='Correlation is the' +
-                   ' quadrant correlation coefficient',
-                   argstr=' -quadrant',
-                   xor=['pearson','spearman','ktaub'],
-                   position=1)
+                           ' quadrant correlation coefficient',
+                           argstr=' -quadrant',
+                           xor=['pearson', 'spearman', 'ktaub'],
+                           position=1)
     ktaub = traits.Bool(desc='Correlation is the' +
-                   ' Kendall\'s tau_b correlation coefficient',
-                   argstr=' -ktaub',
-                   xor=['pearson','spearman','quadrant'],
-                   position=1)
-
+                        ' Kendall\'s tau_b correlation coefficient',
+                        argstr=' -ktaub',
+                        xor=['pearson', 'spearman', 'quadrant'],
+                        position=1)
 
 
 class TCorr1DOutputSpec(TraitedSpec):
-    out_file = File(desc = 'output file containing correlations',
-                    exists = True)
+    out_file = File(desc='output file containing correlations',
+                    exists=True)
 
 
 class TCorr1D(AFNICommand):
@@ -1526,7 +1561,7 @@ class ROIStatsInputSpec(CommandLineInputSpec):
 
 
 class ROIStatsOutputSpec(TraitedSpec):
-    stats =  File(desc='output tab separated values file', exists=True)
+    stats = File(desc='output tab separated values file', exists=True)
 
 
 class ROIStats(CommandLine):
@@ -1846,7 +1881,7 @@ class Autobox(AFNICommand):
             m = re.search(pattern, line)
             if m:
                 d = m.groupdict()
-                for k in d.keys():
+                for k in list(d.keys()):
                     d[k] = int(d[k])
                 outputs.set(**d)
         outputs.set(out_file=self._gen_filename('out_file'))
@@ -1931,11 +1966,11 @@ class Retroicor(AFNICommand):
 
 class AFNItoNIFTIInputSpec(AFNICommandInputSpec):
     in_file = File(desc='input file to 3dAFNItoNIFTI',
-        argstr='%s',
-        position=-1,
-        mandatory=True,
-        exists=True,
-        copyfile=False)
+                   argstr='%s',
+                   position=-1,
+                   mandatory=True,
+                   exists=True,
+                   copyfile=False)
     out_file = File(name_template="%s.nii", desc='output image file name',
                     argstr='-prefix %s', name_source="in_file")
     hash_files = False
@@ -1973,6 +2008,7 @@ class AFNItoNIFTI(AFNICommand):
     def _gen_filename(self, name):
         return os.path.abspath(super(AFNItoNIFTI, self)._gen_filename(name))
 
+
 class EvalInputSpec(AFNICommandInputSpec):
     in_file_a = File(desc='input file to 1deval',
                      argstr='-a %s', position=0, mandatory=True, exists=True)
@@ -1983,7 +2019,7 @@ class EvalInputSpec(AFNICommandInputSpec):
     out_file = File(name_template="%s_calc", desc='output image file name',
                     argstr='-prefix %s', name_source="in_file_a")
     out1D = traits.Bool(desc="output in 1D",
-                    argstr='-1D')
+                        argstr='-1D')
     expr = traits.Str(desc='expr', argstr='-expr "%s"', position=3,
                       mandatory=True)
     start_idx = traits.Int(desc='start index for in_file_a',
@@ -1992,6 +2028,7 @@ class EvalInputSpec(AFNICommandInputSpec):
                           requires=['start_idx'])
     single_idx = traits.Int(desc='volume index for in_file_a')
     other = File(desc='other options', argstr='')
+
 
 class Eval(AFNICommand):
     """Evaluates an expression that may include columns of data from one or more text files
@@ -2034,16 +2071,17 @@ class Eval(AFNICommand):
         return super(Eval, self)._parse_inputs(
             skip=('start_idx', 'stop_idx', 'out1D', 'other'))
 
+
 class MeansInputSpec(AFNICommandInputSpec):
     in_file_a = File(desc='input file to 3dMean',
-        argstr='%s',
-        position=0,
-        mandatory=True,
-        exists=True)
+                     argstr='%s',
+                     position=0,
+                     mandatory=True,
+                     exists=True)
     in_file_b = File(desc='another input file to 3dMean',
-        argstr='%s',
-        position=1,
-        exists=True)
+                     argstr='%s',
+                     position=1,
+                     exists=True)
     out_file = File(name_template="%s_mean", desc='output image file name',
                     argstr='-prefix %s', name_source="in_file_a")
     scale = traits.Str(desc='scaling of output', argstr='-%sscale')
@@ -2054,6 +2092,7 @@ class MeansInputSpec(AFNICommandInputSpec):
     count = traits.Bool(desc='compute count of non-zero voxels', argstr='-count')
     mask_inter = traits.Bool(desc='create intersection mask', argstr='-mask_inter')
     mask_union = traits.Bool(desc='create union mask', argstr='-mask_union')
+
 
 class Means(AFNICommand):
     """Takes the voxel-by-voxel mean of all input datasets using 3dMean
