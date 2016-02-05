@@ -619,7 +619,7 @@ class ReconAllInputSpec(CommandLineInputSpec):
     subjects_dir = Directory(exists=True, argstr='-sd %s', hash_files=False,
                              desc='path to subjects directory', genfile=True)
     flags = traits.Str(argstr='%s', desc='additional parameters')
-    
+
 
 class ReconAllIOutputSpec(FreeSurferSource.output_spec):
     subjects_dir = Directory(exists=True, desc='Freesurfer subjects directory.')
