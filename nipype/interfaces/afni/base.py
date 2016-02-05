@@ -1,4 +1,4 @@
- # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
+# emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """Provide interface to AFNI commands."""
 
@@ -185,9 +185,7 @@ class AFNICommand(CommandLine):
                         outputs[name] = outputs[name] + "+orig.BRIK"
         return outputs
 
-    def _filename_from_source(self, name):
-        return os.path.abspath(super(AFNICommand,self)._filename_from_source(name))
-            
+
 def no_afni():
     """ Checks if AFNI is available """
     if Info.version() is None:
