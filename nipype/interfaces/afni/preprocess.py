@@ -51,7 +51,6 @@ class To3DInputSpec(AFNICommandInputSpec):
 
 
 class To3D(AFNICommand):
-
     """Create a 3D dataset from 2D image files using AFNI to3d command
 
     For complete details, see the `to3d Documentation
@@ -120,7 +119,6 @@ class TShiftInputSpec(AFNICommandInputSpec):
 
 
 class TShift(AFNICommand):
-
     """Shifts voxel time series from input
     so that seperate slices are aligned to the same
     temporal origin
@@ -183,7 +181,6 @@ class RefitInputSpec(CommandLineInputSpec):
 
 
 class Refit(CommandLine):
-
     """Changes some of the information inside a 3D dataset's header
 
     For complete details, see the `3drefit Documentation.
@@ -254,7 +251,6 @@ class WarpInputSpec(AFNICommandInputSpec):
 
 
 class Warp(AFNICommand):
-
     """Use 3dWarp for spatially transforming a dataset
 
     For complete details, see the `3dWarp Documentation.
@@ -313,7 +309,6 @@ class ResampleInputSpec(AFNICommandInputSpec):
 
 
 class Resample(AFNICommand):
-
     """Resample or reorient an image using AFNI 3dresample command
 
     For complete details, see the `3dresample Documentation.
@@ -361,13 +356,11 @@ class AutoTcorrelateInputSpec(AFNICommandInputSpec):
                        argstr="-mask_source %s",
                        xor=['mask_only_targets'])
 
-    out_file = File(
-        name_template="%s_similarity_matrix.1D", desc='output image file name',
-        argstr='-prefix %s', name_source="in_file")
+    out_file = File(name_template="%s_similarity_matrix.1D", desc='output image file name',
+                    argstr='-prefix %s', name_source="in_file")
 
 
 class AutoTcorrelate(AFNICommand):
-
     """Computes the correlation coefficient between the time series of each
     pair of voxels in the input dataset, and stores the output into a
     new anatomical bucket dataset [scaled to shorts to save memory space].
@@ -416,7 +409,6 @@ class TStatInputSpec(AFNICommandInputSpec):
 
 
 class TStat(AFNICommand):
-
     """Compute voxel-wise statistics using AFNI 3dTstat command
 
     For complete details, see the `3dTstat Documentation.
@@ -454,7 +446,6 @@ class DetrendInputSpec(AFNICommandInputSpec):
 
 
 class Detrend(AFNICommand):
-
     """This program removes components from voxel time series using
     linear least squares
 
@@ -493,7 +484,6 @@ class DespikeInputSpec(AFNICommandInputSpec):
 
 
 class Despike(AFNICommand):
-
     """Removes 'spikes' from the 3D+time input dataset
 
     For complete details, see the `3dDespike Documentation.
@@ -552,7 +542,6 @@ class AutomaskOutputSpec(TraitedSpec):
 
 
 class Automask(AFNICommand):
-
     """Create a brain-only mask of the image using AFNI 3dAutomask command
 
     For complete details, see the `3dAutomask Documentation.
@@ -623,7 +612,6 @@ class VolregOutputSpec(TraitedSpec):
 
 
 class Volreg(AFNICommand):
-
     """Register input volumes to a base volume using AFNI 3dvolreg command
 
     For complete details, see the `3dvolreg Documentation.
@@ -666,7 +654,6 @@ class MergeInputSpec(AFNICommandInputSpec):
 
 
 class Merge(AFNICommand):
-
     """Merge or edit volumes using AFNI 3dmerge command
 
     For complete details, see the `3dmerge Documentation.
@@ -702,7 +689,6 @@ class CopyInputSpec(AFNICommandInputSpec):
 
 
 class Copy(AFNICommand):
-
     """Copies an image of one type to an image of the same
     or different type using 3dcopy command
 
@@ -760,7 +746,6 @@ class FourierInputSpec(AFNICommandInputSpec):
 
 
 class Fourier(AFNICommand):
-
     """Program to lowpass and/or highpass each voxel time series in a
     dataset, via the FFT
 
@@ -871,7 +856,6 @@ class BandpassInputSpec(AFNICommandInputSpec):
 
 
 class Bandpass(AFNICommand):
-
     """Program to lowpass and/or highpass each voxel time series in a
     dataset, offering more/different options than Fourier
 
@@ -910,7 +894,6 @@ class ZCutUpInputSpec(AFNICommandInputSpec):
 
 
 class ZCutUp(AFNICommand):
-
     """Cut z-slices from a volume using AFNI 3dZcutup command
 
     For complete details, see the `3dZcutup Documentation.
@@ -1131,7 +1114,6 @@ class AllineateOutputSpec(TraitedSpec):
 
 
 class Allineate(AFNICommand):
-
     """Program to align one dataset (the 'source') to a base dataset
 
     For complete details, see the `3dAllineate Documentation.
@@ -1193,7 +1175,6 @@ class MaskaveInputSpec(AFNICommandInputSpec):
 
 
 class Maskave(AFNICommand):
-
     """Computes average of all voxels in the input dataset
     which satisfy the criterion in the options list
 
@@ -1231,7 +1212,6 @@ class SkullStripInputSpec(AFNICommandInputSpec):
 
 
 class SkullStrip(AFNICommand):
-
     """A program to extract the brain from surrounding
     tissue from MRI T1-weighted images
 
@@ -1279,7 +1259,6 @@ class TCatInputSpec(AFNICommandInputSpec):
 
 
 class TCat(AFNICommand):
-
     """Concatenate sub-bricks from input datasets into
     one big 3D+time dataset
 
@@ -1324,7 +1303,6 @@ class FimInputSpec(AFNICommandInputSpec):
 
 
 class Fim(AFNICommand):
-
     """Program to calculate the cross-correlation of
     an ideal reference waveform with the measured FMRI
     time series for each voxel
@@ -1375,7 +1353,6 @@ class TCorrelateInputSpec(AFNICommandInputSpec):
 
 
 class TCorrelate(AFNICommand):
-
     """Computes the correlation coefficient between corresponding voxel
     time series in two input 3D+time datasets 'xset' and 'yset'
 
@@ -1487,7 +1464,6 @@ class BrickStatOutputSpec(TraitedSpec):
 
 
 class BrickStat(AFNICommand):
-
     """Compute maximum and/or minimum voxel values of an input dataset
 
     For complete details, see the `3dBrickStat Documentation.
@@ -1555,11 +1531,9 @@ class ROIStatsInputSpec(CommandLineInputSpec):
         argstr='-mask_f2short',
         position=2)
 
-    quiet = traits.Bool(
-        False, usedefault=True,
-        desc='execute quietly',
-        argstr='-quiet',
-        position=1)
+    quiet = traits.Bool(desc='execute quietly',
+                        argstr='-quiet',
+                        position=1)
 
     terminal_output = traits.Enum('allatonce',
                                   desc=('Control terminal output:'
@@ -1624,7 +1598,6 @@ class CalcInputSpec(AFNICommandInputSpec):
 
 
 class Calc(AFNICommand):
-
     """This program does voxel-by-voxel arithmetic on 3D datasets
 
     For complete details, see the `3dcalc Documentation.
@@ -1700,7 +1673,6 @@ class BlurInMaskInputSpec(AFNICommandInputSpec):
 
 
 class BlurInMask(AFNICommand):
-
     """ Blurs a dataset spatially inside a mask.  That's all.  Experimental.
 
     For complete details, see the `3dBlurInMask Documentation.
@@ -1746,7 +1718,7 @@ class TCorrMapInputSpec(AFNICommandInputSpec):
     _thresh_opts = ('absolute_threshold',
                     'var_absolute_threshold',
                     'var_absolute_threshold_normalize')
-    thresholds = traits.List(traits.Float())
+    thresholds = traits.List(traits.Int())
     absolute_threshold = File(
         argstr='-Thresh %f %s', suffix='_thresh',
         name_source="in_file", xor=_thresh_opts)
@@ -1796,7 +1768,6 @@ class TCorrMapOutputSpec(TraitedSpec):
 
 
 class TCorrMap(AFNICommand):
-
     """ For each voxel time series, computes the correlation between it
     and all other voxels, and combines this set of values into the
     output dataset(s) in some way.
@@ -1823,7 +1794,7 @@ class TCorrMap(AFNICommand):
 
     def _format_arg(self, name, trait_spec, value):
         if name in self.inputs._thresh_opts:
-            return trait_spec.argstr % tuple(self.inputs.thresholds + [value])
+            return trait_spec.argstr % self.inputs.thresholds + [value]
         elif name in self.inputs._expr_opts:
             return trait_spec.argstr % (self.inputs.expr, value)
         elif name == 'histogram':
@@ -1860,7 +1831,6 @@ class AutoboxOuputSpec(TraitedSpec):  # out_file not mandatory
 
 
 class Autobox(AFNICommand):
-
     """ Computes size of a box that fits around the volume.
     Also can be used to crop the volume to that box.
 
@@ -1917,10 +1887,9 @@ class RetroicorInputSpec(AFNICommandInputSpec):
                 argstr='-resp %s',
                 position=-3,
                 exists=True)
-    threshold = traits.Int(
-        desc='Threshold for detection of R-wave peaks in input (Make sure it is above the background noise level, Try 3/4 or 4/5 times range plus minimum)',
-        argstr='-threshold %d',
-        position=-4)
+    threshold = traits.Int(desc='Threshold for detection of R-wave peaks in input (Make sure it is above the background noise level, Try 3/4 or 4/5 times range plus minimum)',
+                           argstr='-threshold %d',
+                           position=-4)
     order = traits.Int(desc='The order of the correction (2 is typical)',
                        argstr='-order %s',
                        position=-5)
@@ -1936,7 +1905,6 @@ class RetroicorInputSpec(AFNICommandInputSpec):
 
 
 class Retroicor(AFNICommand):
-
     """Performs Retrospective Image Correction for physiological
     motion effects, using a slightly modified version of the
     RETROICOR algorithm
@@ -1985,7 +1953,6 @@ class AFNItoNIFTIInputSpec(AFNICommandInputSpec):
 
 
 class AFNItoNIFTI(AFNICommand):
-
     """Changes AFNI format files to NIFTI format using 3dAFNItoNIFTI
 
     see AFNI Documentation: <http://afni.nimh.nih.gov/pub/dist/doc/program_help/3dAFNItoNIFTI.html>
