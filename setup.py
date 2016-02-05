@@ -318,6 +318,7 @@ def main(**extra_args):
                     'nipype.interfaces.camino2trackvis.tests',
                     'nipype.interfaces.cmtk',
                     'nipype.interfaces.cmtk.tests',
+                    'nipype.interfaces.dcmstack',
                     'nipype.interfaces.diffusion_toolkit',
                     'nipype.interfaces.diffusion_toolkit.tests',
                     'nipype.interfaces.dipy',
