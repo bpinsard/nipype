@@ -508,10 +508,21 @@ class OnlinePreprocBase(NipyBaseInterface):
 class SurfaceResamplingBaseInputSpec(BaseInterfaceInputSpec):
     # resampling objects
     resample_surfaces = traits.List(
-        traits.Tuple(traits.Str, traits.Either(File,traits.Tuple(File,File))),
+        traits.Tuple(
+            traits.Str, 
+            traits.Either(
+                File(exists=True),
+                traits.Tuple(File(exists=True),
+                             File(exists=True)))),
         desc='freesurfer surface files from which signal to be extracted')
+    middle_surface_position = traits.Float(
+        .5, usedefault=True,
+        desc='distance from inner to outer surface in ratio of thickness')
     resample_rois = traits.List(
-        traits.Tuple(traits.Str, File, File),
+        traits.Tuple(
+            traits.Str,
+            File(exists=True),
+            File(exists=True)),
         desc = 'list of rois NIFTI files from which to extract signal and labels file')
     
     store_coords = traits.Bool(
@@ -566,9 +577,9 @@ class SurfaceResamplingBase(BaseInterface):
                 surf_group.attrs['SurfaceFile'] = surf_file
                 if isinstance(surf_file, tuple):
                     verts, tris = self.load_gii_fs(surf_file[0])
+                    verts*=(1-self.inputs.middle_surface_position)
                     verts2, _ =  self.load_gii_fs(surf_file[1])
-                    verts += verts2
-                    verts /= 2.
+                    verts += verts2*self.inputs.middle_surface_position
                     del verts2
                 else:
                     verts, tris = load_gii_fs(surf_file)
