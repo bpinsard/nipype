@@ -550,10 +550,23 @@ class SurfaceResamplingInputSpec(NipyBaseInterfaceInputSpec):
 
     # resampling objects
     resample_surfaces = traits.List(
-        traits.Tuple(traits.Str, traits.Either(File,traits.Tuple(File,File))),
+        traits.Tuple(
+            traits.Str,
+            traits.Either(
+                File(exists=True),
+                traits.Tuple(
+                    File(exists=True),
+                    File(exists=True)))),
         desc='freesurfer surface files from which signal to be extracted')
+    middle_surface_position = traits.Float(
+        .5, usedefault=True,
+        desc='distance from inner to outer surface in ratio of thickness')
+
     resample_rois = traits.List(
-        traits.Tuple(traits.Str, File, File),
+        traits.Tuple(
+            traits.Str, 
+            File(exists=True), 
+            File(exists=True)),
         desc = 'list of rois NIFTI files from which to extract signal and labels file')
     
     store_coords = traits.Bool(
@@ -565,6 +578,11 @@ class SurfaceResamplingInputSpec(NipyBaseInterfaceInputSpec):
         mandatory = True,
         exists = True,
         desc='a volume defining space of surfaces')
+
+    resampled_first_frame = traits.File(
+        hash_files = False,
+        desc = 'output first frame resampled and undistorted in reference space for visual registration check')
+
 
 class SurfaceResamplingOutputSpec(TraitedSpec):
     out_file = File(desc='resampled filtered timeseries')
@@ -669,8 +687,8 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 if isinstance(surf_file, tuple):
                     verts, tris = self.load_gii_fs(surf_file[0])
                     verts2, _ =  self.load_gii_fs(surf_file[1])
-                    verts += verts2
-                    verts /= 2.
+                    verts *=(1-self.inputs.middle_surface_position)
+                    verts += verts2*self.inputs.middle_surface_position
                     del verts2
                 else:
                     verts, tris = self.load_gii_fs(surf_file)
@@ -743,7 +761,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
         return out_file
 
     def resampler(self, iterator, out_file, dataset_path='FMRI/DATA'):
-        coords = out_file['COORDINATES']      
+        coords = np.asarray(out_file['COORDINATES'])
         nsamples = coords.shape[0]
 
         nslabs = len(self.stack._slabs)
