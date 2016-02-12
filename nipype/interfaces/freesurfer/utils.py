@@ -1518,6 +1518,9 @@ class Tkregister2OutputSpec(TraitedSpec):
 class Tkregister2(FSCommand):
     """
 
+    Examples
+    --------
+
     Get transform matrix between orig (*tkRAS*) and native (*scannerRAS*)
     coordinates in Freesurfer. Implements the first step of mapping surfaces
     to native space in `this guide
