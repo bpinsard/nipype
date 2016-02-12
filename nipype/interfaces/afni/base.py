@@ -185,6 +185,7 @@ class AFNICommand(CommandLine):
                         outputs[name] = outputs[name] + "+orig.BRIK"
         return outputs
 
+
 def no_afni():
     """ Checks if AFNI is available """
     if Info.version() is None:
