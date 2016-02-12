@@ -46,9 +46,50 @@ except Exception, e:
 else:
     import h5py
 
+try:
+    package_check('dcmstack')
+except Exception, e:
+    warnings.warn('dcmstack not installed')
+else:
+    from .online_stack import DicomStackOnline, filenames_to_dicoms
+
 from ..base import (TraitedSpec, BaseInterface, traits,
                     BaseInterfaceInputSpec, isdefined, File, Directory,
                     InputMultiPath, OutputMultiPath)
+
+class Info(object):
+    """Handle nibabel output type and version information.
+"""
+    __outputtype = 'NIFTI'
+    ftypes = {'NIFTI': '.nii',
+              'NIFTI_GZ': '.nii.gz',
+              'MGZ':'.mgz'}
+
+    @classmethod
+    def outputtype_to_ext(cls, outputtype):
+        """Get the file extension for the given output type.
+
+Parameters
+----------
+outputtype : {'NIFTI', 'NIFTI_GZ'}
+String specifying the output type.
+
+Returns
+-------
+extension : str
+The file extension for the output type.
+"""
+
+        try:
+            return cls.ftypes[outputtype]
+        except KeyError:
+            msg = 'Invalid NIBABELOUTPUTTYPE: ', outputtype
+            raise KeyError(msg)
+
+    @classmethod
+    def outputtype(cls):
+        return cls.__outputtype
+
 
 class ComputeMaskInputSpec(BaseInterfaceInputSpec):
     mean_volume = File(exists=True, mandatory=True,
@@ -346,7 +387,7 @@ class SpaceTimeRealigner(BaseInterface):
         return outputs
 
 
-class TrimInputSpec(BaseInterfaceInputSpec):
+class TrimInputSpec(NipyBaseInterfaceInputSpec):
     in_file = File(
         exists=True, mandatory=True,
         desc="EPI image to trim")
@@ -356,17 +397,15 @@ class TrimInputSpec(BaseInterfaceInputSpec):
     end_index = traits.Int(
         0, usedefault=True,
         desc='last volume indexed as in python (and 0 for last)')
-    out_file = File(desc='output filename')
-    suffix = traits.Str(
-        '_trim', usedefault=True,
-        desc='suffix for out_file to use if no out_file provided')
-
+    out_file = File('%s_trim', desc='output filename',
+                    overload_extension=True,
+                    name_source='in_file')
 
 class TrimOutputSpec(TraitedSpec):
     out_file = File(exists=True)
 
 
-class Trim(BaseInterface):
+class Trim(NipyBaseInterface):
     """ Simple interface to trim a few volumes from a 4d fmri nifti file
 
     Examples
@@ -383,7 +422,6 @@ class Trim(BaseInterface):
     output_spec = TrimOutputSpec
 
     def _run_interface(self, runtime):
-        out_file = self._list_outputs()['out_file']
         nii = nb.load(self.inputs.in_file)
         if self.inputs.end_index == 0:
             s = slice(self.inputs.begin_index, nii.shape[3])
@@ -404,7 +442,67 @@ class Trim(BaseInterface):
         outputs['out_file'] = os.path.abspath(outputs['out_file'])
         return outputs
 
+class CropInputSpec(NipyBaseInterfaceInputSpec):
+    in_file = File(desc='input file', exists=True, mandatory=True,)
+    out_file = File('%s_crop', desc='output file',
+                    overload_extension=True,
+                    name_source='in_file')
 
+    x_min = traits.Int(0, usedefault=True)
+    x_max = traits.Either(None,traits.Int, usedefault=True)
+    y_min = traits.Int(0, usedefault=True)
+    y_max = traits.Either(None,traits.Int, usedefault=True)
+    z_min = traits.Int(0, usedefault=True)
+    z_max = traits.Either(None,traits.Int, usedefault=True)
+
+    padding = traits.Int(0,usedefault=True,
+                         desc='add n voxels of padding in each direction',)
+
+class CropOutputSpec(TraitedSpec):
+    out_file = File(desc='output file')
+
+class Crop(NipyBaseInterface):
+    """ Simple interface to crop a volume using voxel space
+    contrary to afni.Autobox or afni.Resample this keep the oblique matrices
+
+    Examples
+    --------
+    >>> from nipype.interfaces.nipy.preprocess import Crop
+    >>> crop = Crop(x_min=10,x_max=-10)
+    >>> crop.inputs.in_file = 'anatomical.nii'
+    >>> res = crop.run() # doctest: +SKIP
+
+    """
+    
+    input_spec = CropInputSpec
+    output_spec = CropOutputSpec
+    
+    def _run_interface(self, runtime):
+        in_file = nb.load(self.inputs.in_file)
+        mat = in_file.get_affine().copy()
+        pad = self.inputs.padding
+        x_max,y_max,z_max=self.inputs.x_max,self.inputs.y_max,self.inputs.z_max
+        if pad!=0:
+            if x_max > 0: x_max = min(x_max+pad,in_file.shape[0]-1)
+            else : x_max = min(x_max+pad,0)
+            if x_max == 0 : x_max = None
+            if y_max > 0: y_max = min(y_max+pad,in_file.shape[1]-1)
+            else : y_max = min(y_max+pad,0)
+            if y_max == 0 : y_max = None
+            if z_max > 0: z_max = min(z_max+pad,in_file.shape[2]-1)
+            else : z_max = min(z_max+pad,0)
+            if z_max == 0 : z_max = None
+        slices = [slice(max(self.inputs.x_min-pad,0),x_max),
+                  slice(max(self.inputs.y_min-pad,0),y_max),
+                  slice(max(self.inputs.z_min-pad,0),z_max),]
+        data = in_file.get_data()[slices]
+        orig_coords = mat.dot([s.start for s in slices]+[1]).ravel()[:3]
+        mat[:3,3] = orig_coords
+        out_file = nb.Nifti1Image(data,mat)
+        out_file.set_data_dtype(in_file.get_data_dtype())
+        out_filename = self._list_outputs()['out_file']
+        nb.save(out_file,out_filename)
+        return runtime    
 
 class OnlinePreprocInputSpecBase(NipyBaseInterfaceInputSpec):
     dicom_files = traits.Either(
@@ -418,10 +516,6 @@ class OnlinePreprocInputSpecBase(NipyBaseInterfaceInputSpec):
                        mandatory=True,
                        xor=['dicom_files'])
 
-    out_file_format = traits.Str(
-        mandatory=True,
-        desc='format with placeholder for output filename based on dicom')
-    
     # Fieldmap parameters
     fieldmap = File(
         desc = 'precomputed fieldmap coregistered with reference space')
@@ -445,6 +539,53 @@ class OnlinePreprocInputSpecBase(NipyBaseInterfaceInputSpec):
     slice_trigger_times = traits.List(traits.Float()),
     slice_thickness = traits.Float(),
     slice_axis = traits.Range(0,2),
+
+class SurfaceResamplingInputSpec(NipyBaseInterfaceInputSpec):
+
+    out_file_format = traits.Str(
+        mandatory=True,
+        desc='format with placeholder for output filename based on dicom')
+
+    # resampling objects
+    resample_surfaces = traits.List(
+        traits.Tuple(
+            traits.Str,
+            traits.Either(
+                File(exists=True),
+                traits.Tuple(
+                    File(exists=True),
+                    File(exists=True)))),
+        desc='freesurfer surface files from which signal to be extracted')
+    middle_surface_position = traits.Float(
+        .5, usedefault=True,
+        desc='distance from inner to outer surface in ratio of thickness')
+
+    resample_rois = traits.List(
+        traits.Tuple(
+            traits.Str, 
+            File(exists=True), 
+            File(exists=True)),
+        desc = 'list of rois NIFTI files from which to extract signal and labels file')
+    
+    store_coords = traits.Bool(
+        True, usedefault=True,
+        desc='store surface and ROIs coordinates in output')
+
+    # space definition
+    surfaces_volume_reference = traits.File(
+        mandatory = True,
+        exists = True,
+        desc='a volume defining space of surfaces')
+
+    resampled_first_frame = traits.File(
+        hash_files = False,
+        desc = 'output first frame resampled and undistorted in reference space for visual registration check')
+
+
+class SurfaceResamplingOutputSpec(TraitedSpec):
+    out_file = File(desc='resampled filtered timeseries')
+    first_frame = File(desc='resampled first frame in reference space')
+    mask = File(desc='resampled mask in the same space as first_frame')
 
 class OnlinePreprocBase(NipyBaseInterface):
     def _list_files(self):
@@ -493,6 +634,7 @@ class OnlinePreprocBase(NipyBaseInterface):
             dic = dicom.read_file(self.dicom_files[0])
             values = dict([(k,dic.get(k,'')) for k in keys])
             fname_base = str(self.inputs.out_file_format % values)
+            
             self._fname = self._overload_extension(os.path.abspath(fname_base))
             del dic
             return self._fname
@@ -544,7 +686,7 @@ class SurfaceResamplingBaseOutputSpec(TraitedSpec):
     resampled_first_frame = File(desc='resampled first frame in reference space')
     mask = File(desc='resampled mask in the same space as resampled_first_frame')
 
-class SurfaceResamplingBase(BaseInterface):
+class SurfaceResamplingBase(NipyBaseInterface):
 
     ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
 
@@ -582,7 +724,7 @@ class SurfaceResamplingBase(BaseInterface):
                     verts += verts2*self.inputs.middle_surface_position
                     del verts2
                 else:
-                    verts, tris = load_gii_fs(surf_file)
+                    verts, tris = self.load_gii_fs(surf_file)
                 ofst = coords.shape[0]
                 count = verts.shape[0]
                 coords.resize((ofst+count,3))
@@ -596,10 +738,9 @@ class SurfaceResamplingBase(BaseInterface):
 
         if isdefined(self.inputs.resample_rois):
             for roiset_name,roiset_file,roiset_labels in self.inputs.resample_rois:
-                roiset = np.loadtxt(
-                    roiset_labels, dtype=np.object,
-                    converters = {0:int,1:str})
-                roiset_labels = dict((k,l) for k,l in roiset)
+                roiset_labels = dict((k,l) for k,l in np.loadtxt(
+                        roiset_labels, dtype=np.object,
+                        converters = {0:int,1:str}))
                 rois_group = structs.create_group(roiset_name)
                 rois_group.attrs['ModelType'] = 'VOXELS'
                 rois_group.attrs['ROIsFile'] = roiset_file
@@ -623,7 +764,7 @@ class SurfaceResamplingBase(BaseInterface):
                     rois_txt = np.loadtxt(roiset_file,delimiter=',',skiprows=1)
                     crds = []
                     voxs = []
-                    for k in roiset[:,0]:
+                    for k in roiset_labels.keys():
                         roi_mask = rois_txt[:,-1] == k
                         counts[k] = np.count_nonzero(roi_mask)
                         nvoxs += counts[k]
@@ -734,7 +875,7 @@ class SurfaceResamplingBase(BaseInterface):
 
     def _list_outputs(self):
         outputs = self.output_spec().get()
-        outputs['out_file'] = self._gen_fname()
+        outputs['out_file'] = os.path.abspath(self._gen_fname())
         if isdefined(self.inputs.resampled_first_frame):
             outputs['resampled_first_frame'] = os.path.abspath(
                 self.inputs.resampled_first_frame)
@@ -887,61 +1028,68 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
 
     def _run_interface(self,runtime):
 
-        out_file = self._init_ts_file()
-        
-        fmri_group = out_file.create_group('FMRI')
-#        fmri_group.attrs['RepetitionTime'] = self.inputs.tr
         self.stack = self._init_stack()
-            
-        surf_ref = nb.load(self.inputs.surfaces_volume_reference)
-        surf2world = surf_ref.get_affine().dot(SurfaceResamplingBase.ras2vox)
-        boundary_surf = nb.freesurfer.read_geometry(
-            self.inputs.reference_boundary)
-        boundary_surf[0][:] = nb.affines.apply_affine(surf2world,
-                                                      boundary_surf[0])
-        normals = vertices_normals(boundary_surf[0],boundary_surf[1])
-        fmap, fmap_reg = self._load_fieldmap()
 
-        mask = nb.load(self.inputs.mask)
-        mask_data = mask.get_data()>0
-        init_reg = None
-        if isdefined(self.inputs.init_reg):
-            init_reg = np.loadtxt(self.inputs.init_reg)
-        elif self.inputs.init_center_of_mass:
-            init_reg = 'auto'
-
-        realigner = EPIOnlineRealign(
-            boundary_surf[0], normals,
-            fieldmap = fmap, 
-            fieldmap_reg=fmap_reg,
-            init_reg = init_reg,
-            mask = mask,
-            phase_encoding_dir = self.inputs.phase_encoding_dir,
-            echo_time = self.inputs.echo_time,
-            echo_spacing = self.inputs.echo_spacing,
-            nsamples_per_slab = self.inputs.nsamples_per_slab,
-            ftol = self.inputs.optimization_ftol,
-            xtol = self.inputs.optimization_xtol,
-            gtol = self.inputs.optimization_gtol,
-            slice_thickness = self.inputs.slice_thickness,
-            iekf_jacobian_epsilon = self.inputs.iekf_jacobian_epsilon,
-            iekf_convergence = self.inputs.iekf_convergence,
-            iekf_max_iter = self.inputs.iekf_max_iter,
-            iekf_observation_var = self.inputs.iekf_observation_var,
-            iekf_transition_cov = self.inputs.iekf_transition_cov)
         
-        self.algo=realigner
+        try:
+            out_file = self._init_ts_file()
+        
+            fmri_group = out_file.create_group('FMRI')
+            #fmri_group.attrs['RepetitionTime'] = self.inputs.tr
+            
+            surf_ref = nb.load(self.inputs.surfaces_volume_reference)
+            surf2world = surf_ref.get_affine().dot(SurfaceResamplingBase.ras2vox)
+            boundary_surf = nb.freesurfer.read_geometry(
+                self.inputs.reference_boundary)
+            boundary_surf[0][:] = nb.affines.apply_affine(surf2world,
+                                                          boundary_surf[0])
+            normals = vertices_normals(boundary_surf[0],boundary_surf[1])
+            fmap, fmap_reg = self._load_fieldmap()
 
-        for fr, slab, reg, data in self.resampler(
-            realigner.process(self.stack, yield_raw=True),out_file, 'FMRI/DATA'):
-            print 'frame %d, slab %s'% (fr,slab)
+            mask = nb.load(self.inputs.mask)
+            mask_data = mask.get_data()>0
+            init_reg = None
+            if isdefined(self.inputs.init_reg):
+                init_reg = np.loadtxt(self.inputs.init_reg)
+            elif self.inputs.init_center_of_mass:
+                init_reg = 'auto'
+
+            realigner = EPIOnlineRealign(
+                boundary_surf[0], normals,
+                fieldmap = fmap, 
+                fieldmap_reg=fmap_reg,
+                init_reg = init_reg,
+                mask = mask,
+                phase_encoding_dir = self.inputs.phase_encoding_dir,
+                echo_time = self.inputs.echo_time,
+                echo_spacing = self.inputs.echo_spacing,
+                nsamples_per_slab = self.inputs.nsamples_per_slab,
+                ftol = self.inputs.optimization_ftol,
+                xtol = self.inputs.optimization_xtol,
+                gtol = self.inputs.optimization_gtol,
+                slice_thickness = self.inputs.slice_thickness,
+                iekf_jacobian_epsilon = self.inputs.iekf_jacobian_epsilon,
+                iekf_convergence = self.inputs.iekf_convergence,
+                iekf_max_iter = self.inputs.iekf_max_iter,
+                iekf_observation_var = self.inputs.iekf_observation_var,
+                iekf_transition_cov = self.inputs.iekf_transition_cov)
+        
+            self.algo=realigner
+            
+            for fr, slab, reg, data in self.resampler(
+                    realigner.process(self.stack, yield_raw=True),out_file, 'FMRI/DATA'):
+                print 'frame %d, slab %s'% (fr,slab)
+
+        finally:
+            if 'out_file' in locals():
+                out_file.close()
 
         dcm = dicom.read_file(self.dicom_files[0])
         out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
         out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
         del dcm
         outputs = self._list_outputs()
-        out_file.close()
+#        out_file.close()
         motion = np.asarray([s[2] for s in self.slabs])
         slabs = np.array([[s[0]]+s[1] for s in self.slabs])
         np.savetxt(outputs['slabs'], slabs, '%d')
@@ -960,11 +1108,6 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
         outputs['motion_params'] = os.path.abspath('./motion.txt')
         return outputs
 
-def filenames_to_dicoms(fnames):
-    for f in fnames:
-        yield dicom.read_file(f)
-
-
 class OnlineFilterInputSpec(OnlinePreprocInputSpecBase,
                             SurfaceResamplingBaseInputSpec):
     motion = File(
@@ -975,8 +1118,9 @@ class OnlineFilterInputSpec(OnlinePreprocInputSpecBase,
         File(exists=True),
         desc='partial volumes maps to regress out')
     
-class OnlineFilterOutputSpec(SurfaceResamplingBaseOutputSpec):
-    pass
+class OnlineFilterOutputSpec(SurfaceResamplingOutputSpec):    
+    nifti_out = File(exists=True,
+                     desc='at some point we might outputs also 4d nifti corrected for checking')
     
 class OnlineFilter(SurfaceResamplingBase, OnlinePreprocBase):
 
@@ -1012,7 +1156,6 @@ class OnlineFilter(SurfaceResamplingBase, OnlinePreprocBase):
                     np.concatenate([m.get_data().reshape((m.shape+(1,)[:4])) for m in pvmaps],3),
                     pvmaps[0].get_affine())
         
-
             noise_filter = EPIOnlineRealignFilter(
                 fieldmap = fmap, fieldmap_reg = fmap_reg,
                 mask = mask,
@@ -1022,16 +1165,10 @@ class OnlineFilter(SurfaceResamplingBase, OnlinePreprocBase):
                 slice_thickness = self.inputs.slice_thickness)
 
             self.algo = noise_filter
-            
             for fr, slab, reg, data in self.resampler(
                 noise_filter.correct(stack_it, pvmaps, self.stack._shape[:3]), out_file, 'FMRI/DATA'):
-                pass
+                print 'frame %d, slab %s'% (fr,slab)
 
-            dcm = dicom.read_file(self.dicom_files[0])
-            out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
-            out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
-            del dcm
-            
         finally:
             print 'closing file'
             if 'out_file' in locals():
@@ -1153,3 +1290,4 @@ class OnlineResample4D(OnlinePreprocBase):
 
         del resam_mask, coords
         return runtime
+
