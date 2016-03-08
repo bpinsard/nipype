@@ -1102,7 +1102,7 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
         return runtime
 
     def _list_outputs(self):
-        outputs = super(self.__class__, self)._list_outputs()
+        outputs = SurfaceResamplingBase._list_outputs(self)
         outputs['slabs'] = os.path.abspath('./slabs.txt')
         outputs['motion'] = os.path.abspath('./motion.npy')
         outputs['motion_params'] = os.path.abspath('./motion.txt')
