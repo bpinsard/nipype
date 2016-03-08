@@ -1418,7 +1418,7 @@ class ComputeVolumeFractionsInputSpec(CommandLineInputSpec):
         argstr='--mgh',
         desc='use mgh format')
     nii = traits.Bool(
-        argstr='--nii'
+        argstr='--nii',
         desc='use nii format')
     niigz = traits.Bool(
         argstr='--nii.gz',
