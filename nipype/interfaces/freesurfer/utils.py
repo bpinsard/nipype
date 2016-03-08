@@ -371,33 +371,6 @@ class SurfaceTransform(FSCommand):
         outputs = self._outputs().get()
         outputs["out_file"] = self.inputs.out_file
         if not isdefined(outputs["out_file"]):
-<<<<<<< HEAD
-            source = self.inputs.source_file
-            if not isdefined(source):
-                source = self.inputs.source_annot_file
-            if isdefined(source):
-                if not os.path.isfile(source):
-                    source = '%s.%s'%(self.inputs.hemi,source)
-                # Some recon-all files don't have a proper extension (e.g. "lh.thickness")
-                # so we have to account for that here
-                bad_extensions = [".%s" % e for e in [
-                        "area", "mid", "pial", "avg_curv", "curv", "inflated",
-                        "jacobian_white", "orig", "nofix", "smoothwm", "crv",
-                        "sphere", "sulc", "thickness", "volume", "white"]]
-                use_ext = True
-                if split_filename(source)[2] in bad_extensions:
-                    source = source + ".stripme"
-                    use_ext = False
-                ext = ""
-                if isdefined(self.inputs.target_type):
-                    ext = "." + filemap[self.inputs.target_type]
-                    use_ext = False
-                outputs["out_file"] = fname_presuffix(
-                    source,
-                    suffix=".%s%s" % (self.inputs.target_subject, ext),
-                    newpath=os.getcwd(),
-                    use_ext=use_ext)
-=======
             if isdefined(self.inputs.source_file):
                 source = self.inputs.source_file
             else:
@@ -420,7 +393,6 @@ class SurfaceTransform(FSCommand):
                                                   suffix=".%s%s" % (self.inputs.target_subject, ext),
                                                   newpath=os.getcwd(),
                                                   use_ext=use_ext)
->>>>>>> master
         else:
             outputs["out_file"] = os.path.abspath(self.inputs.out_file)
 
@@ -1406,13 +1378,13 @@ class ComputeVolumeFractionsInputSpec(CommandLineInputSpec):
         argstr='--no-aseg',
         desc='do not include aseg (good for testing)')
     stack_file = File(
-        argstr='--stack %s'
+        argstr='--stack %s',
         desc='put ctx,subcortgm,wm,csf into a single multi-frame file')
     gm_file = File(
-        argstr='--gm %s'
+        argstr='--gm %s',
         desc='put ctx+subcortgm into a single-frame file')
     no_fill_csf = traits.Bool(
-        argstr='--no-fill-csf'
+        argstr='--no-fill-csf',
         desc="""do not attempt to fill voxels surrounding seg with the extracerebral CSF segmetation
      Note: when the fill is done, there is no attempt to actually segment xCSF voxels.
      The passed segmentation is dilated and the new voxels become xCSF
@@ -1421,7 +1393,7 @@ class ComputeVolumeFractionsInputSpec(CommandLineInputSpec):
         argstr='--dil %d',
         desc='for xCSF fill, dilate by N (default is 3); use -1 to fill the entire volume')
     out_seg = File(
-        argstr='--out-seg %s'
+        argstr='--out-seg %s',
         desc='save seg (after adding xcsf voxels)')
     ttseg = File(
         argstr='--ttseg %s',
@@ -1431,16 +1403,16 @@ class ComputeVolumeFractionsInputSpec(CommandLineInputSpec):
         desc='save tissue type segmentation ctab (probably not that useful)')
 
     mgz = traits.Bool(
-        argstr='--mgz'
+        argstr='--mgz',
         desc='use mgz format (default)')
     mgh = traits.Bool(
-        argstr='--mgh'
+        argstr='--mgh',
         desc='use mgh format')
     nii = traits.Bool(
         argstr='--nii'
         desc='use nii format')
     niigz = traits.Bool(
-        argstr='--nii.gz'
+        argstr='--nii.gz',
         desc='use nii.gz format')
     ttype_head= traits.Bool(
         argstr='--ttype+head',
