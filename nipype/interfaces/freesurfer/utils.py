@@ -20,7 +20,7 @@ from ..base import (TraitedSpec, File, Directory, traits, OutputMultiPath, isdef
                     CommandLine, CommandLineInputSpec, DynamicTraitedSpec, 
                     BaseInterfaceInputSpec, BaseInterface)
 from ...utils.filemanip import fname_presuffix, split_filename
-from ...io import add_traits
+from ..io import add_traits
 
 filemap = dict(cor='cor', mgh='mgh', mgz='mgz', minc='mnc',
                afni='brik', brik='brik', bshort='bshort',
