@@ -845,11 +845,6 @@ class SurfaceResamplingBase(NipyBaseInterface):
                                 suffix='_mask'))
         return outputs
 
-
-class SurfaceResamplingInputSpec(NipyBaseInterfaceInputSpec):
-
-
-
 class SurfaceResamplingInputSpec(SurfaceResamplingBaseInputSpec,
                                  OnlinePreprocInputSpecBase):
     motion = File(
