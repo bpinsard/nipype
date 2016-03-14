@@ -1077,6 +1077,9 @@ class OnlineFilterInputSpec(OnlinePreprocInputSpecBase,
     partial_volume_maps = InputMultiPath(
         File(exists=True),
         desc='partial volumes maps to regress out')
+    white_matter_index = traits.Int(
+        mandatory=True,
+        desc='the index of the white matter pve maps used to estimate the bias')
     
 class OnlineFilterOutputSpec(SurfaceResamplingOutputSpec):    
     nifti_out = File(exists=True,
@@ -1126,7 +1129,10 @@ class OnlineFilter(SurfaceResamplingBase, OnlinePreprocBase):
 
             self.algo = noise_filter
             for fr, slab, reg, data in self.resampler(
-                noise_filter.correct(stack_it, pvmaps, self.stack._shape[:3]), out_file, 'FMRI/DATA'):
+                    noise_filter.correct(
+                        stack_it, pvmaps, self.stack._shape[:3],
+                        white_idx=self.inputs.white_matter_index),
+                    out_file, 'FMRI/DATA'):
                 print 'frame %d, slab %s'% (fr,slab)
 
         finally:
