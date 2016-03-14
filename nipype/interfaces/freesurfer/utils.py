@@ -1406,7 +1406,7 @@ class ComputeVolumeFractionsInputSpec(CommandLineInputSpec):
     ttseg = File(
         argstr='--ttseg %s',
         desc='save tissue type segmentation (probably not that useful)')
-    ttset_ctab = File(
+    ttseg_ctab = File(
         argstr='--ttseg-ctab %s',
         desc='save tissue type segmentation ctab (probably not that useful)')
 
@@ -1430,10 +1430,15 @@ class ComputeVolumeFractionsOutputSpec(TraitedSpec):
     partial_volume_maps = OutputMultiPath(
         File(exists=True),
         desc='partial volume maps')
-    gm_file = File(exists=True)
+    subcort_gm_file = File(exists=True)
+    cortex_file = File(exists=True)
+    wm_file = File(exists=True)
+    csf_file = File(exists=True)
+    gm_file = File(desc='optional ctx+subcortgm file')
     stack_file = File(desc='optional stacked tissue maps')
     out_seg = File(desc='optional segmentation')
     ttseg = File(desc='optional tissue type segmentation')
+    ttseg_ctab = File(desc='optional tissue type segmentation ctab')
 
 class ComputeVolumeFractions(CommandLine):
     """
@@ -1457,21 +1462,19 @@ class ComputeVolumeFractions(CommandLine):
     def _list_outputs(self):
         outputs = self._outputs().get()
         ext = 'mgz'
+        inputs = self.inputs.get()
         for alt_ext in ['mgh','nii','nii.gz']:
-            if self.inputs.get()[alt_ext.replace('.','')]:
+            if inputs[alt_ext.replace('.','')]:
                 ext = alt_ext
         tissue_maps = ['cortex','subcort_gm','wm','csf']
         outputs['partial_volume_maps'] = [
-            os.path.abspath('%s.%s.%s'%(self.inputs.out_stem, m, alt_ext)) \
+            os.path.abspath('%s.%s.%s'%(inputs['out_stem'], m, alt_ext)) \
             for m in tissue_maps]
-        if self.inputs.gm_file:
-            outputs['gm_file'] = os.path.abspath(self.inputs.gm_file)
-        if self.inputs.stack_file:
-            outputs['stack_file'] = os.path.abspath(self.inputs.stack_file)
-        if self.inputs.out_seg:
-            outputs['out_seg'] = os.path.abspath(self.inputs.out_seg)
-        if self.inputs.ttseg:
-            outputs['ttseg'] = os.path.abspath(self.inputs.ttseg)
+        outputs['cortex_file'],outputs['subcort_gm_file'],outputs['wm_file'],outputs['csf_file'] = outputs['partial_volume_maps']
+        optional_outputs = ['gm_file','stack_file','out_seg','ttseg','ttseg_ctab']
+        for oo in optional_outputs:
+            if inputs[oo]:
+                outputs[oo] = os.path.abspath(inputs[oo])
         return outputs
 
 class Tkregister2InputSpec(FSTraitedSpec):
