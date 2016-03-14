@@ -1426,11 +1426,14 @@ class ComputeVolumeFractionsInputSpec(CommandLineInputSpec):
         argstr='--ttype+head',
         desc='use default+head instead of default tissue type info for seg')
 
-
 class ComputeVolumeFractionsOutputSpec(TraitedSpec):
     partial_volume_maps = OutputMultiPath(
         File(exists=True),
         desc='partial volume maps')
+    gm_file = File(exists=True)
+    stack_file = File(desc='optional stacked tissue maps')
+    out_seg = File(desc='optional segmentation')
+    ttseg = File(desc='optional tissue type segmentation')
 
 class ComputeVolumeFractions(CommandLine):
     """
@@ -1443,7 +1446,7 @@ class ComputeVolumeFractions(CommandLine):
     >>> from nipype.interfaces.freesurfer import ComputeVolumeFractions
     >>> pve = ComputeVolumeFractions(in_file='T1.mgz', reg_file='register.dat')
     >>> pve.cmdline
-    'mri_compute_volume_fractions register.dat T1.mgz pve'
+    'mri_compute_volume_fractions --o pve --reg register.dat T1.mgz'
 
     """
 
@@ -1453,9 +1456,22 @@ class ComputeVolumeFractions(CommandLine):
 
     def _list_outputs(self):
         outputs = self._outputs().get()
+        ext = 'mgz'
+        for alt_ext in ['mgh','nii','nii.gz']:
+            if self.inputs.get()[alt_ext.replace('.','')]:
+                ext = alt_ext
+        tissue_maps = ['cortex','subcort_gm','wm','csf']
         outputs['partial_volume_maps'] = [
-            os.path.abspath('%s.%s.mgz'%(self.inputs.out_stem, m))\
-                for m in ['gm','wm','csf']]
+            os.path.abspath('%s.%s.%s'%(self.inputs.out_stem, m, alt_ext)) \
+            for m in tissue_maps]
+        if self.inputs.gm_file:
+            outputs['gm_file'] = os.path.abspath(self.inputs.gm_file)
+        if self.inputs.stack_file:
+            outputs['stack_file'] = os.path.abspath(self.inputs.stack_file)
+        if self.inputs.out_seg:
+            outputs['out_seg'] = os.path.abspath(self.inputs.out_seg)
+        if self.inputs.ttseg:
+            outputs['ttseg'] = os.path.abspath(self.inputs.ttseg)
         return outputs
 
 class Tkregister2InputSpec(FSTraitedSpec):
