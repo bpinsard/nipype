@@ -1348,22 +1348,21 @@ class ComputeVolumeFractionsInputSpec(CommandLineInputSpec):
         argstr='-SDIR %s',
         desc=('freesurfer subjects directory defaults to $SUBJECTS_DIR'))
 
-    reg_file = File(
-        exists=True, mandatory=True,
-        argstr='%s', position=-3)
-
     in_file = File(
-        exists=True, mandatory=True,
-        argstr='%s', position=-2)
+        exists=True,
+        argstr='%s', position=-1,
+        desc='template file')
 
     out_stem = traits.Str(
-        'pve', usedefault=True, argstr='--o %s', position=-1,
+        'pve', usedefault=True, 
+        argstr='--o %s',
         desc='outstem : output will be oustem.{cortex,subcort_gm,wm,csf}.mgz')
-    
+
     reg_file = File(
         exists=True,
         argstr='--reg %s',
-        desc='regfile : can be LTA or reg.dat')
+        desc='regfile : can be LTA or reg.dat',
+        position=-2)
 
     upsample_factor = traits.Int(
         argstr = '--usf %s',
