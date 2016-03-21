@@ -178,6 +178,8 @@ class DCMStackBase(BaseInterface):
                 self.n_ommited += 1
             except:
                 self.n_ommited += 1
+            finally:
+                del src_dcm
         print '%d files removed, considered as dummy/failed' % self.n_ommited
         print '%d files removed, considered as repeat' % self.n_repeat
         try:
