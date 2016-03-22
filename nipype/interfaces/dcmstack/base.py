@@ -195,10 +195,10 @@ class DCMStackBase(BaseInterface):
             if os.path.isfile(p):
                 self.dicom_files.append(p)
             elif os.path.isdir(p):
-                self.dicom_files.extend(glob(
-                        os.path.join(p,'*.dcm')))
+                self.dicom_files.extend(sorted(glob(
+                        os.path.join(p,'*.dcm'))))
             elif isinstance(p,str):
-                self.dicom_files.extend(glob(p))
+                self.dicom_files.extend(sorted(glob(p)))
 
     def _mutate(self):
         sample_dcm = dicom.read_file(self.dicom_files[0], force=self.inputs.dicom_read_force)
