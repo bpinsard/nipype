@@ -15,6 +15,8 @@ The `Workflow` class provides core functionality for batch processing.
 
 """
 
+from __future__ import absolute_import
+
 from future import standard_library
 standard_library.install_aliases()
 from builtins import range
@@ -690,7 +692,7 @@ connected.
             node.input_source = {}
             for edge in graph.in_edges_iter(node):
                 data = graph.get_edge_data(*edge)
-                for sourceinfo, field in sorted(data['connect']):
+                for sourceinfo, field in data['connect']:
                     node.input_source[field] = \
                         (op.join(edge[0].output_dir(),
                                  'result_%s.pklz' % edge[0].name),
