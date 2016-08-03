@@ -4,6 +4,7 @@ language: python
 python:
 - 2.7
 - 3.4
+- 3.5
 env:
 - INSTALL_DEB_DEPENDECIES=true
 - INSTALL_DEB_DEPENDECIES=false
@@ -34,11 +35,12 @@ before_install:
   echo 'include_dirs = /usr/include:/usr/include/X11' >> $HOME/.numpy-site.cfg;
   fi
 install:
+- sudo apt-get install fusefat
 - conda update --yes conda
 - conda create -n testenv --yes pip python=$TRAVIS_PYTHON_VERSION
 - source activate testenv
 - if [ ${TRAVIS_PYTHON_VERSION:0:1} == "2" ]; then pip install ordereddict; fi
-- conda install --yes numpy scipy nose networkx dateutil
+- conda install --yes numpy scipy nose networkx python-dateutil
 - if [ ${TRAVIS_PYTHON_VERSION:0:1} == "2" ]; then conda install --yes traits; else pip install traits; fi
 - if [ ${TRAVIS_PYTHON_VERSION:0:1} == "2" ]; then conda install --yes vtk; fi
 - pip install python-coveralls
@@ -53,10 +55,9 @@ install:
   pip install https://github.com/dmsurti/mayavi/archive/4d4aaf315a29d6a86707dd95149e27d9ed2225bf.zip;
   pip install -e git+https://github.com/enthought/ets.git#egg=ets;
   fi
-- pip install -r requirements.txt  # finish remaining requirements
-- python setup.py install
+- pip install -e .
 script:
-- python -W once:FSL:UserWarning:nipype `which nosetests` --with-doctest --with-cov --cover-package nipype --cov-config .coveragerc --logging-level=INFO
+- python -W once:FSL:UserWarning:nipype `which nosetests` --with-doctest --with-cov --cover-package nipype --cov-config .coveragerc --logging-level=DEBUG --verbosity=3
 after_success:
 - coveralls --config_file .coveragerc
 deploy:
@@ -68,4 +69,4 @@ deploy:
     tags: true
     repo: nipy/nipype
     branch: master
-  distributions: "sdist bdist_wheel"
+  distributions: "sdist"
