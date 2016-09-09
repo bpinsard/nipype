@@ -1,18 +1,23 @@
+# -*- coding: utf-8 -*-
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 """Additional handy utilities for testing
 """
-__docformat__ = 'restructuredtext'
+from __future__ import print_function, division, unicode_literals, absolute_import
+from builtins import range, object, open
 
 import os
 import time
 import shutil
 import signal
 import subprocess
+from subprocess import CalledProcessError
 from tempfile import mkdtemp
-from ..utils.misc import package_check
 from nose import SkipTest
+from future.utils import raise_from
+from ..utils.misc import package_check
 
+__docformat__ = 'restructuredtext'
 
 def skip_if_no_package(*args, **kwargs):
     """Raise SkipTest if package_check fails
@@ -59,14 +64,23 @@ class TempFATFS(object):
         mkfs_args = ['mkfs.vfat', vfatfile]
         mount_args = ['fusefat', '-o', 'rw+', '-f', vfatfile, self.vfatmount]
 
-        subprocess.check_call(args=mkfs_args, stdout=self.dev_null,
-                              stderr=self.dev_null)
-        self.fusefat = subprocess.Popen(args=mount_args, stdout=self.dev_null,
-                                        stderr=self.dev_null)
+        try:
+            subprocess.check_call(args=mkfs_args, stdout=self.dev_null,
+                                  stderr=self.dev_null)
+        except CalledProcessError as e:
+            raise_from(IOError("mkfs.vfat failed"), e)
+
+        try:
+            self.fusefat = subprocess.Popen(args=mount_args,
+                                            stdout=self.dev_null,
+                                            stderr=self.dev_null)
+        except OSError as e:
+            raise_from(IOError("fusefat is not installed"), e)
+
         time.sleep(self.delay)
 
         if self.fusefat.poll() is not None:
-            raise IOError("fatfuse terminated too soon")
+            raise IOError("fusefat terminated too soon")
 
         open(self.canary, 'wb').close()
 
