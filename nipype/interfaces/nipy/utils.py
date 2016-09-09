@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 """
     Change directory to provide relative paths for doctests
     >>> import os
@@ -7,14 +7,21 @@
     >>> os.chdir(datadir)
 
 """
+from __future__ import print_function, division, unicode_literals, absolute_import
+
 import os
 import warnings
-
 import nibabel as nb
 import numpy as np
 import scipy.stats as sstats
 
 from ...utils.misc import package_check
+from ..base import (TraitedSpec, BaseInterface, traits,
+                    BaseInterfaceInputSpec, File, isdefined,
+                    InputMultiPath, OutputMultiPath)
+from nipype.utils.filemanip import (fname_presuffix, filename_to_list,
+                                    list_to_filename, split_filename,
+                                    savepkl, loadpkl)
 
 have_nipy = True
 try:
@@ -26,15 +33,6 @@ else:
     from nipy.algorithms.registration.affine import Affine
     import nipy.labs.correlation as corr
     import nipy.algorithms.utils.preprocess as preproc
-
-
-from ..base import (TraitedSpec, BaseInterface, traits,
-                    BaseInterfaceInputSpec, isdefined, File,
-                    InputMultiPath, OutputMultiPath)
-
-from nipype.utils.filemanip import (fname_presuffix, filename_to_list,
-                                    list_to_filename, split_filename,
-                                    savepkl, loadpkl)
 
 
 class SimilarityInputSpec(BaseInterfaceInputSpec):
