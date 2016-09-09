@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
     Change directory to provide relative paths for doctests
     >>> import os
@@ -6,8 +7,10 @@
     >>> os.chdir(datadir)
 
 """
+from __future__ import print_function, division, unicode_literals, absolute_import
+from builtins import open
+
 import os
-import warnings
 
 import nibabel as nb
 import nibabel.gifti as gii
@@ -18,9 +21,11 @@ import glob
 import re
 
 from ...utils.misc import package_check
-from ...utils.filemanip import (
-    split_filename, fname_presuffix, filename_to_list)
-from .base import *
+from ...utils.filemanip import split_filename, fname_presuffix, filename_to_list
+from ..base import (TraitedSpec, BaseInterface, traits,
+                    BaseInterfaceInputSpec, isdefined, File,
+                    InputMultiPath, OutputMultiPath)
+from .base import Info, NipyBaseInterface, NipyBaseInterfaceInputSpec
 
 from scipy.ndimage.interpolation import map_coordinates
 
@@ -52,43 +57,6 @@ except Exception, e:
     warnings.warn('dcmstack not installed')
 else:
     from .online_stack import DicomStackOnline, filenames_to_dicoms
-
-from ..base import (TraitedSpec, BaseInterface, traits,
-                    BaseInterfaceInputSpec, isdefined, File, Directory,
-                    InputMultiPath, OutputMultiPath)
-
-class Info(object):
-    """Handle nibabel output type and version information.
-"""
-    __outputtype = 'NIFTI'
-    ftypes = {'NIFTI': '.nii',
-              'NIFTI_GZ': '.nii.gz',
-              'MGZ':'.mgz'}
-
-    @classmethod
-    def outputtype_to_ext(cls, outputtype):
-        """Get the file extension for the given output type.
-
-Parameters
-----------
-outputtype : {'NIFTI', 'NIFTI_GZ'}
-String specifying the output type.
-
-Returns
--------
-extension : str
-The file extension for the output type.
-"""
-
-        try:
-            return cls.ftypes[outputtype]
-        except KeyError:
-            msg = 'Invalid NIBABELOUTPUTTYPE: ', outputtype
-            raise KeyError(msg)
-
-    @classmethod
-    def outputtype(cls):
-        return cls.__outputtype
 
 
 class ComputeMaskInputSpec(BaseInterfaceInputSpec):
