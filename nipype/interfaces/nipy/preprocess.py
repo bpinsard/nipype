@@ -1042,6 +1042,84 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
         outputs['motion_params'] = os.path.abspath('./motion.txt')
         return outputs
 
+class OnlinePreprocessingNew(OnlinePreprocessing):
+
+    def _run_interface(self,runtime):
+
+        self.stack = self._init_stack()
+
+        
+        try:
+            out_file = self._init_ts_file()
+        
+            fmri_group = out_file.create_group('FMRI')
+            #fmri_group.attrs['RepetitionTime'] = self.inputs.tr
+            
+            surf_ref = nb.load(self.inputs.surfaces_volume_reference)
+            surf2world = surf_ref.get_affine().dot(SurfaceResamplingBase.ras2vox)
+            boundary_surf = nb.freesurfer.read_geometry(
+                self.inputs.reference_boundary)
+            boundary_surf[0][:] = nb.affines.apply_affine(surf2world,
+                                                          boundary_surf[0])
+            normals = vertices_normals(boundary_surf[0],boundary_surf[1])
+            fmap, fmap_reg = self._load_fieldmap()
+
+            mask = nb.load(self.inputs.mask)
+            mask_data = mask.get_data()>0
+            init_reg = None
+            if isdefined(self.inputs.init_reg):
+                init_reg = np.loadtxt(self.inputs.init_reg)
+            elif self.inputs.init_center_of_mass:
+                init_reg = 'auto'
+
+            realigner = OnlineRealign(
+                boundary_surf[0], normals,
+                fieldmap = fmap, 
+                fieldmap_reg=fmap_reg,
+                init_reg = init_reg,
+                mask = mask,
+                phase_encoding_dir = self.inputs.phase_encoding_dir,
+                echo_time = self.inputs.echo_time,
+                echo_spacing = self.inputs.echo_spacing,
+                nsamples_per_slab = self.inputs.nsamples_per_slab,
+                ftol = self.inputs.optimization_ftol,
+                xtol = self.inputs.optimization_xtol,
+                gtol = self.inputs.optimization_gtol,
+                slice_thickness = self.inputs.slice_thickness,
+                iekf_jacobian_epsilon = self.inputs.iekf_jacobian_epsilon,
+                iekf_convergence = self.inputs.iekf_convergence,
+                iekf_max_iter = self.inputs.iekf_max_iter,
+                iekf_observation_var = self.inputs.iekf_observation_var,
+                iekf_transition_cov = self.inputs.iekf_transition_cov)
+        
+            self.algo=realigner
+            
+            for fr, slab, reg, data in self.resampler(
+                    realigner.process(self.stack, yield_raw=True),out_file, 'FMRI/DATA'):
+                print 'frame %d, slab %s'% (fr,slab)
+
+        finally:
+            if 'out_file' in locals():
+                out_file.close()
+
+        dcm = dicom.read_file(self.dicom_files[0])
+        out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
+        out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
+        del dcm
+        outputs = self._list_outputs()
+#        out_file.close()
+        motion = np.asarray([s[2] for s in self.slabs])
+        slabs = np.array([[s[0]]+s[1] for s in self.slabs])
+        np.savetxt(outputs['slabs'], slabs, '%d')
+        np.save(outputs['motion'], motion)
+        motion_params = np.array([realigner.affine_class(m)._vec12[:6] for m in motion])
+        np.savetxt(outputs['motion_params'], motion_params)
+        
+        del self.stack, realigner, surf_ref
+        
+        return runtime
+
+
 class OnlineFilterInputSpec(OnlinePreprocInputSpecBase,
                             SurfaceResamplingBaseInputSpec):
     motion = File(
