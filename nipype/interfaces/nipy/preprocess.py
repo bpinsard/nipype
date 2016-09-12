@@ -768,7 +768,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                     if rdata.shape[-1] < fr:
                         rdata.resize((nsamples,fr))
                 if fr<1 and isdefined(self.inputs.resampled_first_frame) and not resampled_first_frame_exported:
-                    print 'resampling first frame'
+                    print('resampling first frame')
                     mask = nb.load(self.inputs.mask)
                     mask_data = mask.get_data()>0
                     f1 = np.zeros(mask.shape)
@@ -869,7 +869,7 @@ class SurfaceResampling(SurfaceResamplingBase,
             self.algo = noise_filter
 
             for fr, slab, reg, data in self.resampler(stack_it, out_file, 'FMRI/DATA'):
-                print fr, slab
+                print(fr, slab)
 
             dcm = dicom.read_file(self.dicom_files[0])
             out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
@@ -877,7 +877,7 @@ class SurfaceResampling(SurfaceResamplingBase,
             del dcm
             
         finally:
-            print 'closing file'
+            print('closing file')
             if 'out_file' in locals():
                 out_file.close()
 
@@ -1012,7 +1012,7 @@ class OnlinePreprocessing(OnlinePreprocBase, SurfaceResamplingBase):
             
             for fr, slab, reg, data in self.resampler(
                     realigner.process(self.stack, yield_raw=True),out_file, 'FMRI/DATA'):
-                print 'frame %d, slab %s'% (fr,slab)
+                print('frame %d, slab %s'% (fr,slab))
 
         finally:
             if 'out_file' in locals():
@@ -1096,7 +1096,7 @@ class OnlinePreprocessingNew(OnlinePreprocessing):
             
             for fr, slab, reg, data in self.resampler(
                     realigner.process(self.stack, yield_raw=True),out_file, 'FMRI/DATA'):
-                print 'frame %d, slab %s'% (fr,slab)
+                print('frame %d, slab %s'% (fr,slab))
 
         finally:
             if 'out_file' in locals():
@@ -1185,10 +1185,10 @@ class OnlineFilter(SurfaceResamplingBase, OnlinePreprocBase):
                         stack_it, pvmaps, self.stack._shape[:3],
                         white_idx=self.inputs.white_matter_index),
                     out_file, 'FMRI/DATA'):
-                print 'frame %d, slab %s'% (fr,slab)
+                print('frame %d, slab %s'% (fr,slab))
 
         finally:
-            print 'closing file'
+            print('closing file')
             if 'out_file' in locals():
                 out_file.close()
 
@@ -1286,11 +1286,11 @@ class OnlineResample4D(OnlinePreprocBase):
         tmp = np.empty(shape)
 
         for fr, affine, data in stack.iter_frame():
-            print 'resampling frame %d'%fr
+            print('resampling frame %d'%fr)
             slab_regs = [(slab,m.dot(affine)) \
                             for slab,m in zip(slabs,motion_mats)\
                             if slab[0][0]<=fr and slab[1][0]>=fr]
-            print slab_regs
+            print(slab_regs)
             algo.resample_coords(data, slab_regs, coords, tmp)
             out[...,fr] = tmp
         del tmp
