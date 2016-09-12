@@ -23,7 +23,7 @@ import re
 from ...utils.misc import package_check
 from ...utils.filemanip import split_filename, fname_presuffix, filename_to_list
 from ..base import (TraitedSpec, BaseInterface, traits,
-                    BaseInterfaceInputSpec, isdefined, File,
+                    BaseInterfaceInputSpec, isdefined, File, Directory,
                     InputMultiPath, OutputMultiPath)
 from .base import Info, NipyBaseInterface, NipyBaseInterfaceInputSpec
 
