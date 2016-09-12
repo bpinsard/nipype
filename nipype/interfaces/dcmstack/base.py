@@ -11,7 +11,7 @@ from ...utils.misc import package_check
 try:
     package_check('dcmstack')
     package_check('dicom')
-except Exception, e:
+except Exception as e:
     warnings.warn('dcmstack/pydicom not installed')
 else:
     import dcmstack, dcmstack.extract, dicom
@@ -180,8 +180,6 @@ class DCMStackBase(BaseInterface):
                 self.n_ommited += 1
             finally:
                 del src_dcm
-        print '%d files removed, considered as dummy/failed' % self.n_ommited
-        print '%d files removed, considered as repeat' % self.n_repeat
         try:
             self.nii_wrp=dicom_stack.to_nifti_wrapper(self.inputs.voxel_order)
         finally:

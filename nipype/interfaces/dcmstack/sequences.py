@@ -113,7 +113,6 @@ class DCMStackfMRI(DCMStackBase):
             tdim = 3
             vr = slice(*self.inputs.volume_range)
             header = self.nii_wrp.nii_img.get_header().copy()
-            print len(range(self.nii_wrp.nii_img.shape[tdim])[vr])
             header['dim'][tdim+1]=len(range(self.nii_wrp.nii_img.shape[tdim])[vr])
             new_meta_ext = dcmstack.DcmMeta.from_sequence(
                 [self.nii_wrp.meta_ext.get_subset(tdim,t) for t in xrange(self.nii_wrp.nii_img.shape[tdim])][vr],
