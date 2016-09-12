@@ -574,7 +574,7 @@ def find_in_same_dir(base,fname, single=False):
     if single and len(out_fnames)==1:
         return out_fnames[0]
     return out_fnames
-=======
+
 class CSVReaderInputSpec(DynamicTraitedSpec, TraitedSpec):
     in_file = File(exists=True, mandatory=True, desc='Input comma-seperated value (CSV) file')
     header = traits.Bool(False, usedefault=True, desc='True if the first line is a column header')
