@@ -715,16 +715,12 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 coords[ofst:ofst+nvoxs] = crds
                 voxel_indices = rois_group.create_dataset('INDICES',data=voxs)
                 rois = rois_group.create_dataset(
-                    'ROIS',(len(counts),),dtype=np.dtype(
-                        [('name', 'S200'),('label',np.int),
-                         ('IndexOffset', np.int),('IndexCount', np.int),
-                         #('ref', h5py.special_dtype(ref=h5py.RegionReference))
-                         ]))
+                    'ROIS', (len(counts),),
+                    dtype=np.dtype([(b'name', 'S200'),(b'label',np.int),(b'IndexOffset', np.int),(b'IndexCount', np.int)]))
                 for i,roi in enumerate(counts.items()):
                     roi_idx, roi_count = roi
                     label = roiset_labels[roi_idx]
                     rois[i] = (label[:200],roi_idx,ofst,roi_count,)
-                    #                           coords.regionref[ofst:ofst+roi_count])
                     ofst += roi_count
                 del voxs, crds
         return out_file
