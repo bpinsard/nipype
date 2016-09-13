@@ -650,7 +650,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
             for surf_name, surf_file in self.inputs.resample_surfaces:
                 surf_group = structs.create_group(surf_name)
                 surf_group.attrs['ModelType'] = 'SURFACE'
-                surf_group.attrs['SurfaceFile'] = surf_file
+                surf_group.attrs['SurfaceFile'] = [f.encode('utf8') for f in surf_file]
                 if isinstance(surf_file, tuple):
                     verts, tris = self.load_gii_fs(surf_file[0])
                     verts*=(1-self.inputs.middle_surface_position)
