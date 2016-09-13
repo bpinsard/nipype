@@ -926,6 +926,9 @@ class OnlinePreprocessingInputSpec(OnlinePreprocInputSpecBase,
         desc = 'coarse init epi to t1 registration matrix')
 
     # iekf parameters
+    iekf_min_nsamples_per_slab = traits.Int(
+        200, usedefault=True,
+        desc='minimum number of samples within current slab to perform iekf')
     
     iekf_jacobian_epsilon = traits.Float(
         1e-6, usedefault=True,
@@ -1086,6 +1089,7 @@ class OnlinePreprocessingNew(OnlinePreprocessing):
                 xtol = self.inputs.optimization_xtol,
                 gtol = self.inputs.optimization_gtol,
                 slice_thickness = self.inputs.slice_thickness,
+                iekf_min_nsamples_per_slab= self.inputs.iekf_min_nsamples_per_slab,
                 iekf_jacobian_epsilon = self.inputs.iekf_jacobian_epsilon,
                 iekf_convergence = self.inputs.iekf_convergence,
                 iekf_max_iter = self.inputs.iekf_max_iter,
