@@ -39,7 +39,7 @@ else:
     from nipy import save_image, load_image
     nipy_version = nipy.__version__
     from nipy.algorithms.registration.online_preproc import (
-        OnlineRealignBiasCorrection, NiftiIterator, 
+        OnlineRealignBiasCorrection, NiftiIterator, Rigid, Affine, 
         resample_mat_shape, filenames_to_dicoms)
     from nipy.algorithms.registration.online_dcmstack import DicomStackOnline
     
@@ -594,6 +594,13 @@ class SurfaceResamplingBaseInputSpec(BaseInterfaceInputSpec):
         .5, usedefault=True,
         desc='distance from inner to outer surface in ratio of thickness')
 
+    gm_pve = File(
+        exists=True,
+        desc='gray matter pve map to weight voxels in resampling')
+    interp_rbf_sigma = traits.Float(
+        3, usedefault=True,
+        desc='the sigma parameter for gaussian rbf interpolation')
+
     resample_rois = traits.List(
         traits.Tuple(
             traits.Str, 
@@ -725,6 +732,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 del voxs, crds
         return out_file
 
+ 
     def resampler(self, iterator, out_file, dataset_path='FMRI/DATA'):
         coords = np.asarray(out_file['COORDINATES'])
         nsamples = coords.shape[0]
@@ -744,6 +752,11 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 dataset_path, dtype=np.float32,
                 shape=(nsamples,nvols), maxshape=(nsamples,None))
 
+        gm_pve = None
+        if self.inputs.gm_pve:
+            gm_pve = nb.load(self.inputs.gm_pve)
+
+            
         self.slabs = []
         self.slabs_data = []
         tmp = np.empty(nsamples)
@@ -755,11 +768,13 @@ class SurfaceResamplingBase(NipyBaseInterface):
             if len(self.slabs)%nslabs is 0:
                 tmp_slabs = [s for s in self.slabs if s[0]==fr]
                 if nsamples > 0:
-                    self.algo.scatter_resample(
+                    self.algo.scatter_resample_rbf(
                         self.slabs_data, tmp,
                         [s[1] for s in tmp_slabs] ,
                         [s[2] for s in tmp_slabs],
-                        coords, mask=True)
+                        coords, mask=True,
+                        pve_map=gm_pve,
+                        rbf_sigma=self.inputs.interp_rbf_sigma)
                     rdata[:,fr] = tmp
                     if rdata.shape[-1] < fr:
                         rdata.resize((nsamples,fr))
@@ -772,11 +787,13 @@ class SurfaceResamplingBase(NipyBaseInterface):
                     vol_coords = nb.affines.apply_affine(
                         mask.get_affine(),
                         np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4)[mask_data])
-                    self.algo.scatter_resample(
+                    self.algo.scatter_resample_rbf(
                         self.slabs_data, tmp_f1,
                         [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
-                        vol_coords, mask=True)
+                        vol_coords, mask=True,
+                        pve_map=gm_pve,
+                        rbf_sigma=self.inputs.interp_rbf_sigma)
                     f1[mask_data] = tmp_f1
                     outputs = self._list_outputs()
                     nb.save(nb.Nifti1Image(f1.astype(np.float32),
@@ -972,22 +989,30 @@ class OnlineRealign(
                     realigner.process(self.stack, yield_raw=True),out_file, 'FMRI/DATA'):
                 print('frame %d, slab %s'% (fr,slab))
 
+            dcm = dicom.read_file(self.dicom_files[0])
+            out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
+            out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
+            del dcm
+
         finally:
             if 'out_file' in locals():
                 out_file.close()
 
-        dcm = dicom.read_file(self.dicom_files[0])
-        out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
-        out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
-        del dcm
         outputs = self._list_outputs()
         motion = np.asarray([s[2] for s in self.slabs])
         slabs = np.array([[s[0]]+s[1] for s in self.slabs])
         np.savetxt(outputs['slabs'], slabs, '%d')
         np.save(outputs['motion'], motion)
-        motion_params = np.array([realigner.affine_class(m)._vec12[:6] for m in motion])
+        motion_params = np.array([Affine(m)._vec12[:6] for m in motion])
         np.savetxt(outputs['motion_params'], motion_params)
         
         del self.stack, realigner, surf_ref
         
         return runtime
+
+    def _list_outputs(self):
+        outputs = super(OnlineRealign,self)._list_outputs()
+        outputs['slabs'] = os.path.abspath('./slabs.txt')
+        outputs['motion'] = os.path.abspath('./motion.npy')
+        outputs['motion_params'] = os.path.abspath('./motion_pars.txt')
+        return outputs
