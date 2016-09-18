@@ -907,6 +907,9 @@ class OnlineRealignInputSpec(
     bias_correction = traits.Bool(
         True, usedefault=True,
         desc='perform bias correction')
+    bias_sigma = traits.Float(
+        8, usedefault=True,
+        desc='the width of smoothing for bias correction')
     wm_pve = File(
         desc='partial volume map of white matter to perform bias correction')
 
@@ -969,6 +972,7 @@ class OnlineRealign(
                 anat_reg = init_reg,
                 mask = mask,
                 bias_correction = self.inputs.bias_correction,
+                bias_sigma = self.inputs.bias_sigma,
                 wm_weight = wm_pve,
                 fieldmap = fmap, 
                 fieldmap_reg = fmap_reg,
@@ -1001,7 +1005,7 @@ class OnlineRealign(
         outputs = self._list_outputs()
         motion = np.asarray([s[2] for s in self.slabs])
         slabs = np.array([[s[0]]+s[1] for s in self.slabs])
-        np.savetxt(outputs['slabs'], slabs, '%d')
+        np.savetxt(outputs['slabs'], slabs, bytes('%d'))
         np.save(outputs['motion'], motion)
         motion_params = np.array([Affine(m)._vec12[:6] for m in motion])
         np.savetxt(outputs['motion_params'], motion_params)
@@ -1012,7 +1016,7 @@ class OnlineRealign(
 
     def _list_outputs(self):
         outputs = super(OnlineRealign,self)._list_outputs()
-        outputs['slabs'] = os.path.abspath('./slabs.txt')
-        outputs['motion'] = os.path.abspath('./motion.npy')
-        outputs['motion_params'] = os.path.abspath('./motion_pars.txt')
+        outputs['slabs'] = os.path.abspath(bytes('./slabs.txt'))
+        outputs['motion'] = os.path.abspath(bytes('./motion.npy'))
+        outputs['motion_params'] = os.path.abspath(bytes('./motion_pars.txt'))
         return outputs
