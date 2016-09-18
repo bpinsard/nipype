@@ -1010,7 +1010,7 @@ class OnlineRealign(
         motion_params = np.array([Affine(m)._vec12[:6] for m in motion])
         np.savetxt(outputs['motion_params'], motion_params)
         
-        del self.stack, realigner, surf_ref
+        del self.stack, realigner
         
         return runtime
 
