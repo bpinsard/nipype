@@ -792,7 +792,6 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
                         vol_coords, mask=True,
-                        pve_map=gm_pve,
                         rbf_sigma=self.inputs.interp_rbf_sigma)
                     f1[mask_data] = tmp_f1
                     outputs = self._list_outputs()
