@@ -621,6 +621,9 @@ class SurfaceResamplingBaseInputSpec(BaseInterfaceInputSpec):
     # output
     resampled_first_frame = traits.File(
         desc = 'output first frame resampled and undistorted in reference space for visual registration check')
+    resampled_frame_index = traits.Int(
+        0,usedefault=True,
+        desc='index of the frame to resample')
 
 class SurfaceResamplingBaseOutputSpec(TraitedSpec):
     out_file = File(desc='resampled filtered timeseries')
@@ -778,7 +781,9 @@ class SurfaceResamplingBase(NipyBaseInterface):
                     rdata[:,fr] = tmp
                     if rdata.shape[-1] < fr:
                         rdata.resize((nsamples,fr))
-                if fr<1 and isdefined(self.inputs.resampled_first_frame) and not resampled_first_frame_exported:
+                if fr==self.inputs.resampled_frame_index and \
+                   isdefined(self.inputs.resampled_first_frame) and \
+                   not resampled_first_frame_exported:
                     print('resampling first frame')
                     mask = nb.load(self.inputs.mask)
                     mask_data = mask.get_data()>0
