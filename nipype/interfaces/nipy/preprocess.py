@@ -792,7 +792,8 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
                         vol_coords, mask=True,
-                        rbf_sigma=self.inputs.interp_rbf_sigma)
+                        rbf_sigma=self.inputs.interp_rbf_sigma,
+                        kneigh_dens=128)
                     f1[mask_data] = tmp_f1
                     outputs = self._list_outputs()
                     nb.save(nb.Nifti1Image(f1.astype(np.float32),
@@ -917,20 +918,24 @@ class OnlineRealignInputSpec(
         200, usedefault=True,
         desc='minimum number of samples within current slab to perform iekf')
     iekf_jacobian_epsilon = traits.Float(
-        1e-6, usedefault=True,
+        1e-3, usedefault=True,
         desc = 'the delta to use to compute jacobian')
     iekf_convergence = traits.Float(
-        1e-5, usedefault=True,
+        1e-2, usedefault=True,
         desc = 'convergence threshold for iekf')
     iekf_max_iter = traits.Int(
         8, usedefault=True,
         desc = 'maximum number of iteration per slab for iekf')
     iekf_observation_var = traits.Float(
-        1e4, usedefault=True,
+        1e5, usedefault=True,
         desc = 'iekf observation variance, covariance omitted for white noise')
     iekf_transition_cov = traits.Float(
-        1e-2, usedefault=True,
+        1e-3, usedefault=True,
         desc = 'iekf transition (co)variance, initialized with 0 covariance (ie. independence)')
+    iekf_init_state_cov = traits.Float(
+        1e-2, usedefault=True,
+        desc = 'iekf initial state (co)variance')
+
 
 class OnlineRealignOutputSpec(SurfaceResamplingBaseOutputSpec):
     motion = File()
@@ -984,7 +989,8 @@ class OnlineRealign(
                 iekf_convergence = self.inputs.iekf_convergence,
                 iekf_max_iter = self.inputs.iekf_max_iter,
                 iekf_observation_var = self.inputs.iekf_observation_var,
-                iekf_transition_cov = self.inputs.iekf_transition_cov)
+                iekf_transition_cov = self.inputs.iekf_transition_cov,
+                iekf_init_state_cov = self.inputs.iekf_init_state_cov)
         
             self.algo=realigner
             
@@ -1006,7 +1012,7 @@ class OnlineRealign(
         slabs = np.array([[s[0]]+s[1] for s in self.slabs])
         np.savetxt(outputs['slabs'], slabs, bytes('%d'))
         np.save(outputs['motion'], motion)
-        motion_params = np.array([Affine(m)._vec12[:6] for m in motion])
+        motion_params = np.array([Rigid(m)._vec12[:6] for m in realigner.matrices])
         np.savetxt(outputs['motion_params'], motion_params)
         
         del self.stack, realigner
