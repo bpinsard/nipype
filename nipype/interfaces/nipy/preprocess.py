@@ -452,7 +452,7 @@ class Crop(NipyBaseInterface):
     
     def _run_interface(self, runtime):
         in_file = nb.load(self.inputs.in_file)
-        mat = in_file.get_affine().copy()
+        mat = in_file.affine.copy()
         pad = self.inputs.padding
         x_max,y_max,z_max=self.inputs.x_max,self.inputs.y_max,self.inputs.z_max
         if pad!=0:
@@ -640,7 +640,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
             return sfile.darrays[0].data, sfile.darrays[1].data
         else:
             surf_ref = nb.load(self.inputs.surfaces_volume_reference)
-            surf2world = surf_ref.get_affine().dot(SurfaceResamplingBase.ras2vox)
+            surf2world = surf_ref.affine.dot(SurfaceResamplingBase.ras2vox)
             verts, tris = nb.freesurfer.read_geometry(sfilename)
             verts[:] = nb.affines.apply_affine(surf2world, verts)
         return verts, tris
@@ -703,7 +703,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         nvoxs += counts[k]
                         voxs.append(np.argwhere(roi_mask))
                     voxs = np.vstack(voxs)
-                    crds = nb.affines.apply_affine(rois_nii.get_affine(), voxs)
+                    crds = nb.affines.apply_affine(rois_nii.affine, voxs)
                     del rois_nii, rois_data
                 else:
                     rois_txt = np.loadtxt(roiset_file,delimiter=',',skiprows=1)
@@ -773,11 +773,12 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 if nsamples > 0:
                     self.algo.scatter_resample_rbf(
                         self.slabs_data, tmp,
-                        [s[1] for s in tmp_slabs] ,
+                        [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
                         coords, mask=True,
                         pve_map=gm_pve,
-                        rbf_sigma=self.inputs.interp_rbf_sigma)
+                        rbf_sigma=self.inputs.interp_rbf_sigma,
+                        kneigh_density=256)
                     rdata[:,fr] = tmp
                     if rdata.shape[-1] < fr:
                         rdata.resize((nsamples,fr))
@@ -790,7 +791,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                     f1 = np.zeros(mask.shape)
                     tmp_f1 = np.empty(np.count_nonzero(mask_data))
                     vol_coords = nb.affines.apply_affine(
-                        mask.get_affine(),
+                        mask.affine,
                         np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4)[mask_data])
                     self.algo.scatter_resample_rbf(
                         self.slabs_data, tmp_f1,
@@ -798,22 +799,22 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         [s[2] for s in tmp_slabs],
                         vol_coords, mask=True,
                         rbf_sigma=self.inputs.interp_rbf_sigma,
-                        kneigh_dens=128)
+                        kneigh_dens=256)
                     f1[mask_data] = tmp_f1
                     outputs = self._list_outputs()
                     nb.save(nb.Nifti1Image(f1.astype(np.float32),
-                                           mask.get_affine()),
+                                           mask.affine),
                             outputs['resampled_first_frame'])
                     del vol_coords, f1
                     ornt_trsfrm = nb.orientations.ornt_transform(
                         nb.orientations.io_orientation(self.stack._affine),
-                        nb.orientations.io_orientation(mask.get_affine())
+                        nb.orientations.io_orientation(mask.affine)
                         ).astype(np.int)
                     voxel_size = self.stack._voxel_size[ornt_trsfrm[:,0]]
                     mat, shape = resample_mat_shape(
-                        mask.get_affine(), mask.shape, voxel_size)
+                        mask.affine, mask.shape, voxel_size)
                     vol_coords = nb.affines.apply_affine(
-                        np.linalg.inv(mask.get_affine()).dot(mat),
+                        np.linalg.inv(mask.affine).dot(mat),
                         np.rollaxis(np.mgrid[[slice(0,d) for d in shape]],0,4))
                     resam_mask = map_coordinates(
                         mask.get_data(), vol_coords.reshape(-1,3).T,
