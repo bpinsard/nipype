@@ -975,6 +975,7 @@ class OnlineRealign(
                 init_reg = np.loadtxt(self.inputs.init_reg)
             elif self.inputs.init_center_of_mass:
                 init_reg = 'auto'
+            wm_pve = None
             if self.inputs.bias_correction:
                 wm_pve = nb.load(self.inputs.wm_pve)
 
