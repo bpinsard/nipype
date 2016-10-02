@@ -778,7 +778,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         coords, mask=True,
                         pve_map=gm_pve,
                         rbf_sigma=self.inputs.interp_rbf_sigma,
-                        kneigh_density=256)
+                        kneigh_dens=256)
                     rdata[:,fr] = tmp
                     if rdata.shape[-1] < fr:
                         rdata.resize((nsamples,fr))
