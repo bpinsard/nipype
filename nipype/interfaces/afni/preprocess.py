@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
-# vi: set ft = python sts = 4 ts = 4 sw = 4 et:
+# vi: set ft=python sts=4 ts=4 sw=4 et:
 """Afni preprocessing interfaces
 
     Change directory to provide relative paths for doctests
@@ -20,7 +20,7 @@ import numpy as np
 from ...utils.filemanip import (load_json, save_json, split_filename)
 from ..base import (
     CommandLineInputSpec, CommandLine, Directory, TraitedSpec,
-    traits, isdefined, File, InputMultiPath, Undefined)
+    traits, isdefined, File, InputMultiPath, Undefined, Str)
 
 from .base import (
     AFNICommandBase, AFNICommand, AFNICommandInputSpec, AFNICommandOutputSpec,
@@ -2102,7 +2102,6 @@ class CalcInputSpec(AFNICommandInputSpec):
     other = File(desc='other options', argstr='')
 
 
-
 class Calc(AFNICommand):
     """This program does voxel-by-voxel arithmetic on 3D datasets
 
@@ -2326,7 +2325,7 @@ class AutoboxInputSpec(AFNICommandInputSpec):
                 cropping box, and will clip off small isolated blobs.""")
 
 
-class AutoboxOuputSpec(TraitedSpec):  # out_file not mandatory
+class AutoboxOutputSpec(TraitedSpec):  # out_file not mandatory
     x_min = traits.Int()
     x_max = traits.Int()
     y_min = traits.Int()
@@ -2357,7 +2356,7 @@ class Autobox(AFNICommand):
 
     _cmd = '3dAutobox'
     input_spec = AutoboxInputSpec
-    output_spec = AutoboxOuputSpec
+    output_spec = AutoboxOutputSpec
 
     def aggregate_outputs(self, runtime=None, needed_outputs=None):
         outputs = self._outputs()
@@ -2385,7 +2384,9 @@ class RetroicorInputSpec(AFNICommandInputSpec):
                    mandatory=True,
                    exists=True,
                    copyfile=False)
-    out_file = File(desc='output image file name', argstr='-prefix %s', mandatory=True, position=1)
+    out_file = File(name_template='%s_retroicor', name_source=['in_file'],
+                    desc='output image file name',
+                    argstr='-prefix %s', position=1)
     card = File(desc='1D cardiac data file for cardiac correction',
                 argstr='-card %s',
                 position=-2,
@@ -2439,12 +2440,20 @@ class Retroicor(AFNICommand):
     >>> ret.inputs.in_file = 'functional.nii'
     >>> ret.inputs.card = 'mask.1D'
     >>> ret.inputs.resp = 'resp.1D'
+    >>> ret.inputs.outputtype = 'NIFTI'
     >>> res = ret.run()   # doctest: +SKIP
     """
 
     _cmd = '3dretroicor'
     input_spec = RetroicorInputSpec
     output_spec = AFNICommandOutputSpec
+
+
+    def _format_arg(self, name, trait_spec, value):
+        if name == 'in_file':
+            if not isdefined(self.inputs.card) and not isdefined(self.inputs.resp):
+                return None
+        return super(Retroicor, self)._format_arg(name, trait_spec, value)
 
 
 class AFNItoNIFTIInputSpec(AFNICommandInputSpec):
@@ -2923,7 +2932,6 @@ class OutlierCountOutputSpec(TraitedSpec):
         keep_extension=False, position=-1, desc='capture standard output')
 
 
-
 class OutlierCount(CommandLine):
     """Create a 3D dataset from 2D image files using AFNI to3d command
 
@@ -2989,8 +2997,7 @@ class QualityIndexInputSpec(CommandLineInputSpec):
 
 
 class QualityIndexOutputSpec(TraitedSpec):
-    out_file = File(desc='file containing the caputured standard output')
-
+    out_file = File(desc='file containing the captured standard output')
 
 
 class QualityIndex(CommandLine):
@@ -3013,3 +3020,56 @@ class QualityIndex(CommandLine):
     _cmd = '3dTqual'
     input_spec = QualityIndexInputSpec
     output_spec = QualityIndexOutputSpec
+
+
+class NotesInputSpec(AFNICommandInputSpec):
+    in_file = File(desc='input file to 3dNotes',
+                   argstr='%s',
+                   position=-1,
+                   mandatory=True,
+                   exists=True,
+                   copyfile=False)
+    add = Str(desc='note to add',
+              argstr='-a "%s"')
+    add_history = Str(desc='note to add to history',
+                      argstr='-h "%s"',
+                      xor=['rep_history'])
+    rep_history = Str(desc='note with which to replace history',
+                      argstr='-HH "%s"',
+                      xor=['add_history'])
+    delete = traits.Int(desc='delete note number num',
+                        argstr='-d %d')
+    ses = traits.Bool(desc='print to stdout the expanded notes',
+                      argstr='-ses')
+    out_file = File(desc='output image file name',
+                    argstr='%s')
+
+
+class Notes(CommandLine):
+    """
+    A program to add, delete, and show notes for AFNI datasets.
+
+    For complete details, see the `3dNotes Documentation.
+    <http://afni.nimh.nih.gov/pub/dist/doc/program_help/3dNotes.html>
+
+    Examples
+    ========
+
+    >>> from nipype.interfaces import afni
+    >>> notes = afni.Notes()
+    >>> notes.inputs.in_file = "functional.HEAD"
+    >>> notes.inputs.add = "This note is added."
+    >>> notes.inputs.add_history = "This note is added to history."
+    >>> notes.cmdline #doctest: +IGNORE_UNICODE
+    '3dNotes -a "This note is added." -h "This note is added to history." functional.HEAD'
+    >>> res = notes.run() # doctest: +SKIP
+    """
+
+    _cmd = '3dNotes'
+    input_spec = NotesInputSpec
+    output_spec = AFNICommandOutputSpec
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['out_file'] = os.path.abspath(self.inputs.in_file)
+        return outputs
