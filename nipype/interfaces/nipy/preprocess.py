@@ -913,6 +913,9 @@ class OnlineRealignInputSpec(
     bias_correction = traits.Bool(
         True, usedefault=True,
         desc='perform bias correction')
+    register_gradient = traits.Bool(
+        False, usedefault=True,
+        desc='register slices using images 2D gradient (discrete laplacian)')
     bias_sigma = traits.Float(
         8, usedefault=True,
         desc='the width of smoothing for bias correction')
@@ -984,6 +987,7 @@ class OnlineRealign(
                 mask = mask,
                 bias_correction = self.inputs.bias_correction,
                 bias_sigma = self.inputs.bias_sigma,
+                register_gradient = self.inputs.register_gradient,
                 wm_weight = wm_pve,
                 fieldmap = fmap, 
                 fieldmap_reg = fmap_reg,
