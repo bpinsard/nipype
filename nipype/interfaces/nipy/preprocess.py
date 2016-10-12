@@ -594,6 +594,13 @@ class SurfaceResamplingBaseInputSpec(BaseInterfaceInputSpec):
         .5, usedefault=True,
         desc='distance from inner to outer surface in ratio of thickness')
 
+    gm_pve = File(
+        exists=True,
+        desc='gray matter pve map to weight voxels in resampling')
+    interp_rbf_sigma = traits.Float(
+        3, usedefault=True,
+        desc='the sigma parameter for gaussian rbf interpolation')
+
     resample_rois = traits.List(
         traits.Tuple(
             traits.Str, 
@@ -614,6 +621,9 @@ class SurfaceResamplingBaseInputSpec(BaseInterfaceInputSpec):
     # output
     resampled_first_frame = traits.File(
         desc = 'output first frame resampled and undistorted in reference space for visual registration check')
+    resampled_frame_index = traits.Int(
+        0,usedefault=True,
+        desc='index of the frame to resample')
 
 class SurfaceResamplingBaseOutputSpec(TraitedSpec):
     out_file = File(desc='resampled filtered timeseries')
@@ -630,7 +640,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
             return sfile.darrays[0].data, sfile.darrays[1].data
         else:
             surf_ref = nb.load(self.inputs.surfaces_volume_reference)
-            surf2world = surf_ref.get_affine().dot(SurfaceResamplingBase.ras2vox)
+            surf2world = surf_ref.affine.dot(SurfaceResamplingBase.ras2vox)
             verts, tris = nb.freesurfer.read_geometry(sfilename)
             verts[:] = nb.affines.apply_affine(surf2world, verts)
         return verts, tris
@@ -693,7 +703,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         nvoxs += counts[k]
                         voxs.append(np.argwhere(roi_mask))
                     voxs = np.vstack(voxs)
-                    crds = nb.affines.apply_affine(rois_nii.get_affine(), voxs)
+                    crds = nb.affines.apply_affine(rois_nii.affine, voxs)
                     del rois_nii, rois_data
                 else:
                     rois_txt = np.loadtxt(roiset_file,delimiter=',',skiprows=1)
@@ -725,6 +735,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 del voxs, crds
         return out_file
 
+ 
     def resampler(self, iterator, out_file, dataset_path='FMRI/DATA'):
         coords = np.asarray(out_file['COORDINATES'])
         nsamples = coords.shape[0]
@@ -744,6 +755,11 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 dataset_path, dtype=np.float32,
                 shape=(nsamples,nvols), maxshape=(nsamples,None))
 
+        gm_pve = None
+        if self.inputs.gm_pve:
+            gm_pve = nb.load(self.inputs.gm_pve)
+
+            
         self.slabs = []
         self.slabs_data = []
         tmp = np.empty(nsamples)
@@ -755,43 +771,50 @@ class SurfaceResamplingBase(NipyBaseInterface):
             if len(self.slabs)%nslabs is 0:
                 tmp_slabs = [s for s in self.slabs if s[0]==fr]
                 if nsamples > 0:
-                    self.algo.scatter_resample(
+                    self.algo.scatter_resample_rbf(
                         self.slabs_data, tmp,
-                        [s[1] for s in tmp_slabs] ,
+                        [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
-                        coords, mask=True)
+                        coords, mask=True,
+                        pve_map=gm_pve,
+                        rbf_sigma=self.inputs.interp_rbf_sigma,
+                        kneigh_dens=256)
                     rdata[:,fr] = tmp
                     if rdata.shape[-1] < fr:
                         rdata.resize((nsamples,fr))
-                if fr<1 and isdefined(self.inputs.resampled_first_frame) and not resampled_first_frame_exported:
+                if fr==self.inputs.resampled_frame_index and \
+                   isdefined(self.inputs.resampled_first_frame) and \
+                   not resampled_first_frame_exported:
                     print('resampling first frame')
                     mask = nb.load(self.inputs.mask)
                     mask_data = mask.get_data()>0
                     f1 = np.zeros(mask.shape)
                     tmp_f1 = np.empty(np.count_nonzero(mask_data))
                     vol_coords = nb.affines.apply_affine(
-                        mask.get_affine(),
+                        mask.affine,
                         np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4)[mask_data])
-                    self.algo.scatter_resample(
+                    self.algo.scatter_resample_rbf(
                         self.slabs_data, tmp_f1,
                         [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
-                        vol_coords, mask=True)
+                        vol_coords, mask=True,
+                        rbf_sigma=self.inputs.interp_rbf_sigma,
+                        kneigh_dens=256)
                     f1[mask_data] = tmp_f1
                     outputs = self._list_outputs()
                     nb.save(nb.Nifti1Image(f1.astype(np.float32),
-                                           mask.get_affine()),
+                                           mask.affine),
                             outputs['resampled_first_frame'])
                     del vol_coords, f1
                     ornt_trsfrm = nb.orientations.ornt_transform(
                         nb.orientations.io_orientation(self.stack._affine),
-                        nb.orientations.io_orientation(mask.get_affine())
+                        nb.orientations.io_orientation(mask.affine)
                         ).astype(np.int)
                     voxel_size = self.stack._voxel_size[ornt_trsfrm[:,0]]
                     mat, shape = resample_mat_shape(
-                        mask.get_affine(), mask.shape, voxel_size)
+                        mask.affine, mask.shape, voxel_size)
                     vol_coords = nb.affines.apply_affine(
-                        np.linalg.inv(mask.get_affine()).dot(mat),
+                        np.linalg.inv(mask.affine).dot(mat),
                         np.rollaxis(np.mgrid[[slice(0,d) for d in shape]],0,4))
                     resam_mask = map_coordinates(
                         mask.get_data(), vol_coords.reshape(-1,3).T,
@@ -814,6 +837,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 fname_presuffix(self.inputs.resampled_first_frame,
                                 suffix='_mask'))
         return outputs
+
 
 class SurfaceResamplingInputSpec(SurfaceResamplingBaseInputSpec,
                                  OnlinePreprocInputSpecBase):
