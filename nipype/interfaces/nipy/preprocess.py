@@ -979,7 +979,7 @@ class OnlineRealign(
             elif self.inputs.init_center_of_mass:
                 init_reg = 'auto'
             wm_pve = None
-            if self.inputs.bias_correction:
+            if isdefined(self.inputs.wm_pve):
                 wm_pve = nb.load(self.inputs.wm_pve)
 
             realigner = OnlineRealignBiasCorrection(
