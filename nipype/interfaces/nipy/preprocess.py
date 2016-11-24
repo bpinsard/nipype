@@ -488,6 +488,10 @@ class OnlinePreprocInputSpecBase(NipyBaseInterfaceInputSpec):
     nifti_file = File(exists=True,
                        mandatory=True,
                        xor=['dicom_files'])
+    multiband_factor = traits.Int(
+        1, usedefault=True,
+        hash_files=False,
+        desc='set the multiband factor for nifti input')
 
     # Fieldmap parameters
     fieldmap = File(
@@ -535,7 +539,7 @@ class OnlinePreprocBase(NipyBaseInterface):
             stack.set_source(filenames_to_dicoms(self.dicom_files))
             stack._init_dataset()
         elif isdefined(self.inputs.nifti_file):
-            stack = NiftiIterator(nb.load(self.inputs.nifti_file))
+            stack = NiftiIterator(nb.load(self.inputs.nifti_file), mb=self.inputs.multiband_factor)
         return stack
 
     def _load_fieldmap(self):
@@ -551,7 +555,7 @@ class OnlinePreprocBase(NipyBaseInterface):
         if hasattr(self,'_fname'):
             return self._fname
         if isdefined(self.inputs.nifti_file):
-            fname = fname_presuffix(self.inputs.nifti_file, suffix='_mc',
+            fname = fname_presuffix(self.inputs.nifti_file, suffix='_mc.h5',
                                     newpath=os.getcwd())
             self._fname = self._overload_extension(fname)
             return self._fname
@@ -770,18 +774,6 @@ class SurfaceResamplingBase(NipyBaseInterface):
 
             if len(self.slabs)%nslabs is 0:
                 tmp_slabs = [s for s in self.slabs if s[0]==fr]
-                if nsamples > 0:
-                    self.algo.scatter_resample_rbf(
-                        self.slabs_data, tmp,
-                        [s[1] for s in tmp_slabs],
-                        [s[2] for s in tmp_slabs],
-                        coords, mask=True,
-                        pve_map=gm_pve,
-                        rbf_sigma=self.inputs.interp_rbf_sigma,
-                        kneigh_dens=256)
-                    rdata[:,fr] = tmp
-                    if rdata.shape[-1] < fr:
-                        rdata.resize((nsamples,fr))
                 if fr==self.inputs.resampled_frame_index and \
                    isdefined(self.inputs.resampled_first_frame) and \
                    not resampled_first_frame_exported:
@@ -797,7 +789,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         self.slabs_data, tmp_f1,
                         [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
-                        vol_coords, mask=True,
+                        vol_coords, mask=False,
                         rbf_sigma=self.inputs.interp_rbf_sigma,
                         kneigh_dens=256)
                     f1[mask_data] = tmp_f1
@@ -823,6 +815,19 @@ class SurfaceResamplingBase(NipyBaseInterface):
                             outputs['mask'])
                     resampled_first_frame_exported = True
                     del vol_coords, resam_mask
+
+                if nsamples > 0:
+                    self.algo.scatter_resample_rbf(
+                        self.slabs_data, tmp,
+                        [s[1] for s in tmp_slabs],
+                        [s[2] for s in tmp_slabs],
+                        coords, mask=True,
+                        pve_map=gm_pve,
+                        rbf_sigma=self.inputs.interp_rbf_sigma,
+                        kneigh_dens=256)
+                    rdata[:,fr] = tmp
+                    if rdata.shape[-1] < fr:
+                        rdata.resize((nsamples,fr))
                 del self.slabs_data
                 self.slabs_data = []        
             yield fr, slab, reg, data
@@ -1009,9 +1014,10 @@ class OnlineRealign(
                     realigner.process(self.stack, yield_raw=True),out_file, 'FMRI/DATA'):
                 print('frame %d, slab %s'% (fr,slab))
 
-            dcm = dicom.read_file(self.dicom_files[0])
-            out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
-            out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
+            if isdefined(self.inputs.dicom_files):
+                dcm = dicom.read_file(self.dicom_files[0])
+                out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
+                out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
             del dcm
 
         finally:
