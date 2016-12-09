@@ -10,6 +10,7 @@ import numpy as np
 from ...testing import (assert_equal, utils, assert_almost_equal, raises,
                         skipif)
 from .. import nilearn as iface
+from ...pipeline import engine as pe
 
 no_nilearn = True
 try:
@@ -26,8 +27,8 @@ class TestSignalExtraction(unittest.TestCase):
         '4d_label_file': '4dlabels.nii',
         'out_file': 'signals.tsv'
     }
-    labels = ['csf', 'gray', 'white']
-    global_labels = ['global'] + labels
+    labels = ['CSF', 'GrayMatter', 'WhiteMatter']
+    global_labels = ['GlobalSignal'] + labels
 
     def setUp(self):
         self.orig_dir = os.getcwd()
@@ -109,6 +110,22 @@ class TestSignalExtraction(unittest.TestCase):
             wanted.append(wanted_row)
         # run & assert
         self._test_4d_label(wanted, self.fake_4d_label_data)
+
+    @skipif(no_nilearn)
+    def test_signal_extr_traits_valid(self):
+        ''' Test a node using the SignalExtraction interface.
+        Unlike interface.run(), node.run() checks the traits
+        '''
+        # run
+        node = pe.Node(iface.SignalExtraction(in_file=os.path.abspath(self.filenames['in_file']),
+                                              label_files=os.path.abspath(self.filenames['label_files']),
+                                              class_labels=self.labels,
+                                              incl_shared_variance=False),
+                       name='SignalExtraction')
+        node.run()
+
+        # assert
+        # just checking that it passes trait validations
 
     def _test_4d_label(self, wanted, fake_labels, include_global=False, incl_shared_variance=True):
         # set up
