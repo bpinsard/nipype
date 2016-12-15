@@ -9,7 +9,8 @@ from .preprocess import (ParseDICOMDir, UnpackSDICOMDir, MRIConvert, Resample,
                          DICOMConvert, RobustRegister, FitMSParams,
                          SynthesizeFLASH, MNIBiasCorrection, WatershedSkullStrip,
                          Normalize, CANormalize, CARegister, CALabel, MRIsCALabel,
-                         SegmentCC, SegmentWM, EditWMwithAseg, ConcatenateLTA)
+                         SegmentCC, SegmentWM, EditWMwithAseg, ConcatenateLTA,
+                         Tkregister)
 from .model import (MRISPreproc, MRISPreprocReconAll, GLMFit, OneSampleTTest, Binarize,
                     Concatenate, SegStats, SegStatsReconAll, Label2Vol, MS_LDA,
                     Label2Label, Label2Annot, SphericalAverage)

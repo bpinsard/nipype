@@ -969,7 +969,7 @@ class ApplyVolTransformInputSpec(FSTraitedSpec):
                           'talairach.m3z computed by reconall), you will need '
                           'to specify the full path to this morph and use the '
                           '--noDefM3zPath flag.'))
-    no_ded_m3z_path = traits.Bool(argstr="--noDefM3zPath",
+    no_def_m3z_path = traits.Bool(argstr="--noDefM3zPath",
                                   requires=['m3z_file'],
                                   desc=('To be used with the m3z flag. '
                                         'Instructs the code not to look for the'
@@ -1367,6 +1367,79 @@ class SynthesizeFLASH(FSCommand):
             return self._list_outputs()["out_file"]
         return None
 
+'''
+interfaces to do:
+
+mri_vol2surf
+mri_surf2vol
+mri_surf2surf
+'''
+
+
+class TkregisterInputSpec(FSTraitedSpec):
+
+   mov = File(desc=' movable volume',argstr='--mov %s')
+   target = File(desc='target volume',argstr='--targ %s')
+   fstarg = traits.Bool(argstr='--fstarg',
+                        desc='target is relative to subjectid/mri')
+   reg_file = File(argstr='--reg %s', desc='input/output registration file',
+                   name_source = ['fsl_reg','mov'])
+   check_reg = traits.Bool(argstr='--check-reg', 
+                           desc='only check, no --reg needed')
+   reg_header = traits.Bool(argstr='--regheader',
+                            desc='compute regstration from headers')
+   fsl_target = traits.Bool(argstr='--fsl-targ',
+                            desc='use FSLDIR/data/standard/avg152T1.nii.gz')
+   fsl_target_lr = traits.Bool(
+       argstr='--fsl-targ-lr',
+       desc='use FSLDIR/data/standard/avg152T1_LR-marked.nii.gz')
+   fstal = traits.Bool(
+       argstr='--fstal',
+       desc='set mov to be tal and reg to be tal xfm')
+   ixfm = File(argstr='--ixfm %s',
+               desc='MNI-style inverse registration input matrix')
+   xfm = File(argstr='--xfm %s',desc='MNI-style registration input matrix')
+   xfm_out = File(argstr='--xfmout %s',
+                  name_source=['fsl_reg','reg_file','mov'],
+                  desc='MNI-style registration output matrix')
+   fsl_reg = File(argstr='--fsl %s',desc='FSL-style registration input matrix')
+   fsl_reg_out = File(argstr='--fslregout %s',name_source=['reg_file','mov'],
+                      desc='FSL-Style registration output matrix')
+   freeview = File(argstr='--freeview %s',name_source=['reg_file','mov'],
+                   desc='FreeView registration output matrix')
+   vox2vox = File(argstr='--vox2vox %s',desc='vox2vox matrix in ascii',)
+   lta = File(argstr='--lta %s',desc='Linear Transform Array')
+   lta_out = File(argstr='--ltaout %s', desc='Output a Linear Transform Array',
+                  name_source=['reg_file','mov'],)
+   feat = Directory(argstr='--feat %s',
+                    desc='check example_func2standard registration')
+   fsfeat = Directory(argstr='--fsfeat %s',
+                      desc='check reg/freesurfer/register.dat registration')
+   identity = traits.Bool(argstr='--identity',
+                          desc='use identity as registration matrix')
+   subject_id = traits.Str(argstr='--s %s', desc='set subject id')
+   nofix = traits.Bool(argstr='--nofix',
+                       desc='don\'t fix old tkregister matrices')
+   float2int = traits.Str(argstr='--float2int %s',
+                          desc='spec old tkregister float2int')
+   no_edit = traits.Bool(argstr='--noedit')
+
+
+class TkregisterOuputSpec(TraitedSpec):
+   reg_file = File('input/output registration file')
+   xfm_out = File(desc='MNI-style registration output matrix')
+   fsl_reg_out = File(desc='FSL-Style registration output matrix')
+   freeview = File(desc='FreeView registration output matrix')
+   vox2vox = File(desc='vox2vox matrix in ascii')
+   lta_out = File(desc='Output a Linear Transform Array')
+    
+    
+class Tkregister(FSCommand):
+
+    _cmd = "tkregister2_cmdl"
+    
+    input_spec = TkregisterInputSpec
+    output_spec = TkregisterOuputSpec
 
 class MNIBiasCorrectionInputSpec(FSTraitedSpec):
     # mandatory
