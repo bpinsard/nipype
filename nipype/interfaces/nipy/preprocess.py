@@ -22,6 +22,7 @@ from ...utils.filemanip import (fname_presuffix, filename_to_list,
 from ..base import (TraitedSpec, BaseInterface, traits,
                     BaseInterfaceInputSpec, isdefined, File,
                     InputMultiPath, OutputMultiPath)
+from .base import NipyBaseInterfaceInputSpec, NipyBaseInterface
 
 have_nipy = True
 try:
