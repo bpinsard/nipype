@@ -1,4 +1,3 @@
-
 import os
 from ...utils.filemanip import fname_presuffix, split_filename
 from ..base import (
@@ -6,36 +5,38 @@ from ..base import (
     BaseInterface, BaseInterfaceInputSpec)
 
 class Info(object):
-    """Handle afni output type and version information.
-    """
-    __outputtype = 'NIFTI_GZ'
+    """Handle nibabel output type and version information.
+"""
+    __outputtype = 'NIFTI'
     ftypes = {'NIFTI': '.nii',
-              'NIFTI_GZ': '.nii.gz'}
+              'NIFTI_GZ': '.nii.gz',
+              'MGZ':'.mgz'}
 
     @classmethod
     def outputtype_to_ext(cls, outputtype):
         """Get the file extension for the given output type.
 
-        Parameters
-        ----------
-        outputtype : {'NIFTI', 'NIFTI_GZ'}
-            String specifying the output type.
+Parameters
+----------
+outputtype : {'NIFTI', 'NIFTI_GZ'}
+String specifying the output type.
 
-        Returns
-        -------
-        extension : str
-            The file extension for the output type.
-        """
+Returns
+-------
+extension : str
+The file extension for the output type.
+"""
 
         try:
             return cls.ftypes[outputtype]
         except KeyError:
-            msg = 'Invalid NIPYOUTPUTTYPE: ', outputtype
+            msg = 'Invalid NIBABELOUTPUTTYPE: ', outputtype
             raise KeyError(msg)
 
     @classmethod
     def outputtype(cls):
-        return 'NIFTI_GZ'
+        return cls.__outputtype
+
 
 class NipyBaseInterfaceInputSpec(BaseInterfaceInputSpec):
     outputtype = traits.Enum('NIFTI', Info.ftypes.keys(),

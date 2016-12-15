@@ -13,16 +13,23 @@ from builtins import open
 import os
 
 import nibabel as nb
+import nibabel.gifti as gii
+import dicom
 import numpy as np
+
+import glob
+import re
 
 from ...utils.misc import package_check
 from ...utils.filemanip import (fname_presuffix, filename_to_list,
                                 list_to_filename, split_filename,
                                 savepkl, loadpkl)
 from ..base import (TraitedSpec, BaseInterface, traits,
-                    BaseInterfaceInputSpec, isdefined, File,
+                    BaseInterfaceInputSpec, isdefined, File, Directory,
                     InputMultiPath, OutputMultiPath)
-from .base import NipyBaseInterfaceInputSpec, NipyBaseInterface
+from .base import Info, NipyBaseInterface, NipyBaseInterfaceInputSpec
+
+from scipy.ndimage.interpolation import map_coordinates
 
 have_nipy = True
 try:
@@ -36,7 +43,25 @@ else:
     import nipy
     from nipy import save_image, load_image
     nipy_version = nipy.__version__
+    from nipy.algorithms.registration.online_preproc import (
+        OnlineRealignBiasCorrection, NiftiIterator, Rigid, Affine, 
+        resample_mat_shape, filenames_to_dicoms)
+    from nipy.algorithms.registration.online_dcmstack import DicomStackOnline
+    
 
+try:
+    package_check('h5py')
+except Exception, e:
+    warnings.warn('h5py not installed')
+else:
+    import h5py
+
+try:
+    package_check('dcmstack')
+except Exception, e:
+    warnings.warn('dcmstack not installed')
+else:
+    from .online_stack import DicomStackOnline, filenames_to_dicoms
 
 class ComputeMaskInputSpec(BaseInterfaceInputSpec):
     mean_volume = File(exists=True, mandatory=True,
@@ -47,7 +72,6 @@ class ComputeMaskInputSpec(BaseInterfaceInputSpec):
     m = traits.Float(desc="lower fraction of the histogram to be discarded")
     M = traits.Float(desc="upper fraction of the histogram to be discarded")
     cc = traits.Bool(desc="Keep only the largest connected component")
-
 
 class ComputeMaskOutputSpec(TraitedSpec):
     brain_mask = File(exists=True)
@@ -672,6 +696,16 @@ class Trim(NipyBaseInterface):
         nb.save(nii2, out_file)
         return runtime
 
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['out_file'] = self.inputs.out_file
+        if not isdefined(outputs['out_file']):
+            outputs['out_file'] = fname_presuffix(
+                self.inputs.in_file,
+                newpath=os.getcwd(),
+                suffix=self.inputs.suffix)
+        outputs['out_file'] = os.path.abspath(outputs['out_file'])
+        return outputs
 
 class CropInputSpec(NipyBaseInterfaceInputSpec):
     in_file = File(desc='input file', exists=True, mandatory=True,)
@@ -710,7 +744,7 @@ class Crop(NipyBaseInterface):
     
     def _run_interface(self, runtime):
         in_file = nb.load(self.inputs.in_file)
-        mat = in_file.get_affine().copy()
+        mat = in_file.affine.copy()
         pad = self.inputs.padding
         x_max,y_max,z_max=self.inputs.x_max,self.inputs.y_max,self.inputs.z_max
         if pad!=0:
@@ -734,3 +768,570 @@ class Crop(NipyBaseInterface):
         out_filename = self._list_outputs()['out_file']
         nb.save(out_file,out_filename)
         return runtime    
+
+class OnlinePreprocInputSpecBase(NipyBaseInterfaceInputSpec):
+    dicom_files = traits.Either(
+        InputMultiPath(File(exists=True)),
+        InputMultiPath(Directory(exists=True)),
+        InputMultiPath(traits.Str()), #allow glob file pattern
+        mandatory=True,
+        xor=['nifti_file'])
+    
+    nifti_file = File(exists=True,
+                       mandatory=True,
+                       xor=['dicom_files'])
+    multiband_factor = traits.Int(
+        1, usedefault=True,
+        hash_files=False,
+        desc='set the multiband factor for nifti input')
+
+    # Fieldmap parameters
+    fieldmap = File(
+        desc = 'precomputed fieldmap coregistered with reference space')
+    fieldmap_reg = File(
+        desc = 'fieldmap coregistration matrix')
+    
+    # space definition
+    mask = File(
+        mandatory = True,
+        exists = True,
+        desc='a mask in reference space')
+    
+    #EPI parameters
+    phase_encoding_dir = traits.Range(-3,3, desc='phase encoding direction')
+    repetition_time = traits.Float(desc='TR in secs.')
+#    slice_repetition_time = traits.Float(desc='slice TR in secs'
+    echo_time = traits.Float(desc='TE in secs.')
+    echo_spacing = traits.Float(desc='effective echo spacing in secs.')
+    slice_order = traits.List(traits.Int(), desc='slice order'),
+    interleaved = traits.Int(),
+    slice_trigger_times = traits.List(traits.Float()),
+    slice_thickness = traits.Float(),
+    slice_axis = traits.Range(0,2),
+
+
+class OnlinePreprocBase(NipyBaseInterface):
+    def _list_files(self):
+        # list files depending on input type
+        df = filename_to_list(self.inputs.dicom_files)
+        self.dicom_files = []
+        for p in df:
+            if os.path.isfile(p):
+                self.dicom_files.append(p)
+            elif os.path.isdir(p):
+                self.dicom_files.extend(sorted(glob.glob(
+                        os.path.join(p,'*.dcm'))))
+            elif isinstance(p,str):
+                self.dicom_files.extend(sorted(glob.glob(p)))
+
+    def _init_stack(self):
+        if isdefined(self.inputs.dicom_files):
+            self._list_files()
+            stack = DicomStackOnline()
+            stack.set_source(filenames_to_dicoms(self.dicom_files))
+            stack._init_dataset()
+        elif isdefined(self.inputs.nifti_file):
+            stack = NiftiIterator(nb.load(self.inputs.nifti_file), mb=self.inputs.multiband_factor)
+        return stack
+
+    def _load_fieldmap(self):
+        fmap, fmap_reg = None, None
+        if isdefined(self.inputs.fieldmap):
+            fmap = nb.load(self.inputs.fieldmap)
+            fmap_reg = np.eye(4)
+            if isdefined(self.inputs.fieldmap_reg):
+                fmap_reg[:] = np.loadtxt(self.inputs.fieldmap_reg)        
+        return fmap, fmap_reg
+
+    def _gen_fname(self):
+        if hasattr(self,'_fname'):
+            return self._fname
+        if isdefined(self.inputs.nifti_file):
+            fname = fname_presuffix(self.inputs.nifti_file, suffix='_mc.h5',
+                                    newpath=os.getcwd())
+            self._fname = self._overload_extension(fname)
+            return self._fname
+        if hasattr(self,'dicom_files') and\
+                isdefined(self.inputs.out_file_format):
+            keys = re.findall('\%\((\w*)\)', self.inputs.out_file_format)
+            dic = dicom.read_file(self.dicom_files[0])
+            values = dict([(k,dic.get(k,'')) for k in keys])
+            fname_base = str(self.inputs.out_file_format % values)
+            
+            self._fname = self._overload_extension(os.path.abspath(fname_base))
+            del dic
+            return self._fname
+        return
+
+    def _overload_extension(self, value):
+        path, base, ext = split_filename(value)
+        if ext not in Info.ftypes.values():
+            return value
+        return os.path.join(path, base + Info.outputtype_to_ext(
+                self.inputs.outputtype))
+
+class SurfaceResamplingBaseInputSpec(BaseInterfaceInputSpec):
+
+    out_file_format = traits.Str(
+        mandatory=True,
+        desc='format with placeholder for output filename based on dicom')
+
+    # resampling objects
+    resample_surfaces = traits.List(
+        traits.Tuple(
+            traits.Str,
+            traits.Either(
+                File(exists=True),
+                traits.Tuple(
+                    File(exists=True),
+                    File(exists=True)))),
+        desc='freesurfer surface files from which signal to be extracted')
+    middle_surface_position = traits.Float(
+        .5, usedefault=True,
+        desc='distance from inner to outer surface in ratio of thickness')
+
+    gm_pve = File(
+        exists=True,
+        desc='gray matter pve map to weight voxels in resampling')
+    interp_rbf_sigma = traits.Float(
+        3, usedefault=True,
+        desc='the sigma parameter for gaussian rbf interpolation')
+
+    resample_rois = traits.List(
+        traits.Tuple(
+            traits.Str, 
+            File(exists=True), 
+            File(exists=True)),
+        desc = 'list of rois NIFTI files from which to extract signal and labels file')
+    
+    store_coords = traits.Bool(
+        True, usedefault=True,
+        desc='store surface and ROIs coordinates in output')
+
+    # space definition
+    surfaces_volume_reference = traits.File(
+        mandatory = True,
+        exists = True,
+        desc='a volume defining space of surfaces')
+
+    # output
+    resampled_first_frame = traits.File(
+        desc = 'output first frame resampled and undistorted in reference space for visual registration check')
+    resampled_frame_index = traits.Int(
+        0,usedefault=True,
+        desc='index of the frame to resample')
+
+class SurfaceResamplingBaseOutputSpec(TraitedSpec):
+    out_file = File(desc='resampled filtered timeseries')
+    resampled_first_frame = File(desc='resampled first frame in reference space')
+    mask = File(desc='resampled mask in the same space as resampled_first_frame')
+
+class SurfaceResamplingBase(NipyBaseInterface):
+
+    ras2vox = np.array([[-1,0,0,128],[0,0,-1,128],[0,1,0,128],[0,0,0,1]])
+
+    def load_gii_fs(self,sfilename):
+        if split_filename(sfilename)[-1] == '.gii':
+            sfile = gii.read(sfilename)
+            return sfile.darrays[0].data, sfile.darrays[1].data
+        else:
+            surf_ref = nb.load(self.inputs.surfaces_volume_reference)
+            surf2world = surf_ref.affine.dot(SurfaceResamplingBase.ras2vox)
+            verts, tris = nb.freesurfer.read_geometry(sfilename)
+            verts[:] = nb.affines.apply_affine(surf2world, verts)
+        return verts, tris
+
+    def _init_ts_file(self):
+        out_file = h5py.File(self._list_outputs()['out_file'])
+        
+        surfaces = []
+        rois = []        
+
+        structs = out_file.create_group('STRUCTURES')
+        coords = out_file.create_dataset('COORDINATES',
+                                         (0,3),maxshape = (None,3),
+                                         dtype = np.float)
+        
+        if isdefined(self.inputs.resample_surfaces):
+            for surf_name, surf_file in self.inputs.resample_surfaces:
+                surf_group = structs.create_group(surf_name)
+                surf_group.attrs['ModelType'] = 'SURFACE'
+                surf_group.attrs['SurfaceFile'] = [f.encode('utf8') for f in surf_file]
+                if isinstance(surf_file, tuple):
+                    verts, tris = self.load_gii_fs(surf_file[0])
+                    verts*=(1-self.inputs.middle_surface_position)
+                    verts2, _ =  self.load_gii_fs(surf_file[1])
+                    verts += verts2*self.inputs.middle_surface_position
+                    del verts2
+                else:
+                    verts, tris = self.load_gii_fs(surf_file)
+                ofst = coords.shape[0]
+                count = verts.shape[0]
+                coords.resize((ofst+count,3))
+                coords[ofst:ofst+count] = verts
+                surf_group.attrs['IndexOffset'] = ofst
+                surf_group.attrs['IndexCount'] = count
+                surf_group.attrs['COORDINATES'] = coords.regionref[ofst:ofst+count]
+                surf_group.create_dataset('TRIANGLES', data=tris)
+                del verts, tris
+
+
+        if isdefined(self.inputs.resample_rois):
+            for roiset_name,roiset_file,roiset_labels in self.inputs.resample_rois:
+                roiset = np.loadtxt(
+                    roiset_labels, dtype=np.object,
+                    converters = {0:int,1:str})
+                roiset_labels = dict((k,l) for k,l in roiset)
+                rois_group = structs.create_group(roiset_name)
+                rois_group.attrs['ModelType'] = 'VOXELS'
+                rois_group.attrs['ROIsFile'] = roiset_file
+
+                nvoxs = 0
+                counts = dict()
+
+                if nb.filename_parser.splitext_addext(roiset_file, ('.gz', '.bz2'))[1] in nb.ext_map:
+                    voxs = []
+                    rois_nii = nb.load(roiset_file)
+                    rois_data = rois_nii.get_data()
+                    for k in roiset[:,0]:
+                        roi_mask = rois_data==k
+                        counts[k] = np.count_nonzero(roi_mask)
+                        nvoxs += counts[k]
+                        voxs.append(np.argwhere(roi_mask))
+                    voxs = np.vstack(voxs)
+                    crds = nb.affines.apply_affine(rois_nii.affine, voxs)
+                    del rois_nii, rois_data
+                else:
+                    rois_txt = np.loadtxt(roiset_file,delimiter=',',skiprows=1)
+                    crds = []
+                    voxs = []
+                    for k in roiset[:,0]:
+                        roi_mask = rois_txt[:,-1] == k
+                        counts[k] = np.count_nonzero(roi_mask)
+                        nvoxs += counts[k]
+                        crds.append(rois_txt[roi_mask,:3])
+                        voxs.append(rois_txt[roi_mask,3:6].astype(np.int))
+                    del rois_txt
+                    voxs = np.vstack(voxs)
+                    crds = np.vstack(crds)
+                    
+                # this allows using ROIs in different sampling
+                ofst = coords.shape[0]
+                coords.resize((ofst+nvoxs,3))
+                coords[ofst:ofst+nvoxs] = crds
+                voxel_indices = rois_group.create_dataset('INDICES',data=voxs)
+                rois = rois_group.create_dataset(
+                    'ROIS', (len(counts),),
+                    dtype=np.dtype([(b'name', 'S200'),(b'label',np.int),(b'IndexOffset', np.int),(b'IndexCount', np.int)]))
+                for i,roi in enumerate(counts.items()):
+                    roi_idx, roi_count = roi
+                    label = roiset_labels[roi_idx]
+                    rois[i] = (label[:200],roi_idx,ofst,roi_count,)
+                    ofst += roi_count
+                del voxs, crds
+        return out_file
+
+ 
+    def resampler(self, iterator, out_file, dataset_path='FMRI/DATA'):
+        coords = np.asarray(out_file['COORDINATES'])
+        nsamples = coords.shape[0]
+
+        nslabs = len(self.stack._slabs)
+        if isinstance(self.stack, NiftiIterator):
+            nvols = self.stack.nframes
+        elif self.stack._nframes_per_dicom == 1:
+            nvols = len(self.dicom_files)
+        elif self.stack._nframes_per_dicom == 0:
+            nvols = int(len(self.dicom_files)/self.stack.nslices)
+        else:
+            nvols = 1
+
+        if nsamples>0:
+            rdata = out_file.create_dataset(
+                dataset_path, dtype=np.float32,
+                shape=(nsamples,nvols), maxshape=(nsamples,None))
+
+        gm_pve = None
+        if self.inputs.gm_pve:
+            gm_pve = nb.load(self.inputs.gm_pve)
+
+            
+        self.slabs = []
+        self.slabs_data = []
+        tmp = np.empty(nsamples)
+        resampled_first_frame_exported = False
+        for fr, slab, reg, data in iterator:
+            self.slabs.append((fr,slab,reg))
+            self.slabs_data.append(data)
+
+            if len(self.slabs)%nslabs is 0:
+                tmp_slabs = [s for s in self.slabs if s[0]==fr]
+                if fr==self.inputs.resampled_frame_index and \
+                   isdefined(self.inputs.resampled_first_frame) and \
+                   not resampled_first_frame_exported:
+                    print('resampling first frame')
+                    mask = nb.load(self.inputs.mask)
+                    mask_data = mask.get_data()>0
+                    f1 = np.zeros(mask.shape)
+                    tmp_f1 = np.empty(np.count_nonzero(mask_data))
+                    vol_coords = nb.affines.apply_affine(
+                        mask.affine,
+                        np.rollaxis(np.mgrid[[slice(0,d) for d in f1.shape]],0,4)[mask_data])
+                    self.algo.scatter_resample_rbf(
+                        self.slabs_data, tmp_f1,
+                        [s[1] for s in tmp_slabs],
+                        [s[2] for s in tmp_slabs],
+                        vol_coords, mask=False,
+                        rbf_sigma=self.inputs.interp_rbf_sigma,
+                        kneigh_dens=256)
+                    f1[mask_data] = tmp_f1
+                    outputs = self._list_outputs()
+                    nb.save(nb.Nifti1Image(f1.astype(np.float32),
+                                           mask.affine),
+                            outputs['resampled_first_frame'])
+                    del vol_coords, f1
+                    ornt_trsfrm = nb.orientations.ornt_transform(
+                        nb.orientations.io_orientation(self.stack._affine),
+                        nb.orientations.io_orientation(mask.affine)
+                        ).astype(np.int)
+                    voxel_size = self.stack._voxel_size[ornt_trsfrm[:,0]]
+                    mat, shape = resample_mat_shape(
+                        mask.affine, mask.shape, voxel_size)
+                    vol_coords = nb.affines.apply_affine(
+                        np.linalg.inv(mask.affine).dot(mat),
+                        np.rollaxis(np.mgrid[[slice(0,d) for d in shape]],0,4))
+                    resam_mask = map_coordinates(
+                        mask.get_data(), vol_coords.reshape(-1,3).T,
+                        order=0).reshape(shape)
+                    nb.save(nb.Nifti1Image(resam_mask.astype(np.uint8), mat),
+                            outputs['mask'])
+                    resampled_first_frame_exported = True
+                    del vol_coords, resam_mask
+
+                if nsamples > 0:
+                    self.algo.scatter_resample_rbf(
+                        self.slabs_data, tmp,
+                        [s[1] for s in tmp_slabs],
+                        [s[2] for s in tmp_slabs],
+                        coords, mask=True,
+                        pve_map=gm_pve,
+                        rbf_sigma=self.inputs.interp_rbf_sigma,
+                        kneigh_dens=256)
+                    rdata[:,fr] = tmp
+                    if rdata.shape[-1] < fr:
+                        rdata.resize((nsamples,fr))
+                del self.slabs_data
+                self.slabs_data = []        
+            yield fr, slab, reg, data
+
+    def _list_outputs(self):
+        outputs = self.output_spec().get()
+        outputs['out_file'] = os.path.abspath(self._gen_fname())
+        if isdefined(self.inputs.resampled_first_frame):
+            outputs['resampled_first_frame'] = os.path.abspath(
+                self.inputs.resampled_first_frame)
+            outputs['mask'] = os.path.abspath(
+                fname_presuffix(self.inputs.resampled_first_frame,
+                                suffix='_mask'))
+        return outputs
+
+class SurfaceResamplingInputSpec(SurfaceResamplingBaseInputSpec,
+                                 OnlinePreprocInputSpecBase):
+    motion = File(
+        exists=True,
+        mandatory=True,
+        desc='the estimated motion')
+
+class SurfaceResamplingOutputSpec(SurfaceResamplingBaseOutputSpec):
+    pass
+
+class SurfaceResampling(SurfaceResamplingBase, 
+                        OnlinePreprocBase):
+    input_spec = SurfaceResamplingInputSpec
+    output_spec = SurfaceResamplingOutputSpec
+    
+    def _run_interface(self,runtime):
+
+        self.stack = self._init_stack()
+        try:
+            out_file =  self._init_ts_file()
+            coords = out_file['COORDINATES']
+        
+            fmri_group = out_file.create_group('FMRI')
+
+            from nipy.algorithms.registration.affine import to_matrix44
+            motion = np.load(self.inputs.motion)
+            fmap, fmap_reg = self._load_fieldmap()
+            mask = nb.load(self.inputs.mask)
+            mask_data = mask.get_data()>0
+            
+            from itertools import izip
+            def iter_affreg(it, motion):
+                for n, m in izip(it, motion):
+                    fr, slab, aff, tt, data = n
+                    yield fr, slab, m, data
+                                   
+            stack_it = iter_affreg(self.stack.iter_slabs(), motion)
+
+
+            noise_filter = EPIOnlineRealignFilter(
+                fieldmap = fmap, fieldmap_reg = fmap_reg,
+                mask = mask,
+                phase_encoding_dir = self.inputs.phase_encoding_dir,
+                echo_time = self.inputs.echo_time,
+                echo_spacing = self.inputs.echo_spacing,
+                slice_thickness = self.inputs.slice_thickness)
+
+            self.algo = noise_filter
+
+            for fr, slab, reg, data in self.resampler(stack_it, out_file, 'FMRI/DATA'):
+                print(fr, slab)
+
+            if isdefined(self.inputs.dicom_files):
+                dcm = dicom.read_file(self.dicom_files[0])
+                out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
+                out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
+                del dcm
+            
+        finally:
+            print('closing file')
+            if 'out_file' in locals():
+                out_file.close()
+
+        del self.stack, noise_filter        
+        return runtime
+
+
+class OnlineRealignInputSpec(
+        OnlinePreprocInputSpecBase,
+        SurfaceResamplingBaseInputSpec):
+
+    init_reg = File(
+        desc = 'coarse init epi to t1 registration matrix')
+    bias_correction = traits.Bool(
+        True, usedefault=True,
+        desc='perform bias correction')
+    register_gradient = traits.Bool(
+        False, usedefault=True,
+        desc='register slices using images 2D gradient (discrete laplacian)')
+    bias_sigma = traits.Float(
+        8, usedefault=True,
+        desc='the width of smoothing for bias correction')
+    wm_pve = File(
+        desc='partial volume map of white matter to perform bias correction')
+
+    # iekf parameters
+    iekf_min_nsamples_per_slab = traits.Int(
+        200, usedefault=True,
+        desc='minimum number of samples within current slab to perform iekf')
+    iekf_jacobian_epsilon = traits.Float(
+        1e-3, usedefault=True,
+        desc = 'the delta to use to compute jacobian')
+    iekf_convergence = traits.Float(
+        1e-2, usedefault=True,
+        desc = 'convergence threshold for iekf')
+    iekf_max_iter = traits.Int(
+        8, usedefault=True,
+        desc = 'maximum number of iteration per slab for iekf')
+    iekf_observation_var = traits.Float(
+        1e5, usedefault=True,
+        desc = 'iekf observation variance, covariance omitted for white noise')
+    iekf_transition_cov = traits.Float(
+        1e-3, usedefault=True,
+        desc = 'iekf transition (co)variance, initialized with 0 covariance (ie. independence)')
+    iekf_init_state_cov = traits.Float(
+        1e-2, usedefault=True,
+        desc = 'iekf initial state (co)variance')
+
+
+class OnlineRealignOutputSpec(SurfaceResamplingBaseOutputSpec):
+    motion = File()
+    motion_params = File()
+    slabs = File()
+
+
+class OnlineRealign(
+        OnlinePreprocBase,
+        SurfaceResamplingBase):
+
+    input_spec = OnlineRealignInputSpec
+    output_spec = OnlineRealignOutputSpec
+
+    def _run_interface(self,runtime):
+
+        self.stack = self._init_stack()
+
+        
+        try:
+            out_file = self._init_ts_file()
+        
+            fmri_group = out_file.create_group('FMRI')
+
+            fmap, fmap_reg = self._load_fieldmap()
+
+            mask = nb.load(self.inputs.mask)
+            mask_data = mask.get_data()>0
+            init_reg = None
+            if isdefined(self.inputs.init_reg):
+                init_reg = np.loadtxt(self.inputs.init_reg)
+            elif self.inputs.init_center_of_mass:
+                init_reg = 'auto'
+            wm_pve = None
+            if isdefined(self.inputs.wm_pve):
+                wm_pve = nb.load(self.inputs.wm_pve)
+
+            realigner = OnlineRealignBiasCorrection(
+                anat_reg = init_reg,
+                mask = mask,
+                bias_correction = self.inputs.bias_correction,
+                bias_sigma = self.inputs.bias_sigma,
+                register_gradient = self.inputs.register_gradient,
+                wm_weight = wm_pve,
+                fieldmap = fmap, 
+                fieldmap_reg = fmap_reg,
+                phase_encoding_dir = self.inputs.phase_encoding_dir,
+                echo_time = self.inputs.echo_time,
+                echo_spacing = self.inputs.echo_spacing,
+                slice_thickness = self.inputs.slice_thickness,
+                iekf_min_nsamples_per_slab= self.inputs.iekf_min_nsamples_per_slab,
+                iekf_jacobian_epsilon = self.inputs.iekf_jacobian_epsilon,
+                iekf_convergence = self.inputs.iekf_convergence,
+                iekf_max_iter = self.inputs.iekf_max_iter,
+                iekf_observation_var = self.inputs.iekf_observation_var,
+                iekf_transition_cov = self.inputs.iekf_transition_cov,
+                iekf_init_state_cov = self.inputs.iekf_init_state_cov)
+        
+            self.algo=realigner
+            
+            for fr, slab, reg, data in self.resampler(
+                    realigner.process(self.stack, yield_raw=True),out_file, 'FMRI/DATA'):
+                print('frame %d, slab %s'% (fr,slab))
+
+            if isdefined(self.inputs.dicom_files):
+                dcm = dicom.read_file(self.dicom_files[0])
+                out_file['FMRI/DATA'].attrs['scan_time'] = dcm.AcquisitionTime
+                out_file['FMRI/DATA'].attrs['scan_date'] = dcm.AcquisitionDate
+                del dcm
+
+        finally:
+            if 'out_file' in locals():
+                out_file.close()
+
+        outputs = self._list_outputs()
+        motion = np.asarray([s[2] for s in self.slabs])
+        slabs = np.array([[s[0]]+s[1] for s in self.slabs])
+        np.savetxt(outputs['slabs'], slabs, bytes('%d'))
+        np.save(outputs['motion'], motion)
+        motion_params = np.array([Rigid(m)._vec12[:6] for m in realigner.matrices])
+        np.savetxt(outputs['motion_params'], motion_params)
+        
+        del self.stack, realigner
+        
+        return runtime
+
+    def _list_outputs(self):
+        outputs = super(OnlineRealign,self)._list_outputs()
+        outputs['slabs'] = os.path.abspath(bytes('./slabs.txt'))
+        outputs['motion'] = os.path.abspath(bytes('./motion.npy'))
+        outputs['motion_params'] = os.path.abspath(bytes('./motion_pars.txt'))
+        return outputs
