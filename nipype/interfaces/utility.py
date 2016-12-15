@@ -25,7 +25,7 @@ from .base import (traits, TraitedSpec, DynamicTraitedSpec, File,
                    Undefined, isdefined, OutputMultiPath, runtime_profile,
                    InputMultiPath, BaseInterface, BaseInterfaceInputSpec)
 from .io import IOBase, add_traits
-from ..utils.filemanip import (filename_to_list, copyfile, split_filename)
+from ..utils.filemanip import (filename_to_list, copyfile, split_filename, loadpkl)
 from ..utils.misc import getsource, create_function_from_source
 
 logger = logging.getLogger('interface')
@@ -533,6 +533,79 @@ class AssertEqual(BaseInterface):
             raise RuntimeError('Input images are not exactly equal')
         return runtime
 
+
+# few connect functions 
+def flatten(l):
+    "Flatten a list, can be useful when merging lists of file with utility.Merge interface."
+    import collections
+    def flatgen(l):
+        for el in l:
+            if isinstance(el, collections.Iterable) and not isinstance(el, basestring) and not isinstance(el,dict):
+                for sub in flatten(el):
+                    yield sub
+            else:
+                yield el
+    return [el for el in flatgen(l)]
+
+
+def select(x,i):
+    "Select an element or a list of element from a iterable output."
+    if isinstance(i, list):
+        return [x[ii][0] for ii in i]
+    else:
+        return x[i]
+
+def repeat(x,n,flatten=False):
+    "Repeat a element or a list"
+    if isinstance(x,list):
+        o=x*n
+    else:
+        o=[x]*n
+    if flatten:
+        return flatten(o)
+    return o
+
+
+def find_in_same_dir(base,fname, single=False):
+    import os, glob
+    bname = os.path.dirname(base)
+    out_fnames = glob.glob(os.path.join(bname,fname))
+    if single and len(out_fnames)==1:
+        return out_fnames[0]
+    return out_fnames
+
+class LoadResultsInputSpec(BaseInterfaceInputSpec):
+    result_file = traits.File(
+        mandatory=True,
+        exists=True,
+        desc='the results file to be loaded')
+
+class LoadResults(IOBase):
+    input_spec = LoadResultsInputSpec
+    output_spec = DynamicTraitedSpec
+    
+    def __init__(self,source_interface,**inputs):
+        super(LoadResults, self).__init__(**inputs)
+                
+        self._out_traits = source_interface.output_spec.class_trait_names(transient=None)
+
+    def _add_output_traits(self, base):
+        undefined_traits = {}
+        for name in self._out_traits:
+            base.add_trait(name,traits.Any)
+            undefined_traits[name] = Undefined
+        base.trait_set(trait_change_notify=False, **undefined_traits)
+        return base
+
+    def _run_interface(self, runtime):
+        self._outs = loadpkl(self.inputs.result_file).outputs
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        for k,v in self._outs.items():
+            outputs[k]=v
+        return outputs
 
 class CSVReaderInputSpec(DynamicTraitedSpec, TraitedSpec):
     in_file = File(exists=True, mandatory=True, desc='Input comma-seperated value (CSV) file')

@@ -1821,8 +1821,10 @@ class CommandLine(BaseInterface):
                 name_template = retval
             else:
                 name_template = trait_spec.name_template
-            if not name_template:
-                name_template = "%s_generated"
+            if name_template is None:
+                return retval
+#            if not name_template:
+#                name_template = "%s_generated"
 
             ns = trait_spec.name_source
             while isinstance(ns, (list, tuple)):
@@ -1880,8 +1882,9 @@ class CommandLine(BaseInterface):
                 out_name = name
                 if trait_spec.output_name is not None:
                     out_name = trait_spec.output_name
-                outputs[out_name] = \
-                    os.path.abspath(self._filename_from_source(name))
+                out_file = self._filename_from_source(name)
+                if isdefined(out_file) and out_file != None:
+                    outputs[out_name] = os.path.abspath(out_file)
             return outputs
 
     def _parse_inputs(self, skip=None):
@@ -1909,7 +1912,6 @@ class CommandLine(BaseInterface):
             elif spec.genfile:
                 if not isdefined(value) or value is None:
                     value = self._gen_filename(name)
-
             if not isdefined(value):
                 continue
             arg = self._format_arg(name, spec, value)
