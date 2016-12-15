@@ -16,11 +16,12 @@ import nibabel as nb
 import numpy as np
 
 from ...utils.misc import package_check
-from ...utils.filemanip import split_filename, fname_presuffix
+from ...utils.filemanip import (fname_presuffix, filename_to_list,
+                                list_to_filename, split_filename,
+                                savepkl, loadpkl)
 from ..base import (TraitedSpec, BaseInterface, traits,
                     BaseInterfaceInputSpec, isdefined, File,
                     InputMultiPath, OutputMultiPath)
-
 
 have_nipy = True
 try:
@@ -28,10 +29,12 @@ try:
 except Exception as e:
     have_nipy = False
 else:
+    from nipy.labs.mask import compute_mask
+    import nipy.algorithms.utils.preprocess as preproc
+    from nipy.algorithms.registration import FmriRealign4d as FR4d
     import nipy
     from nipy import save_image, load_image
     nipy_version = nipy.__version__
-
 
 
 class ComputeMaskInputSpec(BaseInterfaceInputSpec):
@@ -78,7 +81,7 @@ class ComputeMask(BaseInterface):
         outputs["brain_mask"] = self._brain_mask_path
         return outputs
 
-
+        
 class FmriRealign4dInputSpec(BaseInterfaceInputSpec):
 
     in_file = InputMultiPath(File(exists=True),
@@ -196,7 +199,6 @@ class FmriRealign4d(BaseInterface):
                 mfile.write(string)
             mfile.close()
 
-        return runtime
 
     def _list_outputs(self):
         outputs = self._outputs().get()
@@ -204,6 +206,290 @@ class FmriRealign4d(BaseInterface):
         outputs['par_file'] = self._par_file_path
         return outputs
 
+
+class RegressOutMotionInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc='Run file to process')
+    mask = File(
+        exists=True,
+        desc='Mask file to select voxel to regress out.')
+    motion = File(
+        exists=True,
+        desc='Motion parameters files')
+    motion_source = traits.Enum(
+        'spm','fsl','afni',
+        desc = 'software used to estimate motion',
+        usedefault = True)
+    regressors_type = traits.Enum(
+        'global',
+        'voxelwise_drms', 'voxelwise_translation','voxelwise_outplane',
+        desc='Which motion parameters to use as regressors',
+        usedefault = True)
+    global_signal = traits.Bool(
+        False, usedefault = True,
+        desc = 'Regress out global signal (estimated with mean in mask) from data.')
+    regressors_transform = traits.Str(
+        desc = 'Which transform to apply to motion parameters')
+
+    slicing_axis = traits.Int(
+        2, usedefault = True, desc = 'Axis for outplane motion measure')
+
+    prefix = traits.String('m', usedefault=True)
+
+class RegressOutMotionOutputSpec(TraitedSpec):
+    out_file = File(exists=True,
+                    desc = 'File with regressed out motion parameters')
+    beta_maps = File(#exists=True,
+                     desc = 'File containing betas maps for each regressor.')
+    
+class RegressOutMotion(BaseInterface):
+    input_spec = RegressOutMotionInputSpec
+    output_spec = RegressOutMotionOutputSpec
+
+
+    def _run_interface(self, runtime):
+        try:
+            nii = nb.load(self.inputs.in_file)
+            motion = np.loadtxt(self.inputs.motion)
+            motion = preproc.motion_parameter_standardize(motion,self.inputs.motion_source)
+            mask = nb.load(self.inputs.mask).get_data()>0
+            cdata, _, betamaps = preproc.regress_out_motion_parameters(
+                nii,motion,mask,
+                regressors_type = self.inputs.regressors_type,
+                regressors_transform = self.inputs.regressors_transform,
+                slicing_axis = self.inputs.slicing_axis,
+                global_signal = self.inputs.global_signal
+                )
+            outnii = nb.Nifti1Image(cdata,nii.get_affine(),nii.get_header().copy())
+            outnii.set_data_dtype(np.float32)
+            nb.save(outnii, self._list_outputs()['out_file'])
+            
+            betanii = nb.Nifti1Image(betamaps,nii.get_affine())
+            nb.save(betanii, self._list_outputs()['beta_maps'])
+        except Exception as e:
+            print "RegressOutMotion failed", e
+        finally:
+            del nii, motion, cdata, betamaps, outnii, betanii, _
+        return runtime
+        
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        outputs["out_file"] = fname_presuffix(
+            self.inputs.in_file,
+            prefix = self.inputs.prefix,
+            newpath = os.getcwd())
+        outputs["beta_maps"] = fname_presuffix(
+            self.inputs.in_file,
+            suffix = '_betas',
+            newpath = os.getcwd())
+
+        return outputs
+
+def mean_ts(tss):
+    return tss.mean(axis=0)
+
+def pca_ts(tss,numcomp=5):
+    import scipy as sp
+    u,s,v = sp.linalg.svd(tss, full_matrices=False)
+    return v[:numcomp, :].T
+
+class RegressOutMaskSignalInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        desc='Run file to process')
+    mask = File(
+        exists=True,
+        desc = 'Mask to select the voxels to be regressed.')
+    signal_masks = InputMultiPath(
+        traits.Either(traits.List(File(exists=True)), File(exists=True)),
+        desc = "Masks file to compute the regressed out signals.")
+
+    signal_masks_threshold = traits.Either(
+        traits.Float(), traits.List(traits.Float()),
+        0, usedefault=True,
+        desc = 'Value to threshold mask images. Default is >0.')
+    signal_estimate_function = traits.Function(
+        mean_ts,
+        usedefault = True,
+        desc = """Function to estimate the signal from voxel timeseries.
+Default is mean along the voxel dimension.""")
+    prefix = traits.String('g', usedefault=True)
+
+class RegressOutMaskSignalOutputSpec(TraitedSpec):
+    out_file = File(exists=True,
+                    desc = 'File with regressed out global signal')
+
+    beta_maps = File(exists=True,
+                     desc = 'Maps of beta values from regression.')
+    regressors = File(exists=True,
+                      desc = 'Timecourses used as regressors')
+class RegressOutMaskSignal(BaseInterface):
+    input_spec  = RegressOutMaskSignalInputSpec
+    output_spec = RegressOutMaskSignalOutputSpec
+
+    
+    def _run_interface(self, runtime):
+        nii = nb.load(self.inputs.in_file)
+        data = nii.get_data()
+        mask = nb.load(self.inputs.mask).get_data()>0
+        signal_masks_nii = [nb.load(m) for m in self.inputs.signal_masks]
+        thr = self.inputs.signal_masks_threshold
+        if isinstance(thr,list):
+            signal_masks=[(m.get_data()>t)*mask for m,t in zip(signal_masks_nii,thr)]
+        else:
+            signal_masks = [(m.get_data()>thr)*mask for m in signal_masks_nii]
+
+        m = np.isnan(data).sum(-1)*mask
+        #correct for isolated nan values in mask timeseries due to realign
+        # linearly interpolate in ts and extrapolate at ends of ts
+        # TODO:optimize
+        y = lambda z: z.nonzero()[0]
+        if np.count_nonzero(m):
+            for x,y,z in zip(m.nonzero()):
+                nans = np.isnan(data[x,y,z])
+                data[x,y,z] = np.interp(y(nans),y(~nans),data[x,y,z,~nans])
+        nt=data.shape[-1]
+
+        signals = np.squeeze(np.concatenate([self.inputs.signal_estimate_function(data[m])[...,np.newaxis] for m in signal_masks],1))
+        #normalize
+        signals = (signals-signals.mean(0))/signals.std(0)[np.newaxis]
+        data = data[mask]
+
+        reg_pinv = np.linalg.pinv(np.concatenate((signals,np.ones((nt,1))),
+                                                 axis=1))
+        betas = np.empty((data.shape[0],signals.shape[1]))
+        for ti,ts in enumerate(data):
+            betas[ti] = reg_pinv.dot(ts)[:-1]
+            ts -= signals.dot(betas[ti])
+        
+        cdata = np.zeros(nii.shape)
+        cdata[mask] = data
+
+        outnii = nb.Nifti1Image(cdata,nii.get_affine(),nii.get_header().copy())
+        outnii.set_data_dtype(np.float32)
+        out_fname = self._list_outputs()['out_file']
+
+        nb.save(outnii, out_fname)
+
+        betamaps = np.empty(mask.shape+(betas.shape[1],),np.float32)
+        betamaps.fill(np.nan)
+        betamaps[mask] = betas
+        betanii = nb.Nifti1Image(betamaps,nii.get_affine())
+        nb.save(betanii, self._list_outputs()['beta_maps'])
+        np.savetxt(self._list_outputs()['regressors'], signals)
+        del nii, data, cdata, outnii, betas, betamaps, betanii
+        return runtime
+        
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        outputs["out_file"] = fname_presuffix(
+            self.inputs.in_file,
+            prefix = self.inputs.prefix,
+            newpath = os.getcwd())
+        outputs["beta_maps"] = fname_presuffix(
+            self.inputs.in_file,
+            prefix = self.inputs.prefix,
+            suffix = '_betas',
+            newpath = os.getcwd())
+        outputs["regressors"] = fname_presuffix(
+            self.inputs.in_file,
+            prefix = self.inputs.prefix,
+            suffix = '_regs.txt',
+            newpath = os.getcwd(),
+            use_ext=False)
+        return outputs
+    
+
+
+class ScrubbingInputSpec(BaseInterfaceInputSpec):
+    in_file = File(
+        exists=True,
+        mandatory=True,
+        desc='The 4D run to be processed')
+    mask = File(
+        exists=True,
+        mandatory=True,
+        desc='The brain mask used to compute the framewise derivatives')
+
+    motion = File(
+        exists=True,
+        mandatory=True,
+        desc='Motion parameters files')
+    motion_source = traits.Enum(
+        'spm','fsl','afni',
+        desc = 'software used to estimate motion',
+        usedefault = True)
+    head_radius = traits.Float(
+        50,usedefault=True,
+        desc='The head radius in mm to be used for framewise displacement computation.')
+    fd_threshold = traits.Float(
+        -1, usedefault=True,
+        desc="Threshold applied to framewise displacement. Default is half voxel size.")
+
+    drms_threshold = traits.Float(
+        -1, usedefault = True,
+        desc = """The threshold applied to derivative root mean square.
+defaults is an automatic threshold based on otsu.""")
+    
+    extend_scrubbing = traits.Bool(
+        True, usedefault = True,
+        desc = 'Extend scrubbing mask to 1 back and 2 forward as in Power et al.')
+
+    
+class ScrubbingOutputSpec(TraitedSpec):
+    out_file = File(
+        exists=True,
+        desc = 'Scrubbed data')
+    motion = File(
+        exists=True,
+        desc='Motion file with volume scrubbed out parameters removed')
+    volume_count = traits.Int(desc='The number of remaining volumes.')
+    scrubbed_out_volumes=traits.List(traits.Int(),
+                                     desc = 'Index of scrubbed volumes.')
+    
+class Scrubbing(BaseInterface):
+    """ Implement Power et al. scrubbing method,
+    suppress volumes with criterion on framewise displacement (FD) and
+    bw derivative RMS over voxels
+    
+    Automatic threshold is half voxel size for FD and 
+    is determined by Otsu's algorithm for DRMS
+    """
+    input_spec = ScrubbingInputSpec
+    output_spec = ScrubbingOutputSpec
+
+    def _run_interface(self, runtime):
+        nii = nb.load(self.inputs.in_file)
+        mask = nb.load(self.inputs.mask).get_data()>0
+        motion = np.loadtxt(self.inputs.motion)
+        motion = preproc.motion_parameter_standardize(
+            motion, self.inputs.motion_source)
+        self.scrubbed, self.scrub_mask, _,_ = preproc.scrub_data(
+            nii, motion, mask, 
+            head_radius = self.inputs.head_radius,
+            fd_threshold = self.inputs.fd_threshold,
+            drms_threshold = self.inputs.drms_threshold,
+            extend_mask = self.inputs.extend_scrubbing)
+        
+        out_nii = nb.Nifti1Image(self.scrubbed, nii.get_affine(),
+                                 nii.get_header().copy())
+        nb.save(out_nii, self._list_outputs()['out_file'])
+        np.savetxt(self._list_outputs()['motion'], motion[self.scrub_mask])
+        return runtime
+    
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        outputs["out_file"] = fname_presuffix(
+                self.inputs.in_file, newpath=os.getcwd(),
+                prefix = 't')
+        outputs["motion"] = fname_presuffix(
+                self.inputs.motion, newpath=os.getcwd(),
+                prefix = 't')
+
+        outputs['volume_count'] = self.scrubbed.shape[-1]
+        outputs['scrubbed_out_volumes'] = np.where(self.scrub_mask==0)[0].tolist()
+        return outputs
 
 class SpaceTimeRealignerInputSpec(BaseInterfaceInputSpec):
 
@@ -326,7 +612,6 @@ class SpaceTimeRealigner(BaseInterface):
                 string = ' '.join(params) + '\n'
                 mfile.write(string)
             mfile.close()
-
         return runtime
 
     def _list_outputs(self):
@@ -334,7 +619,6 @@ class SpaceTimeRealigner(BaseInterface):
         outputs['out_file'] = self._out_file_path
         outputs['par_file'] = self._par_file_path
         return outputs
-
 
 class TrimInputSpec(BaseInterfaceInputSpec):
     in_file = File(
