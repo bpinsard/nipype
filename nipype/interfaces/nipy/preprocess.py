@@ -20,6 +20,7 @@ from ...utils.filemanip import split_filename, fname_presuffix
 from ..base import (TraitedSpec, BaseInterface, traits,
                     BaseInterfaceInputSpec, isdefined, File,
                     InputMultiPath, OutputMultiPath)
+from .base import NipyBaseInterfaceInputSpec, NipyBaseInterface
 
 have_nipy = True
 try:
