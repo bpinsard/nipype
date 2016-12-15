@@ -18,11 +18,14 @@ import re
 import shutil
 
 from ...utils.filemanip import fname_presuffix, split_filename
-from ..base import (TraitedSpec, File, traits, OutputMultiPath, isdefined,
-                    CommandLine, CommandLineInputSpec)
+from ..base import (TraitedSpec, File, Directory, traits, OutputMultiPath, isdefined,
+                    CommandLine, CommandLineInputSpec, DynamicTraitedSpec,
+                    BaseInterfaceInputSpec, BaseInterface)
 from .base import (FSCommand, FSTraitedSpec,
                    FSScriptCommand, FSScriptOutputSpec,
                    FSTraitedSpecOpenMP, FSCommandOpenMP)
+from ...utils.filemanip import fname_presuffix, split_filename
+from ..io import add_traits
 __docformat__ = 'restructuredtext'
 
 filemap = dict(cor='cor', mgh='mgh', mgz='mgz', minc='mnc',
@@ -345,13 +348,18 @@ class SurfaceSmooth(FSCommand):
 
 
 class SurfaceTransformInputSpec(FSTraitedSpec):
+    _sources = ['source_file','source_annot_file','source_surface_file']
     source_file = File(exists=True, mandatory=True, argstr="--sval %s",
-                       xor=['source_annot_file'],
+                       xor=_sources,
                        desc="surface file with source values")
     source_annot_file = File(exists=True, mandatory=True,
                              argstr="--sval-annot %s",
-                             xor=['source_file'],
+                             xor=_sources,
                              desc="surface annotation file")
+    source_surface_file = traits.Str(mandatory=True,
+                                     argstr="--sval-xyz %s --tval-xyz",
+                                     xor=_sources,
+                                     desc="source surface file to transform")
     source_subject = traits.String(mandatory=True, argstr="--srcsubject %s",
                                    desc="subject id for source surface")
     hemi = traits.Enum("lh", "rh", argstr="--hemi %s", mandatory=True,
@@ -372,11 +380,18 @@ class SurfaceTransformInputSpec(FSTraitedSpec):
     reshape_factor = traits.Int(argstr="--reshape-factor",
                                 desc="number of slices in reshaped image")
     out_file = File(argstr="--tval %s", genfile=True,
-                    desc="surface file to write")
+                    requires = ['source_file'],
+                    desc="surface data file to write")
+    out_surface_file = File(
+        argstr="--trgsurfval %s", 
+        genfile=True,
+        requires = ['source_surface_file'],
+        desc="surface object file to write")
 
 
 class SurfaceTransformOutputSpec(TraitedSpec):
-    out_file = File(exists=True, desc="transformed surface file")
+    out_file = File(exists=True, desc="transformed surface data file")
+    out_surface_file = File(exists=True, desc="transformed surface file")
 
 
 class SurfaceTransform(FSCommand):
@@ -430,10 +445,32 @@ class SurfaceTransform(FSCommand):
                                                   use_ext=use_ext)
         else:
             outputs["out_file"] = os.path.abspath(self.inputs.out_file)
+
+        outputs["out_surface_file"] = self.inputs.out_surface_file
+        if isdefined(self.inputs.source_surface_file):
+            if not isdefined(outputs["out_surface_file"]):
+                source = self.inputs.source_surface_file
+                if not os.path.isfile(source):
+                    source = '%s.%s'%(self.inputs.hemi,source)
+                source = source + ".stripme" # surfaces have no extension
+                # ico extension outputs other magic number so ico[1-7] used
+                if self.inputs.target_subject == 'ico':
+                    suffix=".%s%d" % (self.inputs.target_subject,
+                                      self.inputs.target_ico_order)
+                else:
+                    suffix=".%s" % (self.inputs.target_subject)
+                
+                outputs["out_surface_file"] = fname_presuffix(
+                    source,
+                    suffix=suffix,
+                    newpath=os.getcwd(),
+                    use_ext=False)
+            else:
+                outputs["out_surface_file"] = os.path.abspath(self.inputs.out_surface_file)
         return outputs
 
     def _gen_filename(self, name):
-        if name == "out_file":
+        if name in ["out_file", "out_surface_file"]:
             return self._list_outputs()[name]
         return None
 
@@ -1241,6 +1278,234 @@ class ExtractMainComponent(CommandLine):
     input_spec = ExtractMainComponentInputSpec
     output_spec = ExtractMainComponentOutputSpec
 
+
+class DecimateInputSpec(CommandLineInputSpec):
+    in_file = File(exists=True, mandatory=True,
+                   argstr='%s', position=-2)
+
+    out_file = File(name_template='%s_dec', name_source='in_file',
+                    argstr='%s', position=-1)
+
+    decimation_level = traits.Float(
+        argstr='-d %g',
+        desc="""target decimation level of new surface
+(value between 0<-->1.0, default: 0.5). 
+The resulting surface will have approximately 
+triangles = <decimationLevel> * origTriangles""")
+
+    min_angle = traits.Float(
+        argstr = '-m %g',
+        desc="""The minimum angle in degrees allowed between faces during 
+decimation (default: 1.0)""")
+
+class DecimateOutputSpec(TraitedSpec):
+    out_file = File(desc='decimated file')
+
+class Decimate(CommandLine):
+    """
+    This program reduces the number of triangles in a surface and outputs 
+    the new surface to a file using the GNU Triangulated Surface (GTS) 
+    Library.
+
+    Examples
+    --------
+
+    >>> from nipype.interfaces.freesurfer import Decimate
+    >>> dec = Decimate(in_file='lh.pial', out_file='lh.pial_dec', decimation_level=.4)
+    >>> dec.cmdline
+    'mris_decimate -d 0.4 lh.pial lh.pial_dec'
+
+    """
+
+    _cmd = 'mris_decimate'
+    input_spec = DecimateInputSpec
+    output_spec = DecimateOutputSpec
+
+class SubjectsDirInputSpec(DynamicTraitedSpec, BaseInterfaceInputSpec):
+    pass
+
+class SubjectsDirOutputSpec(TraitedSpec):
+    subjects_dir = Directory(
+        desc='created subject directory with links to subjects')
+    subjects_dirs_list = traits.List(
+        Directory(),
+        desc='a list of subjects directories')
+
+class SubjectsDir(BaseInterface):
+    """Basic interface that create symlink to subjects folder in different location to provide a fake subjects_dir to some freesurfer commands.
+
+    Examples
+    --------
+
+    >>> from nipype.interfaces.freesurfer import SubjectsDir
+    >>> sd = SubjectsDir(3)
+    >>> sd.inputs.subject1 = '/data/subject1'
+    >>> sd.inputs.subject2 = '/data/subject2'
+    >>> sd.inputs.subject3 = '/usr/share/freesurfer/subjects/fsaverage6'
+
+    """
+    input_spec = SubjectsDirInputSpec
+    output_spec = SubjectsDirOutputSpec
+
+    def __init__(self, n_subjects=0, **inputs):
+        super(SubjectsDir, self).__init__(**inputs)
+        self._n_subjects = n_subjects
+        add_traits(self.inputs, 
+                   ['subject%d' % (i + 1) for i in range(n_subjects)],
+                   Directory)
+
+    def _run_interface(self, runtime):
+        self._subjects_dirs_list = []
+        for idx in xrange(self._n_subjects):
+            value = getattr(self.inputs, 'subject%d' % (idx + 1))
+            if isdefined(value) and os.path.isdir(value):
+                dirname = os.path.join(os.getcwd(),
+                                       os.path.basename(value.rstrip('/')))
+                os.symlink(value, dirname)
+                self._subjects_dirs_list.append(dirname)
+        return runtime
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        outputs['subjects_dir'] = os.getcwd()
+        outputs['subjects_dirs_list'] = self._subjects_dirs_list
+        return outputs
+
+
+class ComputeVolumeFractionsInputSpec(CommandLineInputSpec):
+
+    subjects_dir = traits.Str(
+        argstr='-SDIR %s',
+        desc=('freesurfer subjects directory defaults to $SUBJECTS_DIR'))
+
+    in_file = File(
+        exists=True,
+        argstr='%s', position=-1,
+        desc='template file')
+
+    out_stem = traits.Str(
+        'pve', usedefault=True, 
+        argstr='--o %s',
+        desc='outstem : output will be oustem.{cortex,subcort_gm,wm,csf}.mgz')
+
+    reg_file = File(
+        exists=True,
+        argstr='--reg %s',
+        desc='regfile : can be LTA or reg.dat',
+        position=-2)
+
+    upsample_factor = traits.Int(
+        argstr = '--usf %s',
+        desc='upsample factor (default 2)')
+    regheader = traits.Str(
+        argstr='--regheader %s',
+        desc='subjects')
+    resolution = traits.Int(
+        argstr='--r %s',
+        desc='resolution, sets USF = round(1/res)')
+    seg_file = File(
+        argstr='--seg  %s',
+        desc='use segfile instead of aseg.mgz')
+    white_surf = traits.Str(
+        argstr='--wsurf %s',
+        desc='white surface (default is white)')
+    pial_surf=traits.Str(
+        argstr='--psurf %s',
+        desc='pial surface (default is pial)')
+    no_aseg = traits.Bool(
+        argstr='--no-aseg',
+        desc='do not include aseg (good for testing)')
+    stack_file = File(
+        argstr='--stack %s',
+        desc='put ctx,subcortgm,wm,csf into a single multi-frame file')
+    gm_file = File(
+        argstr='--gm %s',
+        desc='put ctx+subcortgm into a single-frame file')
+    no_fill_csf = traits.Bool(
+        argstr='--no-fill-csf',
+        desc="""do not attempt to fill voxels surrounding seg with the extracerebral CSF segmetation
+     Note: when the fill is done, there is no attempt to actually segment xCSF voxels.
+     The passed segmentation is dilated and the new voxels become xCSF
+     Note: if the passed seg already has the CSF_ExtraCerebral seg, nothing will be done""")
+    dilation = traits.Int(
+        argstr='--dil %d',
+        desc='for xCSF fill, dilate by N (default is 3); use -1 to fill the entire volume')
+    out_seg = File(
+        argstr='--out-seg %s',
+        desc='save seg (after adding xcsf voxels)')
+    ttseg = File(
+        argstr='--ttseg %s',
+        desc='save tissue type segmentation (probably not that useful)')
+    ttseg_ctab = File(
+        argstr='--ttseg-ctab %s',
+        desc='save tissue type segmentation ctab (probably not that useful)')
+
+    mgz = traits.Bool(
+        argstr='--mgz',
+        desc='use mgz format (default)')
+    mgh = traits.Bool(
+        argstr='--mgh',
+        desc='use mgh format')
+    nii = traits.Bool(
+        argstr='--nii',
+        desc='use nii format')
+    niigz = traits.Bool(
+        argstr='--nii.gz',
+        desc='use nii.gz format')
+    ttype_head= traits.Bool(
+        argstr='--ttype+head',
+        desc='use default+head instead of default tissue type info for seg')
+
+class ComputeVolumeFractionsOutputSpec(TraitedSpec):
+    partial_volume_maps = OutputMultiPath(
+        File(exists=True),
+        desc='partial volume maps')
+    subcort_gm_file = File(exists=True)
+    cortex_file = File(exists=True)
+    wm_file = File(exists=True)
+    csf_file = File(exists=True)
+    gm_file = File(desc='optional ctx+subcortgm file')
+    stack_file = File(desc='optional stacked tissue maps')
+    out_seg = File(desc='optional segmentation')
+    ttseg = File(desc='optional tissue type segmentation')
+    ttseg_ctab = File(desc='optional tissue type segmentation ctab')
+
+class ComputeVolumeFractions(CommandLine):
+    """
+    This program computes the partial volume maps in the space of the 
+    reference image.
+
+    Examples
+    --------
+
+    >>> from nipype.interfaces.freesurfer import ComputeVolumeFractions
+    >>> pve = ComputeVolumeFractions(in_file='T1.mgz', reg_file='register.dat')
+    >>> pve.cmdline
+    'mri_compute_volume_fractions --o pve --reg register.dat T1.mgz'
+
+    """
+
+    _cmd = 'mri_compute_volume_fractions'
+    input_spec = ComputeVolumeFractionsInputSpec
+    output_spec = ComputeVolumeFractionsOutputSpec
+
+    def _list_outputs(self):
+        outputs = self._outputs().get()
+        ext = 'mgz'
+        inputs = self.inputs.get()
+        for alt_ext in ['mgh','nii','nii.gz']:
+            if inputs[alt_ext.replace('.','')]:
+                ext = alt_ext
+        tissue_maps = ['cortex','subcort_gm','wm','csf']
+        outputs['partial_volume_maps'] = [
+            os.path.abspath('%s.%s.%s'%(inputs['out_stem'], m, alt_ext)) \
+            for m in tissue_maps]
+        outputs['cortex_file'],outputs['subcort_gm_file'],outputs['wm_file'],outputs['csf_file'] = outputs['partial_volume_maps']
+        optional_outputs = ['gm_file','stack_file','out_seg','ttseg','ttseg_ctab']
+        for oo in optional_outputs:
+            if inputs[oo]:
+                outputs[oo] = os.path.abspath(inputs[oo])
+        return outputs
 
 class Tkregister2InputSpec(FSTraitedSpec):
     target_image = File(exists=True, argstr="--targ %s",
