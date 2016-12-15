@@ -620,7 +620,7 @@ class SpaceTimeRealigner(BaseInterface):
         outputs['par_file'] = self._par_file_path
         return outputs
 
-class TrimInputSpec(BaseInterfaceInputSpec):
+class TrimInputSpec(NipyBaseInterfaceInputSpec):
     in_file = File(
         exists=True, mandatory=True,
         desc="EPI image to trim")
@@ -630,17 +630,15 @@ class TrimInputSpec(BaseInterfaceInputSpec):
     end_index = traits.Int(
         0, usedefault=True,
         desc='last volume indexed as in python (and 0 for last)')
-    out_file = File(desc='output filename')
-    suffix = traits.Str(
-        '_trim', usedefault=True,
-        desc='suffix for out_file to use if no out_file provided')
-
+    out_file = File('%s_trim', desc='output filename',
+                    overload_extension=True,
+                    name_source='in_file')
 
 class TrimOutputSpec(TraitedSpec):
     out_file = File(exists=True)
 
 
-class Trim(BaseInterface):
+class Trim(NipyBaseInterface):
     """ Simple interface to trim a few volumes from a 4d fmri nifti file
 
     Examples
@@ -657,23 +655,81 @@ class Trim(BaseInterface):
     output_spec = TrimOutputSpec
 
     def _run_interface(self, runtime):
-        out_file = self._list_outputs()['out_file']
         nii = nb.load(self.inputs.in_file)
         if self.inputs.end_index == 0:
             s = slice(self.inputs.begin_index, nii.shape[3])
         else:
             s = slice(self.inputs.begin_index, self.inputs.end_index)
-        nii2 = nb.Nifti1Image(nii.get_data()[..., s], nii.affine, nii.header)
+        newdata = nii.get_data()[..., s]
+        if len(newdata.shape)>3 and newdata.shape[-1]==1:
+            newdata = newdata[...,0]
+        nii2 = nb.Nifti1Image(
+            newdata,
+            nii.get_affine(),
+            nii.get_header())
+        out_file = self._list_outputs()['out_file']
         nb.save(nii2, out_file)
         return runtime
 
-    def _list_outputs(self):
-        outputs = self.output_spec().get()
-        outputs['out_file'] = self.inputs.out_file
-        if not isdefined(outputs['out_file']):
-            outputs['out_file'] = fname_presuffix(
-                self.inputs.in_file,
-                newpath=os.getcwd(),
-                suffix=self.inputs.suffix)
-        outputs['out_file'] = os.path.abspath(outputs['out_file'])
-        return outputs
+
+class CropInputSpec(NipyBaseInterfaceInputSpec):
+    in_file = File(desc='input file', exists=True, mandatory=True,)
+    out_file = File('%s_crop', desc='output file',
+                    overload_extension=True,
+                    name_source='in_file')
+
+    x_min = traits.Int(0, usedefault=True)
+    x_max = traits.Either(None,traits.Int, usedefault=True)
+    y_min = traits.Int(0, usedefault=True)
+    y_max = traits.Either(None,traits.Int, usedefault=True)
+    z_min = traits.Int(0, usedefault=True)
+    z_max = traits.Either(None,traits.Int, usedefault=True)
+
+    padding = traits.Int(0,usedefault=True,
+                         desc='add n voxels of padding in each direction',)
+
+class CropOutputSpec(TraitedSpec):
+    out_file = File(desc='output file')
+
+class Crop(NipyBaseInterface):
+    """ Simple interface to crop a volume using voxel space
+    contrary to afni.Autobox or afni.Resample this keep the oblique matrices
+
+    Examples
+    --------
+    >>> from nipype.interfaces.nipy.preprocess import Crop
+    >>> crop = Crop(x_min=10,x_max=-10)
+    >>> crop.inputs.in_file = 'anatomical.nii'
+    >>> res = crop.run() # doctest: +SKIP
+
+    """
+    
+    input_spec = CropInputSpec
+    output_spec = CropOutputSpec
+    
+    def _run_interface(self, runtime):
+        in_file = nb.load(self.inputs.in_file)
+        mat = in_file.get_affine().copy()
+        pad = self.inputs.padding
+        x_max,y_max,z_max=self.inputs.x_max,self.inputs.y_max,self.inputs.z_max
+        if pad!=0:
+            if x_max > 0: x_max = min(x_max+pad,in_file.shape[0]-1)
+            else : x_max = min(x_max+pad,0)
+            if x_max == 0 : x_max = None
+            if y_max > 0: y_max = min(y_max+pad,in_file.shape[1]-1)
+            else : y_max = min(y_max+pad,0)
+            if y_max == 0 : y_max = None
+            if z_max > 0: z_max = min(z_max+pad,in_file.shape[2]-1)
+            else : z_max = min(z_max+pad,0)
+            if z_max == 0 : z_max = None
+        slices = [slice(max(self.inputs.x_min-pad,0),x_max),
+                  slice(max(self.inputs.y_min-pad,0),y_max),
+                  slice(max(self.inputs.z_min-pad,0),z_max),]
+        data = in_file.get_data()[slices]
+        orig_coords = mat.dot([s.start for s in slices]+[1]).ravel()[:3]
+        mat[:3,3] = orig_coords
+        out_file = nb.Nifti1Image(data,mat)
+        out_file.set_data_dtype(in_file.get_data_dtype())
+        out_filename = self._list_outputs()['out_file']
+        nb.save(out_file,out_filename)
+        return runtime    
