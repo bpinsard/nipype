@@ -790,7 +790,14 @@ class OnlinePreprocInputSpecBase(NipyBaseInterfaceInputSpec):
         desc = 'precomputed fieldmap coregistered with reference space')
     fieldmap_reg = File(
         desc = 'fieldmap coregistration matrix')
-    
+    fieldmap_recenter_values = traits.Bool(
+        False, usedefault=True,
+        desc = 'substract the mean of fieldmap values in brain mask to minimize shift')
+    fieldmap_unmask = traits.Bool(
+        False, usedefault=True,
+        desc = 'unmask (extrapolate out of mask) the fieldmap to reduce border effect')
+
+
     # space definition
     mask = File(
         mandatory = True,
@@ -1289,6 +1296,8 @@ class OnlineRealign(
                 wm_weight = wm_pve,
                 fieldmap = fmap, 
                 fieldmap_reg = fmap_reg,
+                recenter_fmap_data=self.inputs.fieldmap_recenter_values,
+                unmask_fmap=self.inputs.fieldmap_unmask,
                 phase_encoding_dir = self.inputs.phase_encoding_dir,
                 echo_time = self.inputs.echo_time,
                 echo_spacing = self.inputs.echo_spacing,
