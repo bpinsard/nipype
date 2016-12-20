@@ -161,7 +161,7 @@ class Autobox(AFNICommand):
     output_spec = AutoboxOutputSpec
 
     def aggregate_outputs(self, runtime=None, needed_outputs=None):
-        outputs = self._outputs()
+        outputs = self._list_outputs()
         pattern = 'x=(?P<x_min>-?\d+)\.\.(?P<x_max>-?\d+)  '\
                   'y=(?P<y_min>-?\d+)\.\.(?P<y_max>-?\d+)  '\
                   'z=(?P<z_min>-?\d+)\.\.(?P<z_max>-?\d+)'
@@ -172,7 +172,6 @@ class Autobox(AFNICommand):
                 for k in list(d.keys()):
                     d[k] = int(d[k])
                 outputs.set(**d)
-        outputs.set(out_file=self._gen_filename('out_file'))
         return outputs
 
     def _gen_filename(self, name):
