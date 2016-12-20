@@ -170,8 +170,7 @@ class Autobox(AFNICommand):
             if m:
                 d = m.groupdict()
                 for k in list(d.keys()):
-                    d[k] = int(d[k])
-                outputs.set(**d)
+                    outputs[k] = int(d[k])
         return outputs
 
     def _gen_filename(self, name):
