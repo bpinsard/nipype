@@ -958,6 +958,9 @@ class SurfaceResamplingBase(NipyBaseInterface):
         coords = out_file.create_dataset('COORDINATES',
                                          (0,3),maxshape = (None,3),
                                          dtype = np.float)
+        out_mask = out_file.create_dataset('MASK',
+                                           (0,1),maxshape = (None,1),
+                                           dtype = np.bool)
         
         if isdefined(self.inputs.resample_surfaces):
             for surf_name, surf_file in self.inputs.resample_surfaces:
@@ -965,17 +968,21 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 surf_group.attrs['ModelType'] = 'SURFACE'
                 surf_group.attrs['SurfaceFile'] = [f.encode('utf8') for f in surf_file]
                 if isinstance(surf_file, tuple):
-                    verts, tris = self.load_gii_fs(surf_file[0])
-                    verts*=(1-self.inputs.middle_surface_position)
+                    verts1, tris = self.load_gii_fs(surf_file[0])
+                    verts = verts1*(1-self.inputs.middle_surface_position)
                     verts2, _ =  self.load_gii_fs(surf_file[1])
                     verts += verts2*self.inputs.middle_surface_position
+                    mask = np.abs(verts-verts2).sum(1)>1e-2
                     del verts2
                 else:
                     verts, tris = self.load_gii_fs(surf_file)
+                    mask = True
                 ofst = coords.shape[0]
                 count = verts.shape[0]
                 coords.resize((ofst+count,3))
                 coords[ofst:ofst+count] = verts
+                out_mask.resize((ofst+count,1))
+                out_mask[ofst:ofst+count,0] = mask
                 surf_group.attrs['IndexOffset'] = ofst
                 surf_group.attrs['IndexCount'] = count
                 surf_group.attrs['COORDINATES'] = coords.regionref[ofst:ofst+count]
@@ -1026,6 +1033,8 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 ofst = coords.shape[0]
                 coords.resize((ofst+nvoxs,3))
                 coords[ofst:ofst+nvoxs] = crds
+                out_mask.resize((ofst+nvoxs,1))
+                out_mask[ofst:ofst+nvoxs] = True
                 voxel_indices = rois_group.create_dataset('INDICES',data=voxs)
                 rois = rois_group.create_dataset(
                     'ROIS', (len(counts),),
@@ -1041,6 +1050,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
  
     def resampler(self, iterator, out_file, dataset_path='FMRI/DATA'):
         coords = np.asarray(out_file['COORDINATES'])
+        out_mask = np.asarray(out_file['MASK']).ravel()
         nsamples = coords.shape[0]
 
         nslabs = len(self.stack._slabs)
@@ -1065,7 +1075,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
             
         self.slabs = []
         self.slabs_data = []
-        tmp = np.empty(nsamples)
+        tmp = np.empty(np.count_nonzero(out_mask))
         resampled_first_frame_exported = False
         for fr, slab, reg, data in iterator:
             self.slabs.append((fr,slab,reg))
@@ -1120,11 +1130,12 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         self.slabs_data, tmp,
                         [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
-                        coords, mask=True,
+                        coords[out_mask], mask=True,
                         pve_map=gm_pve,
                         rbf_sigma=self.inputs.interp_rbf_sigma,
                         kneigh_dens=256)
-                    rdata[:,fr] = tmp
+                    rdata[:,fr] = np.nan
+                    rdata[out_mask,fr] = tmp
                     if rdata.shape[-1] < fr:
                         rdata.resize((nsamples,fr))
                 del self.slabs_data
