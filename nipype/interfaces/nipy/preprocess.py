@@ -1049,8 +1049,8 @@ class SurfaceResamplingBase(NipyBaseInterface):
 
  
     def resampler(self, iterator, out_file, dataset_path='FMRI/DATA'):
-        coords = np.asarray(out_file['COORDINATES'])
         out_mask = np.asarray(out_file['MASK']).ravel()
+        coords = np.asarray(out_file['COORDINATES'])[out_mask]
         nsamples = coords.shape[0]
 
         nslabs = len(self.stack._slabs)
@@ -1130,7 +1130,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         self.slabs_data, tmp,
                         [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
-                        coords[out_mask], mask=True,
+                        coords, mask=True,
                         pve_map=gm_pve,
                         rbf_sigma=self.inputs.interp_rbf_sigma,
                         kneigh_dens=256)
