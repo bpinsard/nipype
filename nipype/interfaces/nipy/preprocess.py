@@ -1051,7 +1051,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
     def resampler(self, iterator, out_file, dataset_path='FMRI/DATA'):
         out_mask = np.asarray(out_file['MASK']).ravel()
         coords = np.asarray(out_file['COORDINATES'])[out_mask]
-        nsamples = coords.shape[0]
+        nsamples = out_mask.shape[0]
 
         nslabs = len(self.stack._slabs)
         if isinstance(self.stack, NiftiIterator):
@@ -1072,7 +1072,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
         if self.inputs.gm_pve:
             gm_pve = nb.load(self.inputs.gm_pve)
 
-            
+        kneigh_dens_2mm = int((self.inputs.interp_rbf_sigma*3)**3) # 3 std *2/2
         self.slabs = []
         self.slabs_data = []
         tmp = np.empty(np.count_nonzero(out_mask))
@@ -1099,8 +1099,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
                         vol_coords, mask=False,
-                        rbf_sigma=self.inputs.interp_rbf_sigma,
-                        kneigh_dens=256)
+                        rbf_sigma=self.inputs.interp_rbf_sigma)
                     f1[mask_data] = tmp_f1
                     outputs = self._list_outputs()
                     nb.save(nb.Nifti1Image(f1.astype(np.float32),
@@ -1133,7 +1132,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         coords, mask=True,
                         pve_map=gm_pve,
                         rbf_sigma=self.inputs.interp_rbf_sigma,
-                        kneigh_dens=256)
+                        kneigh_dens=kneigh_dens_2mm)
                     rdata[:,fr] = np.nan
                     rdata[out_mask,fr] = tmp
                     if rdata.shape[-1] < fr:
