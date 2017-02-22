@@ -613,6 +613,9 @@ class SurfaceResamplingBaseInputSpec(BaseInterfaceInputSpec):
     interp_rbf_sigma = traits.Float(
         3, usedefault=True,
         desc='the sigma parameter for gaussian rbf interpolation')
+    interp_cortical_anisotropic_kernel = traits.Bool(
+        False, usedefault=True,
+        desc='use surface constrained anisotropic kernel for cortical interpolation')
 
     resample_rois = traits.List(
         traits.Tuple(
@@ -668,6 +671,9 @@ class SurfaceResamplingBase(NipyBaseInterface):
         coords = out_file.create_dataset('COORDINATES',
                                          (0,3),maxshape = (None,3),
                                          dtype = np.float)
+        normals = out_file.create_dataset('NORMALS',
+                                          (0,3),maxshape = (None,3),
+                                          dtype = np.float)
         out_mask = out_file.create_dataset('MASK',
                                            (0,1),maxshape = (None,1),
                                            dtype = np.bool)
@@ -677,12 +683,14 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 surf_group = structs.create_group(surf_name)
                 surf_group.attrs['ModelType'] = 'SURFACE'
                 surf_group.attrs['SurfaceFile'] = [f.encode('utf8') for f in surf_file]
+                normal_tmp = None
                 if isinstance(surf_file, tuple):
                     verts1, tris = self.load_gii_fs(surf_file[0])
                     verts = verts1*(1-self.inputs.middle_surface_position)
                     verts2, _ =  self.load_gii_fs(surf_file[1])
                     verts += verts2*self.inputs.middle_surface_position
                     mask = np.abs(verts-verts2).sum(1)>1e-2
+                    normal_tmp = verts2 - verts1
                     del verts2
                 else:
                     verts, tris = self.load_gii_fs(surf_file)
@@ -693,6 +701,10 @@ class SurfaceResamplingBase(NipyBaseInterface):
                 coords[ofst:ofst+count] = verts
                 out_mask.resize((ofst+count,1))
                 out_mask[ofst:ofst+count,0] = mask
+                if not normal_tmp is None:
+                    normals.resize((ofst+count,3))
+                    normals[ofst:ofst+count] = normal_tmp
+
                 surf_group.attrs['IndexOffset'] = ofst
                 surf_group.attrs['IndexCount'] = count
                 surf_group.attrs['COORDINATES'] = coords.regionref[ofst:ofst+count]
@@ -761,10 +773,15 @@ class SurfaceResamplingBase(NipyBaseInterface):
     def resampler(self, iterator, out_file, dataset_path='FMRI/DATA'):
         out_mask = np.asarray(out_file['MASK']).ravel()
         coords = np.asarray(out_file['COORDINATES'])[out_mask]
+        normals = None
+        if self.inputs.interp_cortical_anisotropic_kernel:
+            normals = np.asarray(out_file['NORMALS'])[out_mask[:len(out_file['NORMALS'])]]
+            normals = np.vstack([normals, np.zeros((len(coords)-len(normals),3))])
         nsamples = out_mask.shape[0]
 
         nslabs = len(self.stack._slabs)
         if isinstance(self.stack, NiftiIterator):
+
             nvols = self.stack.nframes
         elif self.stack._nframes_per_dicom == 1:
             nvols = len(self.dicom_files)
@@ -839,7 +856,8 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         self.slabs_data, tmp,
                         [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
-                        coords, mask=True,
+                        coords, normals,
+                        mask=True,
                         pve_map=gm_pve,
                         rbf_sigma=self.inputs.interp_rbf_sigma,
                         kneigh_dens=kneigh_dens_2mm)
