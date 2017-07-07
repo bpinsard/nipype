@@ -8,6 +8,7 @@ Requires Packages to be installed
 """
 
 from .base import (IdentityInterface, Rename, Select, Split, Merge,
-                   AssertEqual)
+                   AssertEqual,
+                   flatten, select, repeat, find_in_same_dir)
 from .csv import CSVReader
 from .wrappers import Function
