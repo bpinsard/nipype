@@ -6,6 +6,7 @@ python:
 - 2.7
 - 3.4
 - 3.5
+- 3.6
 env:
 - INSTALL_DEB_DEPENDECIES=true NIPYPE_EXTRAS="doc,tests,fmri,profiler"
 - INSTALL_DEB_DEPENDECIES=false NIPYPE_EXTRAS="doc,tests,fmri,profiler"
@@ -42,7 +43,7 @@ before_install:
 install:
 - travis_retry pip install -e .[$NIPYPE_EXTRAS]
 script:
-- py.test --doctest-modules nipype
+- py.test -v --doctest-modules nipype
 deploy:
   provider: pypi
   user: satra

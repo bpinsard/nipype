@@ -79,7 +79,8 @@ class Node(EngineBase):
 
     def __init__(self, interface, name, iterables=None, itersource=None,
                  synchronize=False, overwrite=None, needed_outputs=None,
-                 run_without_submitting=False, **kwargs):
+                 run_without_submitting=False, n_procs=1, mem_gb=None,
+                 **kwargs):
         """
         Parameters
         ----------
@@ -168,6 +169,11 @@ class Node(EngineBase):
         self.input_source = {}
         self.needed_outputs = []
         self.plugin_args = {}
+
+        self._interface.num_threads = n_procs
+        if mem_gb is not None:
+            self._interface.estimated_memory_gb = mem_gb
+
         if needed_outputs:
             self.needed_outputs = sorted(needed_outputs)
         self._got_inputs = False
@@ -555,7 +561,7 @@ class Node(EngineBase):
             logger.debug('aggregating results')
             if attribute_error:
                 old_inputs = loadpkl(op.join(cwd, '_inputs.pklz'))
-                self.inputs.set(**old_inputs)
+                self.inputs.trait_set(**old_inputs)
             if not isinstance(self, MapNode):
                 self._copyfiles_to_wd(cwd, True, linksonly=True)
                 aggouts = self._interface.aggregate_outputs(
@@ -1106,11 +1112,16 @@ class MapNode(Node):
             nitems = len(filename_to_list(getattr(self.inputs, self.iterfield[0])))
         for i in range(nitems):
             nodename = '_' + self.name + str(i)
-            node = Node(deepcopy(self._interface), name=nodename)
-            node.overwrite = self.overwrite
-            node.run_without_submitting = self.run_without_submitting
+            node = Node(deepcopy(self._interface),
+                        n_procs=self._interface.num_threads,
+                        mem_gb=self._interface.estimated_memory_gb,
+                        overwrite=self.overwrite,
+                        needed_outputs=self.needed_outputs,
+                        run_without_submitting=self.run_without_submitting,
+                        base_dir=op.join(cwd, 'mapflow'),
+                        name=nodename)
             node.plugin_args = self.plugin_args
-            node._interface.inputs.set(
+            node._interface.inputs.trait_set(
                 **deepcopy(self._interface.inputs.get()))
             for field in self.iterfield:
                 if self.nested:
@@ -1120,7 +1131,6 @@ class MapNode(Node):
                 logger.debug('setting input %d %s %s', i, field, fieldvals[i])
                 setattr(node.inputs, field, fieldvals[i])
             node.config = self.config
-            node.base_dir = op.join(cwd, 'mapflow')
             yield i, node
 
     def _node_runner(self, nodes, updatehash=False):
@@ -1236,7 +1246,7 @@ class MapNode(Node):
         old_inputs = self._inputs.get()
         self._inputs = self._create_dynamic_traits(self._interface.inputs,
                                                    fields=self.iterfield)
-        self._inputs.set(**old_inputs)
+        self._inputs.trait_set(**old_inputs)
         super(MapNode, self)._get_inputs()
 
     def _check_iterfield(self):

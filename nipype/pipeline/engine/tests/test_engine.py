@@ -326,14 +326,14 @@ def test_doubleconnect():
     flow1 = pe.Workflow(name='test')
     flow1.connect(a, 'a', b, 'a')
     x = lambda: flow1.connect(a, 'b', b, 'a')
-    with pytest.raises(Exception) as excinfo: 
+    with pytest.raises(Exception) as excinfo:
         x()
     assert "Trying to connect" in str(excinfo.value)
 
     c = pe.Node(IdentityInterface(fields=['a', 'b']), name='c')
     flow1 = pe.Workflow(name='test2')
     x = lambda: flow1.connect([(a, c, [('b', 'b')]), (b, c, [('a', 'b')])])
-    with pytest.raises(Exception) as excinfo: 
+    with pytest.raises(Exception) as excinfo:
         x()
     assert "Trying to connect" in str(excinfo.value)
 
@@ -481,9 +481,31 @@ def test_mapnode_nested(tmpdir):
                  name='n1')
     n2.inputs.in1 = [[1, [2]], 3, [4, 5]]
 
-    with pytest.raises(Exception) as excinfo: 
+    with pytest.raises(Exception) as excinfo:
         n2.run()
     assert "can only concatenate list" in str(excinfo.value)
+
+
+def test_mapnode_expansion(tmpdir):
+    os.chdir(str(tmpdir))
+    from nipype import MapNode, Function
+
+    def func1(in1):
+        return in1 + 1
+
+    mapnode = MapNode(Function(function=func1),
+                      iterfield='in1',
+                      name='mapnode')
+    mapnode.inputs.in1 = [1, 2]
+    mapnode.interface.num_threads = 2
+    mapnode.interface.estimated_memory_gb = 2
+
+    for idx, node in mapnode._make_nodes():
+        for attr in ('overwrite', 'run_without_submitting', 'plugin_args'):
+            assert getattr(node, attr) == getattr(mapnode, attr)
+        for attr in ('num_threads', 'estimated_memory_gb'):
+            assert (getattr(node._interface, attr) ==
+                    getattr(mapnode._interface, attr))
 
 
 def test_node_hash(tmpdir):
@@ -518,7 +540,7 @@ def test_node_hash(tmpdir):
     # create dummy distributed plugin class
     from nipype.pipeline.plugins.base import DistributedPluginBase
 
-    # create a custom exception 
+    # create a custom exception
     class EngineTestException(Exception):
         pass
 
@@ -529,7 +551,7 @@ def test_node_hash(tmpdir):
     # check if a proper exception is raised
     with pytest.raises(EngineTestException) as excinfo:
         w1.run(plugin=RaiseError())
-    assert 'Submit called' == str(excinfo.value)        
+    assert 'Submit called' == str(excinfo.value)
 
     # rerun to ensure we have outputs
     w1.run(plugin='Linear')
@@ -539,7 +561,7 @@ def test_node_hash(tmpdir):
                               'crashdump_dir': wd}
 
     w1.run(plugin=RaiseError())
-    
+
 
 def test_old_config(tmpdir):
     wd = str(tmpdir)
@@ -607,7 +629,7 @@ def test_mapnode_json(tmpdir):
     w1.config['execution'].update(**{'stop_on_first_rerun': True})
 
     w1.run()
-   
+
 
 def test_parameterize_dirs_false(tmpdir):
     from ....interfaces.utility import IdentityInterface
@@ -665,7 +687,7 @@ def test_serial_input(tmpdir):
 
     # test running the workflow on serial conditions
     w1.run(plugin='MultiProc')
-    
+
 
 def test_write_graph_runs(tmpdir):
     os.chdir(str(tmpdir))
@@ -677,7 +699,8 @@ def test_write_graph_runs(tmpdir):
             mod2 = pe.Node(interface=EngineTestInterface(), name='mod2')
             pipe.connect([(mod1, mod2, [('output1', 'input1')])])
             try:
-                pipe.write_graph(graph2use=graph, simple_form=simple)
+                pipe.write_graph(graph2use=graph, simple_form=simple,
+                                 format='dot')
             except Exception:
                 assert False, \
                     'Failed to plot {} {} graph'.format(
@@ -708,7 +731,8 @@ def test_deep_nested_write_graph_runs(tmpdir):
             mod1 = pe.Node(interface=EngineTestInterface(), name='mod1')
             parent.add_nodes([mod1])
             try:
-                pipe.write_graph(graph2use=graph, simple_form=simple)
+                pipe.write_graph(graph2use=graph, simple_form=simple,
+                                 format='dot')
             except Exception as e:
                 assert False, \
                     'Failed to plot {} {} deep graph: {!s}'.format(
