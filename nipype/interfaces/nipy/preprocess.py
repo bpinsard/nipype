@@ -19,6 +19,8 @@ from ...utils.misc import package_check
 from ...utils.filemanip import (fname_presuffix, filename_to_list,
                                 list_to_filename, split_filename,
                                 savepkl, loadpkl)
+from ...utils import NUMPY_MMAP
+
 from ..base import (TraitedSpec, BaseInterface, traits,
                     BaseInterfaceInputSpec, isdefined, File,
                     InputMultiPath, OutputMultiPath)
@@ -64,7 +66,7 @@ class ComputeMask(BaseInterface):
             value = getattr(self.inputs, key)
             if isdefined(value):
                 if key in ['mean_volume', 'reference_volume']:
-                    nii = nb.load(value)
+                    nii = nb.load(value, mmap=NUMPY_MMAP)
                     value = nii.get_data()
                 args[key] = value
 
