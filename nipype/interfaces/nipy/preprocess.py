@@ -610,6 +610,9 @@ class SurfaceResamplingBaseInputSpec(BaseInterfaceInputSpec):
     gm_pve = File(
         exists=True,
         desc='gray matter pve map to weight voxels in resampling')
+    interp_mask = traits.Bool(
+        True, usedefault=True,
+        desc='remove voxel out of brain for interpolation')
     interp_rbf_sigma = traits.Float(
         3, usedefault=True,
         desc='the sigma parameter for gaussian rbf interpolation')
@@ -857,7 +860,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                         [s[1] for s in tmp_slabs],
                         [s[2] for s in tmp_slabs],
                         coords, normals,
-                        mask=True,
+                        mask=self.inputs.interp_mask,
                         pve_map=gm_pve,
                         rbf_sigma=self.inputs.interp_rbf_sigma,
                         kneigh_dens=kneigh_dens_2mm)
