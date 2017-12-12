@@ -802,7 +802,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
         if self.inputs.gm_pve:
             gm_pve = nb.load(self.inputs.gm_pve)
 
-        kneigh_dens_2mm = int((self.inputs.interp_rbf_sigma*3)**3) # 3 std *2/2
+        kneigh_dens_2mm = int((2*self.inputs.interp_rbf_sigma*3)**3) # 3 std *2/2
         self.slabs = []
         self.slabs_data = []
         tmp = np.empty(np.count_nonzero(out_mask))
