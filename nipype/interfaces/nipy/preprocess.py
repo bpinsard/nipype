@@ -741,7 +741,7 @@ class SurfaceResamplingBase(NipyBaseInterface):
                     crds = nb.affines.apply_affine(rois_nii.affine, voxs)
                     del rois_nii, rois_data
                 else:
-                    rois_txt = np.loadtxt(roiset_file,delimiter=',',skiprows=1)
+                    rois_txt = np.loadtxt(roiset_file,delimiter=',')
                     crds = []
                     voxs = []
                     for k in roiset[:,0]:
